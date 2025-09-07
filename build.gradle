@@ -1,0 +1,67 @@
+plugins {
+    id 'java'
+    id 'com.github.johnrengelman.shadow' version '7.1.0'
+    id 'maven-publish'
+}
+
+group = 'com.realmmc.controller'
+version = '1.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+
+}
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+    sourceCompatibility = JavaVersion.VERSION_24
+    targetCompatibility = JavaVersion.VERSION_24
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.shadowJar {
+    archiveBaseName.set('controller')
+    archiveClassifier.set('')
+    archiveVersion.set(project.version.toString())
+    mergeServiceFiles()
+    exclude('META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA')
+}
+
+tasks.build {
+    dependsOn tasks.shadowJar
+}
+
+tasks.withType(PublishToMavenRepository).configureEach {
+    dependsOn tasks.shadowJar
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId = project.group.toString()
+            artifactId = 'controller'
+            version = project.version.toString()
+            artifact(tasks.shadowJar)
+        }
+    }
+
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            def repo = System.getenv("GITHUB_REPOSITORY") ?: "Realm-MC/controller"
+            url = uri("https://maven.pkg.github.com/${repo}")
+
+            credentials {
+                username = findProperty("gpr.user")?.toString() ?: System.getenv("GITHUB_ACTOR")
+                password = findProperty("gpr.token")?.toString() ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
+}
