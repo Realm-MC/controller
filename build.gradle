@@ -9,10 +9,22 @@ version = '1.0'
 
 repositories {
     mavenCentral()
+    mavenLocal()
+    maven {
+        url = uri("https://repo.papermc.io/repository/maven-public/")
+    }
 }
 
 dependencies {
-
+    implementation("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
+    annotationProcessor("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
+    implementation("org.reflections:reflections:0.10.2")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.20.0")
+    compileOnly("org.projectlombok:lombok:1.18.32")
+    annotationProcessor("org.projectlombok:lombok:1.18.32")
+    implementation("redis.clients:jedis:6.1.0")
+    implementation("net.kyori:adventure-text-minimessage:4.24.0")
+    implementation("net.kyori:adventure-text-serializer-legacy:4.14.0")
 }
 java {
     toolchain {
