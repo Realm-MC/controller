@@ -12,6 +12,7 @@ import org.reflections.util.ConfigurationBuilder;
 
 import java.net.URL;
 import java.util.*;
+import java.util.logging.Level;
 
 public class CommandManager implements SimpleCommand {
 
@@ -37,19 +38,19 @@ public class CommandManager implements SimpleCommand {
         String[] args = invocation.arguments();
         var logger = Proxy.getInstance().getLogger();
 
-        logger.info("[Command] Executando '%s' %s", name, args.length == 0 ? "" : String.join(" ", args));
+        logger.info(String.format("[Command] Executando '%s' %s", name, args.length == 0 ? "" : String.join(" ", args)));
 
         if (onlyPlayer && !(sender instanceof Player)) {
             sender.sendMessage(mm.deserialize("<red>Somente jogadores podem usar este comando."));
-            logger.warn("[Command] Tentativa por não-jogador em %s", name);
+            logger.warning(String.format("[Command] Tentativa por não-jogador em %s", name));
             return;
         }
 
         try {
-            cmdImpl.execute(sender, args);
-            logger.debug("[Command] '%s' executado com sucesso", name);
+            cmdImpl.execute(sender, name, args);
+            logger.fine(String.format("[Command] '%s' executado com sucesso", name));
         } catch (Exception e) {
-            logger.error("[Command] Erro ao executar '%s'", e, name);
+            logger.log(Level.SEVERE, String.format("[Command] Erro ao executar '%s'", name), e);
             sender.sendMessage(mm.deserialize("<red>Ocorreu um erro ao executar este comando."));
         }
     }
@@ -63,7 +64,7 @@ public class CommandManager implements SimpleCommand {
         try {
             return cmdImpl.tabComplete(sender, args);
         } catch (Exception e) {
-            logger.error("[Command] Erro ao sugerir tab para %s", e, name);
+            logger.log(Level.SEVERE, String.format("[Command] Erro ao sugerir tab para %s", name), e);
             return List.of();
         }
     }
@@ -77,7 +78,7 @@ public class CommandManager implements SimpleCommand {
         server.getCommandManager().register(meta, this);
 
         registeredCommands.computeIfAbsent(pluginId, k -> new ArrayList<>()).add(this);
-        Proxy.getInstance().getLogger().info("[Command] Registrado '%s' %s (Plugin: %s)", name, aliases.length == 0 ? "" : String.join(", ", aliases), pluginId);
+        Proxy.getInstance().getLogger().info(String.format("[Command] Registrado '%s' %s (Plugin: %s)", name, aliases.length == 0 ? "" : String.join(", ", aliases), pluginId));
     }
 
     public static void unregisterPluginCommands(String pluginId) {
@@ -85,7 +86,7 @@ public class CommandManager implements SimpleCommand {
         if (commands == null) return;
 
         for (CommandManager cmd : commands) {
-            Proxy.getInstance().getLogger().info("[Command] Comando removido: %s (Plugin: %s)", cmd.name, pluginId);
+            Proxy.getInstance().getLogger().info(String.format("[Command] Comando removido: %s (Plugin: %s)", cmd.name, pluginId));
         }
     }
 
@@ -112,14 +113,14 @@ public class CommandManager implements SimpleCommand {
                 try {
                     CommandInterface impl = clazz.getDeclaredConstructor().newInstance();
                     new CommandManager(pluginId, ann.cmd(), impl, ann.onlyPlayer(), ann.aliases());
-                    Proxy.getInstance().getLogger().info("[Command] Registrado: %s (%s) do plugin %s", ann.cmd(), clazz.getSimpleName(), pluginId);
+                    Proxy.getInstance().getLogger().info(String.format("[Command] Registrado: %s (%s) do plugin %s", ann.cmd(), clazz.getSimpleName(), pluginId));
                 } catch (Exception e) {
-                    Proxy.getInstance().getLogger().error("[Command] Falha ao registrar %s (Plugin: %s)", e, clazz.getName(), pluginId);
+                    Proxy.getInstance().getLogger().log(Level.SEVERE, String.format("[Command] Falha ao registrar %s (Plugin: %s)", clazz.getName(), pluginId), e);
                 }
             }
 
         } catch (Exception e) {
-            Proxy.getInstance().getLogger().error("[Command] Falha no scan de comandos plugáveis", e);
+            Proxy.getInstance().getLogger().log(Level.SEVERE, "[Command] Falha no scan de comandos plugáveis", e);
         }
     }
 }

@@ -5,8 +5,8 @@ import java.util.Collections;
 import java.util.List;
 
 public interface CommandInterface {
-    public void execute(CommandSource sender, String label, String[] args);
-    public default List<String> tabComplete(CommandSource sender, String[] args) {
+    void execute(CommandSource sender, String label, String[] args);
+    default List<String> tabComplete(CommandSource sender, String[] args) {
         return Collections.emptyList();
     }
 }
