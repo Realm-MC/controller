@@ -29,7 +29,7 @@ public final class RedisSubscriber {
         if (running) return;
         running = true;
         Set<String> channels = listeners.keySet();
-        if (channels.isEmpty()) return; // nothing to subscribe
+        if (channels.isEmpty()) return;
 
         thread = new Thread(() -> {
             try (Jedis jedis = RedisManager.getResource()) {

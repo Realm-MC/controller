@@ -9,6 +9,11 @@ import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
 import lombok.Getter;
+import com.realmmc.controller.shared.storage.mongodb.MongoConfig;
+import com.realmmc.controller.shared.storage.mongodb.MongoManager;
+import com.realmmc.controller.shared.storage.redis.RedisConfig;
+import com.realmmc.controller.shared.storage.redis.RedisManager;
+import com.realmmc.controller.shared.profile.ProfileSyncSubscriber;
 
 import javax.inject.Inject;
 import java.nio.file.Path;
@@ -24,6 +29,7 @@ public class Proxy {
     @Getter
     private final Logger logger;
     private final Path directory;
+    private ProfileSyncSubscriber profileSyncSubscriber;
 
     @Inject
     public Proxy(ProxyServer server, Logger logger, @DataDirectory Path directory) {
@@ -35,6 +41,14 @@ public class Proxy {
 
     @Subscribe
     public void onEnable(ProxyInitializeEvent event) {
+        // Initialize storages (configurable via env or system properties)
+        initMongo();
+        initRedis();
+
+        // Start sync subscriber
+        profileSyncSubscriber = new ProfileSyncSubscriber();
+        profileSyncSubscriber.start();
+
         CommandManager.registerAll(this);
         ListenersManager.registerAll(server, this);
         logger.info("Controller enabled!" + server.getPluginManager().getPlugin("controller").get().getDescription().getVersion());
@@ -42,6 +56,38 @@ public class Proxy {
 
     @Subscribe
     public void onDisable(ProxyShutdownEvent event) {
+        // Stop subscriber and shutdown storages
+        if (profileSyncSubscriber != null) {
+            profileSyncSubscriber.stop();
+            profileSyncSubscriber = null;
+        }
+        try { RedisManager.shutdown(); } catch (Exception ignored) {}
+        try { MongoManager.shutdown(); } catch (Exception ignored) {}
         logger.info("Controller disabled!" + server.getPluginManager().getPlugin("controller").get().getDescription().getVersion());
+    }
+
+    private void initMongo() {
+        String uri = getProp("MONGO_URI", "mongodb://localhost:27017");
+        String db = getProp("MONGO_DB", "controller");
+        MongoManager.init(new MongoConfig(uri, db));
+        logger.info("MongoDB connected to " + uri + "/" + db);
+    }
+
+    private void initRedis() {
+        String host = getProp("REDIS_HOST", "127.0.0.1");
+        int port = Integer.parseInt(getProp("REDIS_PORT", "6379"));
+        String pass = getProp("REDIS_PASS", "");
+        int db = Integer.parseInt(getProp("REDIS_DB", "0"));
+        boolean ssl = Boolean.parseBoolean(getProp("REDIS_SSL", "false"));
+        RedisManager.init(new RedisConfig(host, port, pass, db, ssl));
+        logger.info("Redis connected to " + host + ":" + port + " db=" + db + (ssl ? " (ssl)" : ""));
+    }
+
+    private String getProp(String key, String def) {
+        String val = System.getProperty(key);
+        if (val == null || val.isEmpty()) {
+            val = System.getenv(key);
+        }
+        return (val == null || val.isEmpty()) ? def : val;
     }
 }
