@@ -6,12 +6,14 @@ import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.plugin.PluginContainer;
 import com.velocitypowered.api.proxy.Player;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import org.reflections.Reflections;
-import org.reflections.scanners.Scanners;
-import org.reflections.util.ConfigurationBuilder;
 
-import java.net.URL;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
+import java.util.jar.JarFile;
 import java.util.logging.Level;
 
 public class CommandManager implements SimpleCommand {
@@ -94,33 +96,84 @@ public class CommandManager implements SimpleCommand {
         try {
             Class<?> pluginClass = plugin.getClass();
             PluginContainer container = Proxy.getInstance().getServer().getPluginManager().fromInstance(plugin).orElseThrow();
-
             String pluginId = container.getDescription().getId();
-            URL jarUrl = pluginClass.getProtectionDomain().getCodeSource().getLocation();
 
-            var config = new ConfigurationBuilder()
-                    .setUrls(jarUrl)
-                    .setScanners(Scanners.SubTypes, Scanners.TypesAnnotated)
-                    .addClassLoaders(pluginClass.getClassLoader());
+            String basePackage = "com.realmmc.controller.proxy.commands.cmds";
+            ClassLoader cl = pluginClass.getClassLoader();
+            File codeSource = new File(pluginClass.getProtectionDomain().getCodeSource().getLocation().toURI());
 
-            Reflections reflections = new Reflections(config);
-            Set<Class<? extends CommandInterface>> types = reflections.getSubTypesOf(CommandInterface.class);
+            Set<Class<?>> discovered = findClasses(codeSource, basePackage, cl);
 
-            for (Class<? extends CommandInterface> clazz : types) {
-                Cmd ann = clazz.getAnnotation(Cmd.class);
+            for (Class<?> clazz : discovered) {
+                if (!CommandInterface.class.isAssignableFrom(clazz)) continue;
+                @SuppressWarnings("unchecked")
+                Class<? extends CommandInterface> cmdClass = (Class<? extends CommandInterface>) clazz;
+
+                Cmd ann = cmdClass.getAnnotation(Cmd.class);
                 if (ann == null) continue;
 
                 try {
-                    CommandInterface impl = clazz.getDeclaredConstructor().newInstance();
+                    CommandInterface impl = cmdClass.getDeclaredConstructor().newInstance();
                     new CommandManager(pluginId, ann.cmd(), impl, ann.onlyPlayer(), ann.aliases());
-                    Proxy.getInstance().getLogger().info(String.format("[Command] Registrado: %s (%s) do plugin %s", ann.cmd(), clazz.getSimpleName(), pluginId));
+                    Proxy.getInstance().getLogger().info(String.format("[Command] Registrado: %s (%s) do plugin %s", ann.cmd(), cmdClass.getSimpleName(), pluginId));
                 } catch (Exception e) {
-                    Proxy.getInstance().getLogger().log(Level.SEVERE, String.format("[Command] Falha ao registrar %s (Plugin: %s)", clazz.getName(), pluginId), e);
+                    Proxy.getInstance().getLogger().log(Level.SEVERE, String.format("[Command] Falha ao registrar %s (Plugin: %s)", cmdClass.getName(), pluginId), e);
                 }
             }
 
         } catch (Exception e) {
             Proxy.getInstance().getLogger().log(Level.SEVERE, "[Command] Falha no scan de comandos plugáveis", e);
+        }
+    }
+
+    private static Set<Class<?>> findClasses(File codeSource, String basePackage, ClassLoader cl) throws IOException {
+        Set<Class<?>> result = new HashSet<>();
+        String basePath = basePackage.replace('.', '/');
+        if (codeSource.isDirectory()) {
+            Path start = Paths.get(codeSource.getAbsolutePath(), basePath);
+            if (Files.exists(start)) {
+                Files.walk(start)
+                        .filter(p -> p.toString().endsWith(".class"))
+                        .forEach(p -> {
+                            String fqcn = toClassName(codeSource.toPath(), p);
+                            if (fqcn != null && !fqcn.contains("$")) {
+                                tryLoad(result, fqcn, cl);
+                            }
+                        });
+            }
+        } else if (codeSource.isFile() && codeSource.getName().endsWith(".jar")) {
+            try (JarFile jar = new JarFile(codeSource)) {
+                jar.stream()
+                        .filter(e -> !e.isDirectory())
+                        .filter(e -> e.getName().endsWith(".class"))
+                        .filter(e -> e.getName().startsWith(basePath))
+                        .forEach(e -> {
+                            String fqcn = e.getName().replace('/', '.').replace(".class", "");
+                            if (!fqcn.contains("$")) {
+                                tryLoad(result, fqcn, cl);
+                            }
+                        });
+            }
+        }
+        return result;
+    }
+
+    private static String toClassName(Path root, Path classFile) {
+        try {
+            Path rel = root.relativize(classFile);
+            String path = rel.toString();
+            if (path.endsWith(".class")) {
+                return path.replace(File.separatorChar, '.').replace(".class", "");
+            }
+        } catch (IllegalArgumentException ignored) {}
+        return null;
+    }
+
+    private static void tryLoad(Set<Class<?>> out, String fqcn, ClassLoader cl) {
+        try {
+            Class<?> cls = Class.forName(fqcn, false, cl);
+            out.add(cls);
+        } catch (Throwable ignored) {
         }
     }
 }
