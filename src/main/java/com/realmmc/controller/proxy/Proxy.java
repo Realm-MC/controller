@@ -14,6 +14,7 @@ import com.realmmc.controller.shared.storage.mongodb.MongoManager;
 import com.realmmc.controller.shared.storage.redis.RedisConfig;
 import com.realmmc.controller.shared.storage.redis.RedisManager;
 import com.realmmc.controller.shared.profile.ProfileSyncSubscriber;
+import com.realmmc.controller.shared.utils.TaskScheduler;
 
 import javax.inject.Inject;
 import java.nio.file.Path;
@@ -45,6 +46,9 @@ public class Proxy {
         initMongo();
         initRedis();
 
+        // Init task scheduler
+        TaskScheduler.init(server, this);
+
         // Start sync subscriber
         profileSyncSubscriber = new ProfileSyncSubscriber();
         profileSyncSubscriber.start();
@@ -63,6 +67,7 @@ public class Proxy {
         }
         try { RedisManager.shutdown(); } catch (Exception ignored) {}
         try { MongoManager.shutdown(); } catch (Exception ignored) {}
+        try { TaskScheduler.shutdown(); } catch (Exception ignored) {}
         logger.info("Controller disabled!" + server.getPluginManager().getPlugin("controller").get().getDescription().getVersion());
     }
 

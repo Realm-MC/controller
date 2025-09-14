@@ -7,11 +7,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import com.realmmc.controller.shared.utils.TaskScheduler;
 
 public final class RedisSubscriber {
     private final Map<String, RedisMessageListener> listeners = new ConcurrentHashMap<>();
-    private Thread thread;
     private volatile boolean running = false;
+    private CompletableFuture<Void> future;
+    private JedisPubSub pubSub;
 
     public void registerListener(RedisChannel channel, RedisMessageListener listener) {
         Objects.requireNonNull(channel);
@@ -31,30 +34,34 @@ public final class RedisSubscriber {
         Set<String> channels = listeners.keySet();
         if (channels.isEmpty()) return;
 
-        thread = new Thread(() -> {
+        future = TaskScheduler.runAsync(() -> {
             try (Jedis jedis = RedisManager.getResource()) {
-                jedis.subscribe(new JedisPubSub() {
+                JedisPubSub local = new JedisPubSub() {
                     @Override
                     public void onMessage(String channel, String message) {
                         RedisMessageListener l = listeners.get(channel);
                         if (l != null) l.onMessage(channel, message);
                     }
-                }, channels.toArray(new String[0]));
+                };
+                this.pubSub = local;
+                jedis.subscribe(local, channels.toArray(new String[0]));
             } catch (Exception e) {
                 e.printStackTrace();
             } finally {
                 running = false;
+                this.pubSub = null;
             }
-        }, "Redis-Subscriber");
-        thread.setDaemon(true);
-        thread.start();
+        });
     }
 
     public synchronized void stop() {
         running = false;
-        if (thread != null) {
-            thread.interrupt();
-            thread = null;
+        try {
+            if (pubSub != null) pubSub.unsubscribe();
+        } catch (Exception ignored) {}
+        if (future != null) {
+            future.cancel(true);
+            future = null;
         }
     }
 }
