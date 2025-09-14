@@ -1,6 +1,7 @@
 package com.realmmc.controller.proxy;
 
 import com.realmmc.controller.proxy.commands.CommandManager;
+import com.realmmc.controller.proxy.listeners.ListenersManager;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
@@ -35,6 +36,7 @@ public class Proxy {
     @Subscribe
     public void onEnable(ProxyInitializeEvent event) {
         CommandManager.registerAll(this);
+        ListenersManager.registerAll(server, this);
         logger.info("Controller enabled!" + server.getPluginManager().getPlugin("controller").get().getDescription().getVersion());
     }
 

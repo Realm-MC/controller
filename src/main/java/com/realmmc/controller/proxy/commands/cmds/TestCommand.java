@@ -14,6 +14,7 @@ public class TestCommand implements CommandInterface {
         Player player = (Player) sender;
         if (player != null) {
             player.sendMessage(mm.deserialize("<red>Test command"));
+            return;
         }
     }
 }
