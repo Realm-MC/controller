@@ -11,7 +11,8 @@ repositories {
     mavenCentral()
     mavenLocal()
     maven {
-        url = uri("https://repo.papermc.io/repository/maven-public/")
+        name = 'papermc'
+        url = 'https://repo.papermc.io/repository/maven-public/'
     }
 }
 
@@ -25,6 +26,7 @@ dependencies {
     implementation("net.kyori:adventure-text-minimessage:4.24.0")
     implementation("net.kyori:adventure-text-serializer-legacy:4.14.0")
     implementation("org.mongodb:mongodb-driver-sync:4.11.1")
+    compileOnly 'io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT'
 }
 java {
     toolchain {
