@@ -27,6 +27,8 @@ dependencies {
     implementation("net.kyori:adventure-text-serializer-legacy:4.14.0")
     implementation("org.mongodb:mongodb-driver-sync:4.11.1")
     compileOnly 'io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT'
+    implementation("com.github.retrooper.packetevents:spigot:2.3.0")
+    implementation("com.github.retrooper.packetevents:api:2.3.0")
 }
 java {
     toolchain {
