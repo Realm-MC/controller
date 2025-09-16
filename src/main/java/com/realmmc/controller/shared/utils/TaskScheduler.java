@@ -6,10 +6,6 @@ import com.velocitypowered.api.scheduler.ScheduledTask;
 import java.util.Objects;
 import java.util.concurrent.*;
 
-/**
- * Simple task scheduler facade for Velocity with sync (Velocity scheduler) and
- * async (own executor) helpers.
- */
 public final class TaskScheduler {
     private static ProxyServer server;
     private static Object plugin;

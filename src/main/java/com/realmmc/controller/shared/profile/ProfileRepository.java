@@ -19,13 +19,13 @@ public class ProfileRepository extends AbstractMongoRepository<Profile> {
 
     private void ensureIndexes() {
         MongoCollection<Profile> col = collection();
-        col.createIndex(Indexes.ascending("name"), new IndexOptions().unique(true));
+        col.createIndex(Indexes.ascending("uuid"), new IndexOptions().unique(true));
         col.createIndex(Indexes.ascending("username"), new IndexOptions().unique(true));
         col.createIndex(Indexes.descending("lastLogin"));
     }
 
     public Optional<Profile> findByUuid(UUID uuid) {
-        return findOne(Filters.eq("_id", uuid));
+        return findOne(Filters.eq("uuid", uuid));
     }
 
     public Optional<Profile> findByName(String name) {
@@ -37,11 +37,11 @@ public class ProfileRepository extends AbstractMongoRepository<Profile> {
     }
 
     public void upsert(Profile profile) {
-        if (profile.getId() == null) throw new IllegalArgumentException("Profile id cannot be null");
+        if (profile.getId() == null) throw new IllegalArgumentException("Profile integer _id cannot be null");
         replace(MongoRepository.idEquals(profile.getId()), profile);
     }
 
     public void deleteByUuid(UUID uuid) {
-        delete(Filters.eq("_id", uuid));
+        delete(Filters.eq("uuid", uuid));
     }
 }

@@ -7,7 +7,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Calendar;
 
 public class TimeUtils {
-    private final DateTimeFormatter DEFAULT_TIME_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm");
+    private static final DateTimeFormatter DEFAULT_TIME_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm");
 
     /**
      * Boolean para verificar se é dia 31/12 ou 01/01 para constatar ano novo.
@@ -28,7 +28,12 @@ public class TimeUtils {
         return month == Calendar.DECEMBER && (day == 24 || day == 25 || day == 26);
     }
 
-    public String formatDate(Long timestamp) {
+    public static String formatDate(Long timestamp) {
+        if (timestamp == null) return "";
+        return formatDate(timestamp.longValue());
+    }
+
+    public static String formatDate(long timestamp) {
         LocalDateTime date = LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault());
         return DEFAULT_TIME_FORMAT.format(date);
     }

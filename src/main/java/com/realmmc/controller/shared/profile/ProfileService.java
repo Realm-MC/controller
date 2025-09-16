@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
+import com.realmmc.controller.shared.storage.mongodb.MongoSequences;
+import com.realmmc.controller.shared.utils.TimeUtils;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -37,7 +40,8 @@ public class ProfileService {
     public Profile create(UUID uuid, String name) {
         long now = System.currentTimeMillis();
         Profile profile = Profile.builder()
-                .id(uuid)
+                .id(MongoSequences.getNext("profiles"))
+                .uuid(uuid)
                 .name(name)
                 .createdAt(now)
                 .updatedAt(now)
@@ -91,13 +95,15 @@ public class ProfileService {
     public void incrementCash(UUID uuid, long delta) {
         if (delta == 0) return;
         update(uuid, p -> {
-            long newCash = Math.max(0L, p.getCash() + delta);
-            p.setCash(newCash);
+            long cur = p.getCash();
+            long newCash = Math.max(0L, cur + delta);
+            p.setCash((int) Math.min(Integer.MAX_VALUE, newCash));
         }, "cash_increment");
     }
 
     public void setCash(UUID uuid, long amount) {
-        update(uuid, p -> p.setCash(Math.max(0L, amount)), "cash_set");
+        long clamped = Math.max(0L, Math.min(Integer.MAX_VALUE, amount));
+        update(uuid, p -> p.setCash((int) clamped), "cash_set");
     }
 
     public void updateCashTopPosition(UUID uuid, Integer position, Long enteredAt) {
@@ -105,6 +111,22 @@ public class ProfileService {
             p.setCashTopPosition(position);
             p.setCashTopPositionEnteredAt(enteredAt);
         }, "cash_top_update");
+    }
+
+    public void updateCashTopPositionAuto(UUID uuid, Integer position) {
+        update(uuid, p -> {
+            if (!Objects.equals(p.getCashTopPosition(), position)) {
+                p.setCashTopPosition(position);
+                p.setCashTopPositionEnteredAt(System.currentTimeMillis());
+            }
+        }, "cash_top_update");
+    }
+
+    public Optional<String> getCashTopPositionEnteredAtFormatted(UUID uuid) {
+        return repository.findByUuid(uuid)
+                .flatMap(p -> p.getCashTopPositionEnteredAt() == null
+                        ? Optional.empty()
+                        : Optional.of(TimeUtils.formatDate(p.getCashTopPositionEnteredAt())));
     }
 
     public Profile ensureProfile(UUID uuid, String displayName, String username, String firstIp, String clientVersion, String clientType) {
@@ -127,6 +149,7 @@ public class ProfileService {
             if (firstIp != null) p.setLastIp(firstIp);
             if (clientVersion != null) p.setLastClientVersion(clientVersion);
             if (clientType != null) p.setLastClientType(clientType);
+            if (p.getId() == null) p.setId(MongoSequences.getNext("profiles"));
             repository.upsert(p);
             publish("ensure", p);
             return p;
@@ -136,7 +159,8 @@ public class ProfileService {
                 claimUsername(uuid, username);
             }
             Profile p = Profile.builder()
-                    .id(uuid)
+                    .id(MongoSequences.getNext("profiles"))
+                    .uuid(uuid)
                     .name(displayName)
                     .username(username)
                     .firstIp(firstIp)
@@ -167,7 +191,7 @@ public class ProfileService {
 
     private void claimUsername(UUID ownerId, String username) {
         repository.findByUsername(username).ifPresent(other -> {
-            if (!ownerId.equals(other.getId())) {
+            if (!ownerId.equals(other.getUuid())) {
                 other.setUsername(null);
                 repository.upsert(other);
                 publish("username_unclaimed", other);
@@ -188,7 +212,8 @@ public class ProfileService {
         try {
             ObjectNode node = mapper.createObjectNode();
             node.put("action", action);
-            node.put("id", profile.getId().toString());
+            node.put("id", profile.getId());
+            if (profile.getUuid() != null) node.put("uuid", profile.getUuid().toString());
             node.put("name", profile.getName());
             node.put("updatedAt", profile.getUpdatedAt());
             if (profile.getUsername() != null) node.put("username", profile.getUsername());
@@ -196,6 +221,8 @@ public class ProfileService {
             if (profile.getLastClientVersion() != null) node.put("lastClientVersion", profile.getLastClientVersion());
             if (profile.getLastClientType() != null) node.put("lastClientType", profile.getLastClientType());
             node.put("cash", profile.getCash());
+            if (profile.getCashTopPosition() != null) node.put("cashTopPosition", profile.getCashTopPosition());
+            if (profile.getCashTopPositionEnteredAt() != null) node.put("cashTopPositionEnteredAt", profile.getCashTopPositionEnteredAt());
             String json = mapper.writeValueAsString(node);
             RedisPublisher.publish(RedisChannel.PROFILES_SYNC, json);
         } catch (Exception e) {

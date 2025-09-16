@@ -42,14 +42,11 @@ public class Proxy {
 
     @Subscribe
     public void onEnable(ProxyInitializeEvent event) {
-        // Initialize storages (configurable via env or system properties)
         initMongo();
         initRedis();
 
-        // Init task scheduler
         TaskScheduler.init(server, this);
 
-        // Start sync subscriber
         profileSyncSubscriber = new ProfileSyncSubscriber();
         profileSyncSubscriber.start();
 
@@ -60,7 +57,6 @@ public class Proxy {
 
     @Subscribe
     public void onDisable(ProxyShutdownEvent event) {
-        // Stop subscriber and shutdown storages
         if (profileSyncSubscriber != null) {
             profileSyncSubscriber.stop();
             profileSyncSubscriber = null;
@@ -72,16 +68,16 @@ public class Proxy {
     }
 
     private void initMongo() {
-        String uri = getProp("MONGO_URI", "mongodb://localhost:27017");
+        String uri = getProp("MONGO_URI", "mongodb://admin:admin@198.1.195.85:32017");
         String db = getProp("MONGO_DB", "controller");
         MongoManager.init(new MongoConfig(uri, db));
         logger.info("MongoDB connected to " + uri + "/" + db);
     }
 
     private void initRedis() {
-        String host = getProp("REDIS_HOST", "127.0.0.1");
-        int port = Integer.parseInt(getProp("REDIS_PORT", "6379"));
-        String pass = getProp("REDIS_PASS", "");
+        String host = getProp("REDIS_HOST", "198.1.195.85");
+        int port = Integer.parseInt(getProp("REDIS_PORT", "30379"));
+        String pass = getProp("REDIS_PASS", "redevaley@123");
         int db = Integer.parseInt(getProp("REDIS_DB", "0"));
         boolean ssl = Boolean.parseBoolean(getProp("REDIS_SSL", "false"));
         RedisManager.init(new RedisConfig(host, port, pass, db, ssl));

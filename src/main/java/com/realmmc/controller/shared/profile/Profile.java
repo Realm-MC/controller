@@ -16,7 +16,8 @@ import java.util.List;
 @AllArgsConstructor
 public class Profile {
     @BsonId
-    private UUID id;
+    private Integer id;
+    private UUID uuid;
     private String name;
     private String username;
     private String firstIp;
@@ -28,7 +29,7 @@ public class Profile {
     private String lastClientVersion;
     private String lastClientType;
     @Builder.Default
-    private long cash = 0L;
+    private int cash = 0;
     private Integer cashTopPosition;
     private Long cashTopPositionEnteredAt;
     private long createdAt;
