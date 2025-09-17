@@ -32,18 +32,33 @@ public class DisplayItemService {
         }
     }
 
+    public void moveHorizontal(Player player, double dx, double dz) {
+        List<UUID> ids = spawnedByPlayer.get(player.getUniqueId());
+        if (ids == null || ids.isEmpty()) return;
+        for (UUID uuid : ids) {
+            Entity e = findEntity(uuid);
+            if (e == null || e.isDead()) continue;
+            Location l = e.getLocation();
+            Location target = new Location(l.getWorld(), l.getX() + dx, l.getY(), l.getZ() + dz, l.getYaw(), l.getPitch());
+            e.teleport(target);
+        }
+    }
+
     public void show(Player player, Location base, ItemStack item, List<String> lines, boolean glow) {
-        // TODO: TEST AND CLEANCODE TOMORROW
+        show(player, base, item, lines, glow, Display.Billboard.CENTER, 1.2f);
+    }
+
+    public void show(Player player, Location base, ItemStack item, List<String> lines, boolean glow,
+                     Display.Billboard billboard, float scale) {
         ItemDisplay display = base.getWorld().spawn(base, ItemDisplay.class, d -> {
             d.setItemStack(item == null ? new ItemStack(Material.DIAMOND) : item);
-            d.setBillboard(Display.Billboard.CENTER);
+            d.setBillboard(billboard == null ? Display.Billboard.CENTER : billboard);
             d.setShadowStrength(0.0f);
             d.setBrightness(new Display.Brightness(15, 15));
-            Transformation t = d.getTransformation();
             Transformation nt = new Transformation(
                     new Vector3f(0f, 0f, 0f),
                     new Quaternionf(0, 0, 0, 1),
-                    new Vector3f(1.2f, 1.2f, 1.2f),
+                    new Vector3f(scale, scale, scale),
                     new Quaternionf(0, 0, 0, 1)
             );
             d.setTransformation(nt);
@@ -62,7 +77,7 @@ public class DisplayItemService {
                 TextDisplay td = base.getWorld().spawn(l, TextDisplay.class, t -> {
                     Component comp = mm.deserialize(line);
                     t.text(comp);
-                    t.setBillboard(Display.Billboard.CENTER);
+                    t.setBillboard(billboard == null ? Display.Billboard.CENTER : billboard);
                     t.setSeeThrough(true);
                     t.setDefaultBackground(false);
                     t.setShadowed(false);

@@ -1,0 +1,13 @@
+# Displays configuration
+# Each entry:
+# id: unique integer
+# type: DISPLAY_ITEM (for now)
+# item: material name (e.g., DIAMOND_SWORD) or a numeric id string (legacy) you plan to resolve later
+# action: e.g., SEND_MESSAGE (placeholder for future actions)
+
+entries:
+  - id: 1
+    type: DISPLAY_ITEM
+    item: DIAMOND
+    action: SEND_MESSAGE
+    message: "<green>Você clicou no display <yellow>#1</yellow>!"

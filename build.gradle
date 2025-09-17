@@ -14,6 +14,9 @@ repositories {
         name = 'papermc'
         url = 'https://repo.papermc.io/repository/maven-public/'
     }
+    maven { url = uri("https://repo.codemc.io/repository/maven-releases/") }
+
+    maven { url = uri("https://repo.codemc.io/repository/maven-snapshots/") }
 }
 
 dependencies {
@@ -26,9 +29,8 @@ dependencies {
     implementation("net.kyori:adventure-text-minimessage:4.24.0")
     implementation("net.kyori:adventure-text-serializer-legacy:4.14.0")
     implementation("org.mongodb:mongodb-driver-sync:4.11.1")
-    compileOnly 'io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT'
-    implementation("com.github.retrooper.packetevents:spigot:2.3.0")
-    implementation("com.github.retrooper.packetevents:api:2.3.0")
+    compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
+    compileOnly("com.github.retrooper:packetevents-spigot:2.9.5")
 }
 java {
     toolchain {
