@@ -77,7 +77,7 @@ public class DisplayItemService {
                 TextDisplay td = base.getWorld().spawn(l, TextDisplay.class, t -> {
                     Component comp = mm.deserialize(line);
                     t.text(comp);
-                    t.setBillboard(billboard == null ? Display.Billboard.CENTER : billboard);
+                    t.setBillboard(Display.Billboard.CENTER);
                     t.setSeeThrough(true);
                     t.setDefaultBackground(false);
                     t.setShadowed(false);
