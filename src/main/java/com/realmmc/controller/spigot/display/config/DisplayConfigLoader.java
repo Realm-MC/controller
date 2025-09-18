@@ -33,6 +33,12 @@ public class DisplayConfigLoader {
             String item = toStr(map.get("item"));
             String actionStr = toStr(map.get("action"));
             String message = toStr(map.get("message"));
+            String world = toStr(map.get("world"));
+            Double x = toDouble(map.get("x"));
+            Double y = toDouble(map.get("y"));
+            Double z = toDouble(map.get("z"));
+            Float yaw = toFloat(map.get("yaw"));
+            Float pitch = toFloat(map.get("pitch"));
             DisplayEntry.Type type = DisplayEntry.Type.fromString(typeStr);
             DisplayEntry.Action action = DisplayEntry.Action.fromString(actionStr);
             if (id >= 0 && type != null) {
@@ -42,6 +48,12 @@ public class DisplayConfigLoader {
                         .item(item)
                         .action(action)
                         .message(message)
+                        .world(world)
+                        .x(x)
+                        .y(y)
+                        .z(z)
+                        .yaw(yaw)
+                        .pitch(pitch)
                         .build());
             }
         }
@@ -63,5 +75,15 @@ public class DisplayConfigLoader {
 
     private static String toStr(Object o) {
         return o == null ? null : String.valueOf(o);
+    }
+
+    private static Double toDouble(Object o) {
+        if (o instanceof Number) return ((Number) o).doubleValue();
+        try { return Double.parseDouble(String.valueOf(o)); } catch (Exception e) { return null; }
+    }
+
+    private static Float toFloat(Object o) {
+        if (o instanceof Number) return ((Number) o).floatValue();
+        try { return Float.parseFloat(String.valueOf(o)); } catch (Exception e) { return null; }
     }
 }

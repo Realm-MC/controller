@@ -4,6 +4,7 @@
 # type: DISPLAY_ITEM (for now)
 # item: material name (e.g., DIAMOND_SWORD) or a numeric id string (legacy) you plan to resolve later
 # action: e.g., SEND_MESSAGE (placeholder for future actions)
+# world/x/y/z/yaw/pitch: optional fixed position to spawn
 
 entries:
   - id: 1
@@ -11,3 +12,9 @@ entries:
     item: DIAMOND
     action: SEND_MESSAGE
     message: "<green>Você clicou no display <yellow>#1</yellow>!"
+    world: world
+    x: 0.5
+    y: 65.0
+    z: 0.5
+    yaw: 0.0
+    pitch: 0.0

@@ -15,6 +15,12 @@ public class DisplayEntry {
     private String item;
     private Action action;
     private String message;
+    private String world;
+    private Double x;
+    private Double y;
+    private Double z;
+    private Float yaw;
+    private Float pitch;
 
     public enum Type {
         DISPLAY_ITEM;

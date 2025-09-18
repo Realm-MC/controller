@@ -91,7 +91,7 @@ public class DisplayItemService {
             }
         }
 
-        spawnedByPlayer.put(player.getUniqueId(), uuids);
+        spawnedByPlayer.computeIfAbsent(player.getUniqueId(), k -> new ArrayList<>()).addAll(uuids);
     }
     // TODO: TEST AND CLEANCODE TOMORROW
     private Entity findEntity(UUID id) {
