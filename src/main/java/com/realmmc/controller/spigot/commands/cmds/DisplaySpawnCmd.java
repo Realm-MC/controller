@@ -27,8 +27,8 @@ public class DisplaySpawnCmd implements CommandInterface {
             return;
         }
         Player p = (Player) sender;
-        DisplayItemService service = Main.getDisplayItemService();
-        DisplayConfigLoader loader = Main.getDisplayConfigLoader();
+        DisplayItemService service = Main.getInstance().getDisplayItemService();
+        DisplayConfigLoader loader = Main.getInstance().getDisplayConfigLoader();
 
         if (args.length == 0) {
             p.sendMessage("§eUso: /" + label + " <id|all>");
@@ -42,7 +42,7 @@ public class DisplaySpawnCmd implements CommandInterface {
                 return;
             }
             double radius = 1.2;
-            double angleStep = Math.PI * 2 / Math.max(1, entries.size());
+            double angleStep = Math.PI * 2 / entries.size();
             int idx = 0;
             for (DisplayEntry e : entries) {
                 if (e.getType() != DisplayEntry.Type.DISPLAY_ITEM) continue;

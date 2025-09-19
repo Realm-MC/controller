@@ -1,5 +1,11 @@
 package com.realmmc.controller.proxy;
 
+import com.realmmc.controller.core.ControllerCore;
+import com.realmmc.controller.core.modules.ModuleManager;
+import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.modules.database.DatabaseModule;
+import com.realmmc.controller.modules.profile.ProfileModule;
+import com.realmmc.controller.modules.commands.CommandModule;
 import com.realmmc.controller.proxy.commands.CommandManager;
 import com.realmmc.controller.proxy.listeners.ListenersManager;
 import com.velocitypowered.api.event.Subscribe;
@@ -9,86 +15,75 @@ import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
 import lombok.Getter;
-import com.realmmc.controller.shared.storage.mongodb.MongoConfig;
-import com.realmmc.controller.shared.storage.mongodb.MongoManager;
-import com.realmmc.controller.shared.storage.redis.RedisConfig;
-import com.realmmc.controller.shared.storage.redis.RedisManager;
-import com.realmmc.controller.shared.profile.ProfileSyncSubscriber;
-import com.realmmc.controller.shared.utils.TaskScheduler;
+import com.realmmc.controller.modules.scheduler.SchedulerModule;
+import com.realmmc.controller.modules.proxy.ProxyModule;
 
 import javax.inject.Inject;
 import java.nio.file.Path;
 import java.util.logging.Logger;
 
-@Plugin(id = "controller", name = "Controller", description = "API controller to realmmc", version = "1.0.0", authors = {"onyell", "lucas"})
-public class Proxy {
+@Plugin(id = "controller", name = "Controller", description = "Core controller para RealmMC", version = "1.0.0", authors = {"onyell", "lucas"})
+public class Proxy extends ControllerCore {
 
     @Getter
     private static Proxy instance;
     @Getter
     private final ProxyServer server;
-    @Getter
-    private final Logger logger;
     private final Path directory;
-    private ProfileSyncSubscriber profileSyncSubscriber;
+    private ModuleManager moduleManager;
+    private ServiceRegistry serviceRegistry;
 
     @Inject
     public Proxy(ProxyServer server, Logger logger, @DataDirectory Path directory) {
+        super(logger);
         this.server = server;
-        this.logger = logger;
         this.directory = directory;
         instance = this;
     }
 
+    @Override
+    public void initialize() {
+        logger.info("Inicializando Controller Core (Proxy)...");
+        
+        initializeSharedServices();
+        
+        serviceRegistry = new ServiceRegistry(logger);
+        moduleManager = new ModuleManager(logger);
+        
+        moduleManager.registerModule(new DatabaseModule(logger));
+        moduleManager.registerModule(new SchedulerModule(server, this, logger));
+        moduleManager.registerModule(new ProfileModule(logger));
+        moduleManager.registerModule(new CommandModule(logger));
+        moduleManager.registerModule(new ProxyModule(server, this, logger));
+        
+        moduleManager.enableAllModules();
+        
+        logger.info("Controller Core (Proxy) inicializado com sucesso!");
+    }
+
+    @Override
+    public void shutdown() {
+        logger.info("Finalizando Controller Core (Proxy)...");
+        
+        moduleManager.disableAllModules();
+        
+        shutdownSharedServices();
+        
+        logger.info("Controller Core (Proxy) finalizado!");
+    }
+
     @Subscribe
     public void onEnable(ProxyInitializeEvent event) {
-        initMongo();
-        initRedis();
-
-        TaskScheduler.init(server, this);
-
-        profileSyncSubscriber = new ProfileSyncSubscriber();
-        profileSyncSubscriber.start();
-
-        CommandManager.registerAll(this);
-        ListenersManager.registerAll(server, this);
-        logger.info("Controller enabled!" + server.getPluginManager().getPlugin("controller").get().getDescription().getVersion());
+        initialize();
     }
 
     @Subscribe
     public void onDisable(ProxyShutdownEvent event) {
-        if (profileSyncSubscriber != null) {
-            profileSyncSubscriber.stop();
-            profileSyncSubscriber = null;
-        }
-        try { RedisManager.shutdown(); } catch (Exception ignored) {}
-        try { MongoManager.shutdown(); } catch (Exception ignored) {}
-        try { TaskScheduler.shutdown(); } catch (Exception ignored) {}
-        logger.info("Controller disabled!" + server.getPluginManager().getPlugin("controller").get().getDescription().getVersion());
-    }
-
-    private void initMongo() {
-        String uri = getProp("MONGO_URI", "mongodb://admin:admin@198.1.195.85:32017");
-        String db = getProp("MONGO_DB", "controller");
-        MongoManager.init(new MongoConfig(uri, db));
-        logger.info("MongoDB connected to " + uri + "/" + db);
-    }
-
-    private void initRedis() {
-        String host = getProp("REDIS_HOST", "198.1.195.85");
-        int port = Integer.parseInt(getProp("REDIS_PORT", "30379"));
-        String pass = getProp("REDIS_PASS", "redevaley@123");
-        int db = Integer.parseInt(getProp("REDIS_DB", "0"));
-        boolean ssl = Boolean.parseBoolean(getProp("REDIS_SSL", "false"));
-        RedisManager.init(new RedisConfig(host, port, pass, db, ssl));
-        logger.info("Redis connected to " + host + ":" + port + " db=" + db + (ssl ? " (ssl)" : ""));
+        shutdown();
     }
 
     private String getProp(String key, String def) {
-        String val = System.getProperty(key);
-        if (val == null || val.isEmpty()) {
-            val = System.getenv(key);
-        }
-        return (val == null || val.isEmpty()) ? def : val;
+        String env = System.getenv(key);
+        return env != null ? env : System.getProperty(key, def);
     }
 }

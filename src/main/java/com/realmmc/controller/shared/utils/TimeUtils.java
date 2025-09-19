@@ -9,19 +9,12 @@ import java.util.Calendar;
 public class TimeUtils {
     private static final DateTimeFormatter DEFAULT_TIME_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm");
 
-    /**
-     * Boolean para verificar se é dia 31/12 ou 01/01 para constatar ano novo.
-     * @return
-     */
     public boolean isNewYear() {
         int month = Calendar.getInstance().get(Calendar.MONTH);
         int day = Calendar.getInstance().get(Calendar.DAY_OF_MONTH);
         return (month == Calendar.DECEMBER && day == 31) || (month == Calendar.JANUARY && day == 1);
     }
-    /**
-     * Boolean para verificar se é dia 24/12, 25/12 ou 26/12 para constatar natal.
-     * @return
-     */
+
     public boolean isChristmas() {
         int month = Calendar.getInstance().get(Calendar.MONTH);
         int day = Calendar.getInstance().get(Calendar.DAY_OF_MONTH);

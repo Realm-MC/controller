@@ -26,7 +26,7 @@ public class DisplayTestCmd implements CommandInterface {
             return;
         }
         Player p = (Player) sender;
-        DisplayItemService service = Main.getDisplayItemService();
+        DisplayItemService service = Main.getInstance().getDisplayItemService();
 
         if (args.length > 0 && args[0].equalsIgnoreCase("clear")) {
             service.clear(p);
