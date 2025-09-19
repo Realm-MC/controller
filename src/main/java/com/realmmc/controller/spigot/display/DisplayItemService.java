@@ -45,30 +45,30 @@ public class DisplayItemService {
     }
 
     public void show(Player player, Location base, ItemStack item, List<String> lines, boolean glow) {
-        show(player, base, item, lines, glow, Display.Billboard.CENTER, 1.2f);
+        show(player, base, item, lines, true, Display.Billboard.VERTICAL, 3.0f);
     }
 
     public void show(Player player, Location base, ItemStack item, List<String> lines, boolean glow,
                      Display.Billboard billboard, float scale) {
         ItemDisplay display = base.getWorld().spawn(base, ItemDisplay.class, d -> {
             d.setItemStack(item == null ? new ItemStack(Material.DIAMOND) : item);
-            d.setBillboard(billboard == null ? Display.Billboard.CENTER : billboard);
+            d.setBillboard(Display.Billboard.VERTICAL);
             d.setShadowStrength(0.0f);
             d.setBrightness(new Display.Brightness(15, 15));
             Transformation nt = new Transformation(
                     new Vector3f(0f, 0f, 0f),
                     new Quaternionf(0, 0, 0, 1),
-                    new Vector3f(scale, scale, scale),
+                    new Vector3f(3.0f, 3.0f, 3.0f),
                     new Quaternionf(0, 0, 0, 1)
             );
             d.setTransformation(nt);
-            d.setGlowing(glow);
+            d.setGlowing(true);
         });
 
         List<UUID> uuids = new ArrayList<>();
         uuids.add(display.getUniqueId());
 
-        double y = base.getY() + 0.6;
+        double y = base.getY() + (3.0f * 0.5);
         double step = 0.25;
         if (lines != null) {
             for (int i = 0; i < lines.size(); i++) {
@@ -83,7 +83,7 @@ public class DisplayItemService {
                     t.setShadowed(false);
                     t.setLineWidth(200);
                     t.setAlignment(TextDisplay.TextAlignment.CENTER);
-                    t.setGlowing(glow);
+                    t.setGlowing(true);
                     t.setBrightness(new Display.Brightness(15, 15));
                     t.setViewRange(32f);
                 });

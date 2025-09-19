@@ -37,7 +37,7 @@ public class DisplayTestCmd implements CommandInterface {
         ItemStack item = p.getInventory().getItemInMainHand();
         if (item == null || item.getType() == Material.AIR) item = new ItemStack(Material.DIAMOND);
 
-        Location base = p.getLocation().clone().add(p.getLocation().getDirection().normalize().multiply(1.0)).add(0, 0.2, 0);
+        Location base = p.getLocation().clone().add(0, 1.2, 0);
 
         List<String> lines = new ArrayList<>(Arrays.asList(
                 "<yellow><b>Display Test</b>",
