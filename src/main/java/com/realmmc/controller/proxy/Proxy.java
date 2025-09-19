@@ -8,6 +8,7 @@ import com.realmmc.controller.modules.profile.ProfileModule;
 import com.realmmc.controller.modules.commands.CommandModule;
 import com.realmmc.controller.proxy.commands.CommandManager;
 import com.realmmc.controller.proxy.listeners.ListenersManager;
+import com.realmmc.controller.shared.messaging.MessagingSDK;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
@@ -19,6 +20,7 @@ import com.realmmc.controller.modules.scheduler.SchedulerModule;
 import com.realmmc.controller.modules.proxy.ProxyModule;
 
 import javax.inject.Inject;
+import java.io.File;
 import java.nio.file.Path;
 import java.util.logging.Logger;
 
@@ -59,6 +61,19 @@ public class Proxy extends ControllerCore {
         moduleManager.enableAllModules();
         
         logger.info("Controller Core (Proxy) inicializado com sucesso!");
+    }
+    
+    @Override
+    protected void initializeSharedServices() {
+        super.initializeSharedServices();
+
+        File messagesDir = new File(directory.toFile(), "messages");
+        if (!messagesDir.exists()) {
+            messagesDir.mkdirs();
+        }
+        
+        MessagingSDK.getInstance().initializeForVelocity(messagesDir);
+        logger.info("MessagingSDK inicializado para Velocity");
     }
 
     @Override

@@ -52,7 +52,7 @@ public final class TaskScheduler {
     public static Object runSyncLater(Runnable task, long delay, TimeUnit unit) {
         ensureInit();
         if (isSpigot) {
-            long ticks = unit.toMillis(delay) / 50; // Convert to ticks (20 ticks per second)
+            long ticks = unit.toMillis(delay) / 50;
             return bukkitPlugin.getServer().getScheduler().runTaskLater(bukkitPlugin, task, ticks);
         } else {
             return proxyServer.getScheduler().buildTask(plugin, task).delay(delay, unit).schedule();
