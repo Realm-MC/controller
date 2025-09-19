@@ -29,9 +29,7 @@ public class DisplayItemService {
                      Display.Billboard billboard, float scale) {
         List<UUID> entities = new ArrayList<>();
         
-        Location itemLocation = base.clone().add(0, 1.4, 0);
-        
-        ItemDisplay itemDisplay = base.getWorld().spawn(itemLocation, ItemDisplay.class);
+        ItemDisplay itemDisplay = base.getWorld().spawn(base, ItemDisplay.class);
         itemDisplay.setItemStack(item != null ? item : new ItemStack(Material.DIAMOND));
         itemDisplay.setBillboard(billboard);
         itemDisplay.setShadowStrength(0.0f);
@@ -48,7 +46,7 @@ public class DisplayItemService {
         entities.add(itemDisplay.getUniqueId());
 
         if (lines != null && !lines.isEmpty()) {
-            double baseY = itemLocation.getY() + (scale * 0.5);
+            double baseY = base.getY() + (scale * 0.5);
             double step = 0.25;
             
             for (int i = 0; i < lines.size(); i++) {

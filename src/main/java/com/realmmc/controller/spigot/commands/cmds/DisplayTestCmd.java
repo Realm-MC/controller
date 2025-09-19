@@ -42,6 +42,8 @@ public class DisplayTestCmd implements CommandInterface {
             }
             
             Location location = player.getLocation().add(0, 1.4, 0);
+            location.setPitch(0);
+            location.setYaw(0);
 
             ItemStack item = new ItemStack(Material.DIAMOND);
             List<String> lines = Arrays.asList(
