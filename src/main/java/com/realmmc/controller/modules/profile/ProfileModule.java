@@ -7,7 +7,6 @@ import com.realmmc.controller.shared.profile.ProfileSyncSubscriber;
 import java.util.logging.Logger;
 
 public class ProfileModule extends AbstractCoreModule {
-    private ProfileService profileService;
     private ProfileSyncSubscriber profileSyncSubscriber;
     
     public ProfileModule(Logger logger) {
@@ -32,8 +31,8 @@ public class ProfileModule extends AbstractCoreModule {
     @Override
     protected void onEnable() throws Exception {
         logger.info("Inicializando serviço de perfis...");
-        
-        profileService = new ProfileService();
+
+        ProfileService profileService = new ProfileService();
         ServiceRegistry.getInstance().registerService(ProfileService.class, profileService);
         
         profileSyncSubscriber = new ProfileSyncSubscriber();

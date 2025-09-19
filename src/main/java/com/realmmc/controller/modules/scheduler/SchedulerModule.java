@@ -3,14 +3,13 @@ package com.realmmc.controller.modules.scheduler;
 import com.realmmc.controller.core.modules.AbstractCoreModule;
 import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.velocitypowered.api.proxy.ProxyServer;
+import org.bukkit.plugin.Plugin;
 
-import java.util.Collections;
-import java.util.List;
 import java.util.logging.Logger;
 
 public class SchedulerModule extends AbstractCoreModule {
-    private Object server;
-    private Object plugin;
+    private final Object server;
+    private final Object plugin;
 
     public SchedulerModule(Object server, Object plugin, Logger logger) {
         super(logger);
@@ -48,8 +47,8 @@ public class SchedulerModule extends AbstractCoreModule {
         logger.info("Inicializando TaskScheduler...");
         if (server instanceof ProxyServer) {
             TaskScheduler.init((ProxyServer) server, plugin);
-        } else if (server instanceof org.bukkit.plugin.Plugin) {
-            TaskScheduler.init((org.bukkit.plugin.Plugin) server);
+        } else if (server instanceof Plugin) {
+            TaskScheduler.init((Plugin) server);
         } else {
             logger.warning("Tipo de servidor não reconhecido para TaskScheduler: " + server.getClass().getName());
         }

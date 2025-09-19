@@ -19,10 +19,14 @@ public class Main extends JavaPlugin {
     @Getter
     private static Main instance;
     
+    @Getter
     private DisplayItemService displayItemService;
+    @Getter
     private DisplayConfigLoader displayConfigLoader;
     
+    @Getter
     private ModuleManager moduleManager;
+    @Getter
     private ServiceRegistry serviceRegistry;
     private java.util.logging.Logger logger;
 
@@ -107,21 +111,5 @@ public class Main extends JavaPlugin {
         if (getResource("displays.yml") != null) {
             saveResource("displays.yml", false);
         }
-    }
-    
-    public DisplayItemService getDisplayItemService() {
-        return displayItemService;
-    }
-    
-    public DisplayConfigLoader getDisplayConfigLoader() {
-        return displayConfigLoader;
-    }
-
-    public ModuleManager getModuleManager() {
-        return moduleManager;
-    }
-
-    public ServiceRegistry getServiceRegistry() {
-        return serviceRegistry;
     }
 }
