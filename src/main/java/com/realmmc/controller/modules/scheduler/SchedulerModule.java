@@ -48,8 +48,10 @@ public class SchedulerModule extends AbstractCoreModule {
         logger.info("Inicializando TaskScheduler...");
         if (server instanceof ProxyServer) {
             TaskScheduler.init((ProxyServer) server, plugin);
+        } else if (server instanceof org.bukkit.plugin.Plugin) {
+            TaskScheduler.init((org.bukkit.plugin.Plugin) server);
         } else {
-            logger.info("TaskScheduler não é necessário no ambiente Spigot");
+            logger.warning("Tipo de servidor não reconhecido para TaskScheduler: " + server.getClass().getName());
         }
     }
 
