@@ -59,4 +59,9 @@ public class DatabaseModule extends AbstractCoreModule {
     public int getPriority() {
         return 100;
     }
+    
+    @Override
+    public boolean isEnabled() {
+        return super.isEnabled();
+    }
 }

@@ -1,62 +1,92 @@
 package com.realmmc.controller.spigot.display.config;
 
+import com.realmmc.controller.spigot.Main;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.plugin.Plugin;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
 
 public class DisplayConfigLoader {
-    private final Plugin plugin;
+    private final Logger logger = Main.getInstance().getLogger();
+    private final File configFile = new File(Main.getInstance().getDataFolder(), "displays.yml");
+    private YamlConfiguration config;
     private final List<DisplayEntry> entries = new ArrayList<>();
-
-    public DisplayConfigLoader(Plugin plugin) {
-        this.plugin = plugin;
-    }
+    private int nextId = 1;
 
     public void load() {
-        entries.clear();
-        File file = new File(plugin.getDataFolder(), "displays.yml");
-        if (!file.exists()) {
-            plugin.saveResource("displays.yml", false);
-        }
-        FileConfiguration cfg = YamlConfiguration.loadConfiguration(file);
-        List<Map<?, ?>> list = cfg.getMapList("entries");
-        if (list == null) return;
-        for (Map<?, ?> map : list) {
-            int id = toInt(map.get("id"), -1);
-            String typeStr = toStr(map.get("type"));
-            String item = toStr(map.get("item"));
-            String actionStr = toStr(map.get("action"));
-            String message = toStr(map.get("message"));
-            String world = toStr(map.get("world"));
-            Double x = toDouble(map.get("x"));
-            Double y = toDouble(map.get("y"));
-            Double z = toDouble(map.get("z"));
-            Float yaw = toFloat(map.get("yaw"));
-            Float pitch = toFloat(map.get("pitch"));
-            DisplayEntry.Type type = DisplayEntry.Type.fromString(typeStr);
-            DisplayEntry.Action action = DisplayEntry.Action.fromString(actionStr);
-            if (id >= 0 && type != null) {
-                entries.add(DisplayEntry.builder()
-                        .id(id)
-                        .type(type)
-                        .item(item)
-                        .action(action)
-                        .message(message)
-                        .world(world)
-                        .x(x)
-                        .y(y)
-                        .z(z)
-                        .yaw(yaw)
-                        .pitch(pitch)
-                        .build());
+        if (!configFile.exists()) {
+            try {
+                configFile.getParentFile().mkdirs();
+                configFile.createNewFile();
+                logger.info("Arquivo displays.yml criado.");
+            } catch (IOException e) {
+                logger.severe("Erro ao criar displays.yml: " + e.getMessage());
+                return;
             }
         }
+
+        config = YamlConfiguration.loadConfiguration(configFile);
+        entries.clear();
+
+        ConfigurationSection entriesSection = config.getConfigurationSection("entries");
+        if (entriesSection != null) {
+            for (String key : entriesSection.getKeys(false)) {
+                ConfigurationSection entrySection = entriesSection.getConfigurationSection(key);
+                if (entrySection != null) {
+                    DisplayEntry entry = new DisplayEntry();
+                    entry.setId(Integer.parseInt(key));
+                    entry.setType(DisplayEntry.Type.valueOf(entrySection.getString("type", "DISPLAY_ITEM")));
+                    entry.setWorld(entrySection.getString("world"));
+                    entry.setX(entrySection.getDouble("x"));
+                    entry.setY(entrySection.getDouble("y"));
+                    entry.setZ(entrySection.getDouble("z"));
+                    entry.setYaw((float) entrySection.getDouble("yaw"));
+                    entry.setPitch((float) entrySection.getDouble("pitch"));
+                    entry.setItem(entrySection.getString("item"));
+
+                    if (entry.getWorld() != null && entry.getItem() != null) {
+                        entries.add(entry);
+                        nextId = Math.max(nextId, entry.getId() + 1);
+                    }
+                }
+            }
+        }
+
+        logger.info("Carregadas " + entries.size() + " entries do displays.yml");
+    }
+
+    public void save() {
+        config = new YamlConfiguration();
+
+        for (DisplayEntry entry : entries) {
+            String path = "entries." + entry.getId();
+            config.set(path + ".type", entry.getType().name());
+            config.set(path + ".world", entry.getWorld());
+            config.set(path + ".x", entry.getX());
+            config.set(path + ".y", entry.getY());
+            config.set(path + ".z", entry.getZ());
+            config.set(path + ".yaw", entry.getYaw());
+            config.set(path + ".pitch", entry.getPitch());
+            config.set(path + ".item", entry.getItem());
+        }
+
+        try {
+            config.save(configFile);
+            logger.info("Displays salvos no displays.yml");
+        } catch (IOException e) {
+            logger.severe("Erro ao salvar displays.yml: " + e.getMessage());
+        }
+    }
+
+    public void addEntry(DisplayEntry entry) {
+        entry.setId(nextId++);
+        entries.add(entry);
     }
 
     public List<DisplayEntry> getEntries() {
@@ -64,26 +94,13 @@ public class DisplayConfigLoader {
     }
 
     public DisplayEntry getById(int id) {
-        for (DisplayEntry e : entries) if (e.getId() == id) return e;
-        return null;
+        return entries.stream()
+                .filter(entry -> entry.getId() == id)
+                .findFirst()
+                .orElse(null);
     }
 
-    private static int toInt(Object o, int def) {
-        if (o instanceof Number) return ((Number) o).intValue();
-        try { return Integer.parseInt(String.valueOf(o)); } catch (Exception e) { return def; }
-    }
-
-    private static String toStr(Object o) {
-        return o == null ? null : String.valueOf(o);
-    }
-
-    private static Double toDouble(Object o) {
-        if (o instanceof Number) return ((Number) o).doubleValue();
-        try { return Double.parseDouble(String.valueOf(o)); } catch (Exception e) { return null; }
-    }
-
-    private static Float toFloat(Object o) {
-        if (o instanceof Number) return ((Number) o).floatValue();
-        try { return Float.parseFloat(String.valueOf(o)); } catch (Exception e) { return null; }
+    public int getNextId() {
+        return nextId;
     }
 }

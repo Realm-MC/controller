@@ -53,4 +53,9 @@ public class CommandModule extends AbstractCoreModule {
     public int getPriority() {
         return 30;
     }
+    
+    @Override
+    public boolean isEnabled() {
+        return super.isEnabled();
+    }
 }

@@ -4,56 +4,71 @@ import com.realmmc.controller.shared.annotations.Cmd;
 import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.commands.CommandInterface;
 import com.realmmc.controller.spigot.display.DisplayItemService;
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import com.realmmc.controller.spigot.display.config.DisplayConfigLoader;
+import com.realmmc.controller.spigot.display.config.DisplayEntry;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 @Cmd(cmd = "displaytest", aliases = {})
 public class DisplayTestCmd implements CommandInterface {
-    private final MiniMessage mm = MiniMessage.miniMessage();
 
     @Override
     public void execute(CommandSender sender, String label, String[] args) {
         if (!(sender instanceof Player)) {
-            sender.sendMessage("§cSomente jogadores.");
-            return;
-        }
-        Player p = (Player) sender;
-        DisplayItemService service = Main.getInstance().getDisplayItemService();
-
-        if (args.length > 0 && args[0].equalsIgnoreCase("clear")) {
-            service.clear(p);
-            p.sendMessage("§aDisplay limpo.");
+            sender.sendMessage("§cApenas jogadores podem usar este comando!");
             return;
         }
 
-        ItemStack item = p.getInventory().getItemInMainHand();
-        if (item == null || item.getType() == Material.AIR) item = new ItemStack(Material.DIAMOND);
+        Player player = (Player) sender;
+        
+        try {
+            DisplayItemService displayItemService = Main.getInstance().getDisplayItemService();
+            DisplayConfigLoader displayConfigLoader = Main.getInstance().getDisplayConfigLoader();
+            
+            if (displayItemService == null) {
+                player.sendMessage("§cErro: DisplayItemService não está disponível!");
+                return;
+            }
+            
+            if (displayConfigLoader == null) {
+                player.sendMessage("§cErro: DisplayConfigLoader não está disponível!");
+                return;
+            }
+            
+            Location location = player.getLocation().add(0, 1.4, 0);
 
-        Location base = p.getLocation().clone().add(0, 1.4, 0);
-        base.setYaw(0);
-        base.setPitch(0);
+            ItemStack item = new ItemStack(Material.DIAMOND);
+            List<String> lines = Arrays.asList(
+                    "<yellow><b>Display de Teste</b>",
+                    "<gray>Criado via comando",
+                    "<white>Item: <aqua>Diamante"
+            );
 
-        List<String> lines = new ArrayList<>(Arrays.asList(
-                "<yellow><b>Display Test</b>",
-                "<gray>Item vertical 4x + Holograma center",
-                "<white>Item: <aqua>" + item.getType().name()
-        ));
+            displayItemService.show(player, location, item, lines, true);
 
-        service.show(p, base, item, lines, false);
-        p.sendMessage("§aDisplay criado. Use /" + label + " clear para remover.");
-    }
+            DisplayEntry entry = new DisplayEntry();
+            entry.setType(DisplayEntry.Type.DISPLAY_ITEM);
+            entry.setWorld(location.getWorld().getName());
+            entry.setX(location.getX());
+            entry.setY(location.getY());
+            entry.setZ(location.getZ());
+            entry.setYaw(location.getYaw());
+            entry.setPitch(location.getPitch());
+            entry.setItem(item.getType().name());
 
-    @Override
-    public List<String> tabComplete(CommandSender sender, String[] args) {
-        if (args.length == 1) return List.of("clear");
-        return List.of();
+            displayConfigLoader.addEntry(entry);
+            displayConfigLoader.save();
+
+            player.sendMessage("§aDisplay criado e salvo no displays.yml!");
+        } catch (Exception e) {
+            player.sendMessage("§cErro ao criar display: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

@@ -1,8 +1,11 @@
 package com.realmmc.controller.spigot.display;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemDisplay;
@@ -12,92 +15,125 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Transformation;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import java.util.*;
 
 public class DisplayItemService {
-    // TODO: TEST AND CLEANCODE TOMORROW
-
     private final Map<UUID, List<UUID>> spawnedByPlayer = new HashMap<>();
-    private final MiniMessage mm = MiniMessage.miniMessage();
-
-    public void clear(Player player) {
-        List<UUID> ids = spawnedByPlayer.remove(player.getUniqueId());
-        if (ids == null) return;
-        for (UUID uuid : ids) {
-            Entity e = findEntity(uuid);
-            if (e != null && !e.isDead()) e.remove();
-        }
-    }
-
-    public void moveHorizontal(Player player, double dx, double dz) {
-        List<UUID> ids = spawnedByPlayer.get(player.getUniqueId());
-        if (ids == null || ids.isEmpty()) return;
-        for (UUID uuid : ids) {
-            Entity e = findEntity(uuid);
-            if (e == null || e.isDead()) continue;
-            Location l = e.getLocation();
-            Location target = new Location(l.getWorld(), l.getX() + dx, l.getY(), l.getZ() + dz, l.getYaw(), l.getPitch());
-            e.teleport(target);
-        }
-    }
-
-    public void show(Player player, Location base, ItemStack item, List<String> lines, boolean glow) {
-        show(player, base, item, lines, true, Display.Billboard.VERTICAL, 3.0f);
+    private final MiniMessage miniMessage = MiniMessage.miniMessage();
+    public void show(Player player, Location location, ItemStack item, List<String> lines, boolean persistent) {
+        show(player, location, item, lines, true, Display.Billboard.VERTICAL, 3.0f);
     }
 
     public void show(Player player, Location base, ItemStack item, List<String> lines, boolean glow,
                      Display.Billboard billboard, float scale) {
-        ItemDisplay display = base.getWorld().spawn(base, ItemDisplay.class, d -> {
-            d.setItemStack(item == null ? new ItemStack(Material.DIAMOND) : item);
-            d.setBillboard(Display.Billboard.VERTICAL);
-            d.setShadowStrength(0.0f);
-            d.setBrightness(new Display.Brightness(15, 15));
-            Transformation nt = new Transformation(
-                    new Vector3f(0f, 0f, 0f),
-                    new Quaternionf(0, 0, 0, 1),
-                    new Vector3f(3.0f, 3.0f, 3.0f),
-                    new Quaternionf(0, 0, 0, 1)
-            );
-            d.setTransformation(nt);
-            d.setGlowing(true);
-        });
+        List<UUID> entities = new ArrayList<>();
+        
+        Location itemLocation = base.clone().add(0, 1.4, 0);
+        
+        ItemDisplay itemDisplay = base.getWorld().spawn(itemLocation, ItemDisplay.class);
+        itemDisplay.setItemStack(item != null ? item : new ItemStack(Material.DIAMOND));
+        itemDisplay.setBillboard(billboard);
+        itemDisplay.setShadowStrength(0.0f);
+        itemDisplay.setBrightness(new Display.Brightness(15, 15));
+        itemDisplay.setGlowing(glow);
+        
+        Transformation transformation = new Transformation(
+                new Vector3f(0f, 0f, 0f),
+                new Quaternionf(0, 0, 0, 1),
+                new Vector3f(scale, scale, scale),
+                new Quaternionf(0, 0, 0, 1)
+        );
+        itemDisplay.setTransformation(transformation);
+        entities.add(itemDisplay.getUniqueId());
 
-        List<UUID> uuids = new ArrayList<>();
-        uuids.add(display.getUniqueId());
-
-        double y = base.getY() + (3.0f * 0.5);
-        double step = 0.25;
-        if (lines != null) {
+        if (lines != null && !lines.isEmpty()) {
+            double baseY = itemLocation.getY() + (scale * 0.5);
+            double step = 0.25;
+            
             for (int i = 0; i < lines.size(); i++) {
                 String line = lines.get(i);
-                Location l = new Location(base.getWorld(), base.getX(), y + (lines.size() - 1 - i) * step, base.getZ(), base.getYaw(), base.getPitch());
-                TextDisplay td = base.getWorld().spawn(l, TextDisplay.class, t -> {
-                    Component comp = mm.deserialize(line);
-                    t.text(comp);
-                    t.setBillboard(Display.Billboard.CENTER);
-                    t.setSeeThrough(true);
-                    t.setDefaultBackground(false);
-                    t.setShadowed(false);
-                    t.setLineWidth(200);
-                    t.setAlignment(TextDisplay.TextAlignment.CENTER);
-                    t.setGlowing(true);
-                    t.setBrightness(new Display.Brightness(15, 15));
-                    t.setViewRange(32f);
-                });
-                uuids.add(td.getUniqueId());
+                double textY = baseY + (lines.size() - 1 - i) * step;
+                Location textLocation = new Location(base.getWorld(), base.getX(), textY, base.getZ());
+                
+                TextDisplay textDisplay = base.getWorld().spawn(textLocation, TextDisplay.class);
+                Component component = miniMessage.deserialize(line);
+                textDisplay.text(component);
+                textDisplay.setBillboard(Display.Billboard.CENTER);
+                textDisplay.setSeeThrough(true);
+                textDisplay.setDefaultBackground(false);
+                textDisplay.setShadowed(false);
+                textDisplay.setLineWidth(200);
+                textDisplay.setAlignment(TextDisplay.TextAlignment.CENTER);
+                textDisplay.setGlowing(glow);
+                textDisplay.setBrightness(new Display.Brightness(15, 15));
+                textDisplay.setViewRange(32f);
+                
+                entities.add(textDisplay.getUniqueId());
             }
         }
 
-        spawnedByPlayer.computeIfAbsent(player.getUniqueId(), k -> new ArrayList<>()).addAll(uuids);
+        if (player != null) {
+            spawnedByPlayer.computeIfAbsent(player.getUniqueId(), k -> new ArrayList<>()).addAll(entities);
+        }
     }
-    // TODO: TEST AND CLEANCODE TOMORROW
-    private Entity findEntity(UUID id) {
-        for (var w : Bukkit.getWorlds()) {
-            Entity e = w.getEntity(id);
-            if (e != null) return e;
+
+    public void clear(Player player) {
+        if (player == null) return;
+        
+        List<UUID> entityIds = spawnedByPlayer.remove(player.getUniqueId());
+        if (entityIds == null || entityIds.isEmpty()) return;
+        
+        for (UUID uuid : entityIds) {
+            Entity entity = findEntityByUuid(uuid);
+            if (entity != null && !entity.isDead()) {
+                entity.remove();
+            }
+        }
+    }
+
+    public void moveHorizontal(Player player, double deltaX, double deltaZ) {
+        if (player == null) return;
+        
+        List<UUID> entityIds = spawnedByPlayer.get(player.getUniqueId());
+        if (entityIds == null || entityIds.isEmpty()) return;
+        
+        for (UUID uuid : entityIds) {
+            Entity entity = findEntityByUuid(uuid);
+            if (entity == null || entity.isDead()) continue;
+            
+            Location currentLocation = entity.getLocation();
+            Location newLocation = new Location(
+                currentLocation.getWorld(),
+                currentLocation.getX() + deltaX,
+                currentLocation.getY(),
+                currentLocation.getZ() + deltaZ,
+                currentLocation.getYaw(),
+                currentLocation.getPitch()
+            );
+            entity.teleport(newLocation);
+        }
+    }
+
+    public void clearAll() {
+        for (World world : Bukkit.getWorlds()) {
+            world.getEntitiesByClass(ItemDisplay.class).forEach(Entity::remove);
+            world.getEntitiesByClass(TextDisplay.class).forEach(Entity::remove);
+        }
+        spawnedByPlayer.clear();
+    }
+
+    public ItemDisplay findEntity(Location location, double radius) {
+        return location.getWorld().getNearbyEntitiesByType(ItemDisplay.class, location, radius)
+                .stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    private Entity findEntityByUuid(UUID uuid) {
+        for (World world : Bukkit.getWorlds()) {
+            Entity entity = world.getEntity(uuid);
+            if (entity != null) return entity;
         }
         return null;
     }

@@ -1,43 +1,27 @@
 package com.realmmc.controller.spigot.display.config;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 @Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class DisplayEntry {
-    private int id;
+    private Integer id;
     private Type type;
-    private String item;
-    private Action action;
-    private String message;
     private String world;
     private Double x;
     private Double y;
     private Double z;
     private Float yaw;
     private Float pitch;
+    private String item;
+    private String message;
 
     public enum Type {
         DISPLAY_ITEM;
-        public static Type fromString(String s) {
-            try {
-                return s == null ? null : Type.valueOf(s.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                return null;
-            }
-        }
-    }
 
-    public enum Action {
-        SEND_MESSAGE;
-        public static Action fromString(String s) {
+        public static Type fromString(String str) {
+            if (str == null) return null;
             try {
-                return s == null ? null : Action.valueOf(s.toUpperCase());
+                return Type.valueOf(str.toUpperCase());
             } catch (IllegalArgumentException e) {
                 return null;
             }
