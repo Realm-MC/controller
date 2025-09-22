@@ -49,6 +49,11 @@ public class DisplayConfigLoader {
                     entry.setYaw((float) entrySection.getDouble("yaw"));
                     entry.setPitch((float) entrySection.getDouble("pitch"));
                     entry.setItem(entrySection.getString("item"));
+                    entry.setMessage(entrySection.getString("message"));
+                    entry.setLines(entrySection.getStringList("lines"));
+                    entry.setGlow(entrySection.getBoolean("glow", false));
+                    entry.setBillboard(entrySection.getString("billboard", "CENTER"));
+                    entry.setScale((float) entrySection.getDouble("scale", 3.0));
 
                     if (entry.getWorld() != null && entry.getItem() != null) {
                         entries.add(entry);
@@ -74,6 +79,11 @@ public class DisplayConfigLoader {
             config.set(path + ".yaw", entry.getYaw());
             config.set(path + ".pitch", entry.getPitch());
             config.set(path + ".item", entry.getItem());
+            config.set(path + ".message", entry.getMessage());
+            config.set(path + ".lines", entry.getLines());
+            config.set(path + ".glow", entry.getGlow());
+            config.set(path + ".billboard", entry.getBillboard());
+            config.set(path + ".scale", entry.getScale());
         }
 
         try {

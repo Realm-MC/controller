@@ -74,15 +74,15 @@ public class Main extends JavaPlugin {
                             Location location = new Location(world, entry.getX(), entry.getY(), entry.getZ(), 
                                     entry.getYaw() != null ? entry.getYaw() : 0, 
                                     entry.getPitch() != null ? entry.getPitch() : 0);
-                            
-                            ItemStack item = new ItemStack(Material.valueOf(entry.getItem()));
-                            
+                            Material mat = Material.matchMaterial(entry.getItem(), true);
+                            ItemStack item = new ItemStack(mat != null ? mat : Material.DIAMOND);
+
                             List<String> lines = new ArrayList<>();
-                            lines.add("<yellow><b>Display #" + entry.getId() + "</b>");
-                            lines.add("<gray>Carregado automaticamente");
-                            lines.add("<white>Item: <aqua>" + entry.getItem());
-                            
-                            displayItemService.show(null, location, item, lines, true);
+                            if (entry.getMessage() != null && !entry.getMessage().isEmpty()) {
+                                lines.add(entry.getMessage());
+                            }
+
+                            displayItemService.showGlobal(location, item, lines, false);
                             loadedCount++;
                         } else {
                             logger.warning("Display ID " + entry.getId() + " tem dados inválidos, ignorando.");
