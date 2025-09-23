@@ -104,4 +104,9 @@ public class NPCConfigLoader {
     public int getNextId() {
         return nextId;
     }
+
+    public void clearEntries() {
+        entries.clear();
+        nextId = 1;
+    }
 }
