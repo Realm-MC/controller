@@ -68,7 +68,30 @@ public class HologramService {
         configLoader.addEntry(entry);
         configLoader.save();
 
-        show(null, base, lines, glow);
+        List<UUID> entities = new ArrayList<>();
+
+        if (lines != null && !lines.isEmpty()) {
+            double step = 0.25;
+            
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                double textY = base.getY() + (lines.size() - 1 - i) * step;
+                Location textLocation = new Location(base.getWorld(), base.getX(), textY, base.getZ());
+
+                TextDisplay textDisplay = base.getWorld().spawn(textLocation, TextDisplay.class);
+                Component component = miniMessage.deserialize(line);
+                textDisplay.text(component);
+                textDisplay.setBillboard(Display.Billboard.CENTER);
+                textDisplay.setSeeThrough(true);
+                textDisplay.setDefaultBackground(false);
+                textDisplay.setShadowed(false);
+                textDisplay.setLineWidth(200);
+                textDisplay.setAlignment(TextDisplay.TextAlignment.CENTER);
+                textDisplay.setGlowing(glow);
+
+                entities.add(textDisplay.getUniqueId());
+            }
+        }
     }
 
     public void clear(Player player) {

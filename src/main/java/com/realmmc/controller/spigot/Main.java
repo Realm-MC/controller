@@ -8,6 +8,8 @@ import com.realmmc.controller.modules.profile.ProfileModule;
 import com.realmmc.controller.modules.scheduler.SchedulerModule;
 import com.realmmc.controller.modules.spigot.SpigotModule;
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
+import com.realmmc.controller.spigot.entities.holograms.HologramService;
+import com.realmmc.controller.spigot.entities.npcs.NPCService;
 import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import lombok.Getter;
@@ -27,6 +29,10 @@ public class Main extends JavaPlugin {
     
     @Getter
     private DisplayItemService displayItemService;
+    @Getter
+    private HologramService hologramService;
+    @Getter
+    private NPCService npcService;
     @Getter
     private DisplayConfigLoader displayConfigLoader;
     
@@ -58,44 +64,21 @@ public class Main extends JavaPlugin {
             moduleManager.enableAllModules();
 
             displayItemService = new DisplayItemService();
+            hologramService = new HologramService();
+            npcService = new NPCService();
+            
             if (getResource("displays.yml") != null) {
                 saveResource("displays.yml", false);
             }
-            displayConfigLoader = new DisplayConfigLoader();
-            displayConfigLoader.load();
-
-            List<DisplayEntry> entries = displayConfigLoader.getEntries();
-            int loadedCount = 0;
-            for (DisplayEntry entry : entries) {
-                if (entry.getType() == DisplayEntry.Type.DISPLAY_ITEM) {
-                    try {
-                        World world = getServer().getWorld(entry.getWorld());
-                        if (world != null && entry.getX() != null && entry.getY() != null && entry.getZ() != null) {
-                            Location location = new Location(world, entry.getX(), entry.getY(), entry.getZ(), 
-                                    entry.getYaw() != null ? entry.getYaw() : 0, 
-                                    entry.getPitch() != null ? entry.getPitch() : 0);
-                            Material mat = Material.matchMaterial(entry.getItem(), true);
-                            ItemStack item = new ItemStack(mat != null ? mat : Material.DIAMOND);
-
-                            List<String> lines = new ArrayList<>();
-                            if (entry.getMessage() != null && !entry.getMessage().isEmpty()) {
-                                lines.add(entry.getMessage());
-                            }
-
-                            displayItemService.showGlobal(location, item, lines, false);
-                            loadedCount++;
-                        } else {
-                            logger.warning("Display ID " + entry.getId() + " tem dados inválidos, ignorando.");
-                        }
-                    } catch (Exception e) {
-                        logger.warning("Erro ao carregar display ID " + entry.getId() + ": " + e.getMessage());
-                    }
-                }
+            if (getResource("holograms.yml") != null) {
+                saveResource("holograms.yml", false);
+            }
+            if (getResource("npcs.yml") != null) {
+                saveResource("npcs.yml", false);
             }
             
-            if (loadedCount > 0) {
-                logger.info("Carregados " + loadedCount + " displays salvos.");
-            }
+            displayConfigLoader = new DisplayConfigLoader();
+            displayConfigLoader.load();
             
             logger.info("Controller Core (Spigot) inicializado com sucesso!");
         } catch (Exception e) {
@@ -126,5 +109,13 @@ public class Main extends JavaPlugin {
             logger.severe("Erro durante finalização: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    public NPCService getNPCService() {
+        return npcService;
+    }
+    
+    public HologramService getHologramService() {
+        return hologramService;
     }
 }

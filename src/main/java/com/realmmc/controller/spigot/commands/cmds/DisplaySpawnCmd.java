@@ -86,7 +86,6 @@ public class DisplaySpawnCmd implements CommandInterface {
             Material m = Material.matchMaterial(s, true);
             if (m != null) return new ItemStack(m);
         } catch (Throwable ignored) {}
-        // TODO: resolver por ID custom futuramente
         return null;
     }
 

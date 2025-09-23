@@ -169,6 +169,11 @@ public class DisplayItemService {
     }
 
     public void showGlobal(Location base, ItemStack item, List<String> lines, boolean glow) {
+        showGlobal(base, item, lines, glow, Display.Billboard.CENTER, 3.0f);
+    }
+
+    public void showGlobal(Location base, ItemStack item, List<String> lines, boolean glow, 
+                          Display.Billboard billboard, float scale) {
         DisplayEntry entry = new DisplayEntry();
         entry.setType(DisplayEntry.Type.DISPLAY_ITEM);
         entry.setWorld(base.getWorld().getName());
@@ -180,13 +185,13 @@ public class DisplayItemService {
         entry.setItem(item.getType().name());
         entry.setLines(lines);
         entry.setGlow(glow);
-        entry.setBillboard("CENTER");
-        entry.setScale(3.0f);
+        entry.setBillboard(billboard.name());
+        entry.setScale(scale);
 
         configLoader.addEntry(entry);
         configLoader.save();
 
-        showWithoutSaving(base, item, lines, glow, Display.Billboard.CENTER, 3.0f);
+        showWithoutSaving(base, item, lines, glow, billboard, scale);
     }
 
     public void clear(Player player) {
