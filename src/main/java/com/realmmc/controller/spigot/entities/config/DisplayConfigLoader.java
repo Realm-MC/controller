@@ -1,4 +1,4 @@
-package com.realmmc.controller.spigot.display.config;
+package com.realmmc.controller.spigot.entities.config;
 
 import com.realmmc.controller.spigot.Main;
 import org.bukkit.configuration.ConfigurationSection;
@@ -105,7 +105,7 @@ public class DisplayConfigLoader {
 
     public DisplayEntry getById(int id) {
         return entries.stream()
-                .filter(entry -> entry.getId() == id)
+                .filter(entry -> entry.getId().equals(id))
                 .findFirst()
                 .orElse(null);
     }

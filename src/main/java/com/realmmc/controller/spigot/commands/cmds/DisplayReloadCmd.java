@@ -3,7 +3,7 @@ package com.realmmc.controller.spigot.commands.cmds;
 import com.realmmc.controller.shared.annotations.Cmd;
 import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.commands.CommandInterface;
-import com.realmmc.controller.spigot.display.DisplayItemService;
+import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 

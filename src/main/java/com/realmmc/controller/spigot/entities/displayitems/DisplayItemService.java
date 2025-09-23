@@ -1,7 +1,7 @@
-package com.realmmc.controller.spigot.display;
+package com.realmmc.controller.spigot.entities.displayitems;
 
-import com.realmmc.controller.spigot.display.config.DisplayConfigLoader;
-import com.realmmc.controller.spigot.display.config.DisplayEntry;
+import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
+import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
@@ -99,11 +99,30 @@ public class DisplayItemService {
     }
 
     public void show(Player player, Location location, ItemStack item, List<String> lines, boolean persistent) {
-        show(player, location, item, lines, true, Display.Billboard.VERTICAL, 3.0f);
+        show(player, location, item, lines, false, Display.Billboard.CENTER, 3.0f);
     }
 
     public void show(Player player, Location base, ItemStack item, List<String> lines, boolean glow,
                      Display.Billboard billboard, float scale) {
+        // Criar e salvar a entrada no YAML
+        DisplayEntry entry = new DisplayEntry();
+        entry.setType(DisplayEntry.Type.DISPLAY_ITEM);
+        entry.setWorld(base.getWorld().getName());
+        entry.setX(base.getX());
+        entry.setY(base.getY());
+        entry.setZ(base.getZ());
+        entry.setYaw(base.getYaw());
+        entry.setPitch(base.getPitch());
+        entry.setItem(item != null ? item.getType().name() : Material.DIAMOND.name());
+        entry.setLines(lines);
+        entry.setGlow(glow);
+        entry.setBillboard(billboard.name());
+        entry.setScale(scale);
+
+        configLoader.addEntry(entry);
+        configLoader.save();
+
+        // Criar o display visual
         List<UUID> entities = new ArrayList<>();
 
         Location itemLocation = base.clone().add(0, 1.4, 0);
@@ -143,13 +162,15 @@ public class DisplayItemService {
                 textDisplay.setLineWidth(200);
                 textDisplay.setAlignment(TextDisplay.TextAlignment.CENTER);
                 textDisplay.setGlowing(glow);
-                textDisplay.setBrightness(new Display.Brightness(15, 15));
-                textDisplay.setViewRange(32f);
 
                 entities.add(textDisplay.getUniqueId());
             }
         }
 
+        spawnedByPlayer.computeIfAbsent(player.getUniqueId(), k -> new ArrayList<>()).addAll(entities);
+    }
+
+    public void showGlobal(Location base, ItemStack item, List<String> lines, boolean glow) {
         DisplayEntry entry = new DisplayEntry();
         entry.setType(DisplayEntry.Type.DISPLAY_ITEM);
         entry.setWorld(base.getWorld().getName());
@@ -158,131 +179,77 @@ public class DisplayItemService {
         entry.setZ(base.getZ());
         entry.setYaw(base.getYaw());
         entry.setPitch(base.getPitch());
-        entry.setItem(item != null ? item.getType().name() : Material.DIAMOND.name());
+        entry.setItem(item.getType().name());
         entry.setLines(lines);
         entry.setGlow(glow);
-        entry.setBillboard(billboard.name());
-        entry.setScale(scale);
+        entry.setBillboard("CENTER");
+        entry.setScale(3.0f);
 
         configLoader.addEntry(entry);
         configLoader.save();
 
-        if (player != null) {
-            spawnedByPlayer.computeIfAbsent(player.getUniqueId(), k -> new ArrayList<>()).addAll(entities);
-        }
-    }
-
-    public void showGlobal(Location base, ItemStack item, List<String> lines, boolean glow) {
-        ItemDisplay display = base.getWorld().spawn(base, ItemDisplay.class, d -> {
-            d.setItemStack(item == null ? new ItemStack(Material.DIAMOND) : item);
-            d.setBillboard(Display.Billboard.VERTICAL);
-            try {
-                d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
-            } catch (NoSuchMethodError ignored) {
-            }
-            d.setShadowStrength(0.0f);
-            d.setBrightness(new Display.Brightness(15, 15));
-            Transformation nt = new Transformation(
-                    new Vector3f(0f, 0f, 0f),
-                    new Quaternionf(0, 0, 0, 1),
-                    new Vector3f(4.0f, 4.0f, 4.0f),
-                    new Quaternionf(0, 0, 0, 1)
-            );
-            d.setTransformation(nt);
-            d.setGlowing(glow);
-        });
-
-        List<UUID> uuids = new ArrayList<>();
-        uuids.add(display.getUniqueId());
-
-        double y = base.getY() + 0.6;
-        double step = 0.25;
-        if (lines != null) {
-            for (int i = 0; i < lines.size(); i++) {
-                String line = lines.get(i);
-                Location l = new Location(base.getWorld(), base.getX(), y + (lines.size() - 1 - i) * step, base.getZ(), base.getYaw(), base.getPitch());
-                TextDisplay td = base.getWorld().spawn(l, TextDisplay.class, t -> {
-                    Component comp = miniMessage.deserialize(line);
-                    t.text(comp);
-                    t.setBillboard(Display.Billboard.CENTER);
-                    t.setSeeThrough(true);
-                    t.setDefaultBackground(false);
-                    t.setShadowed(false);
-                    t.setLineWidth(200);
-                    t.setAlignment(TextDisplay.TextAlignment.CENTER);
-                    t.setGlowing(glow);
-                    t.setBrightness(new Display.Brightness(15, 15));
-                    t.setViewRange(32f);
-                });
-                uuids.add(td.getUniqueId());
-            }
-        }
+        showWithoutSaving(base, item, lines, glow, Display.Billboard.CENTER, 3.0f);
     }
 
     public void clear(Player player) {
-        if (player == null) return;
-
-        List<UUID> entityIds = spawnedByPlayer.remove(player.getUniqueId());
-        if (entityIds == null || entityIds.isEmpty()) return;
-        
-        for (UUID uuid : entityIds) {
-            Entity entity = findEntityByUuid(uuid);
-            if (entity != null && !entity.isDead()) {
-                entity.remove();
+        List<UUID> entities = spawnedByPlayer.get(player.getUniqueId());
+        if (entities != null) {
+            for (UUID entityId : entities) {
+                Entity entity = findEntityByUuid(entityId);
+                if (entity != null) {
+                    entity.remove();
+                }
             }
+            entities.clear();
         }
     }
 
     public void moveHorizontal(Player player, double deltaX, double deltaZ) {
-        if (player == null) return;
-        
-        List<UUID> entityIds = spawnedByPlayer.get(player.getUniqueId());
-        if (entityIds == null || entityIds.isEmpty()) return;
-        
-        for (UUID uuid : entityIds) {
-            Entity entity = findEntityByUuid(uuid);
-            if (entity == null || entity.isDead()) continue;
-            
-            Location currentLocation = entity.getLocation();
-            Location newLocation = new Location(
-                currentLocation.getWorld(),
-                currentLocation.getX() + deltaX,
-                currentLocation.getY(),
-                currentLocation.getZ() + deltaZ,
-                currentLocation.getYaw(),
-                currentLocation.getPitch()
-            );
-            entity.teleport(newLocation);
+        List<UUID> entities = spawnedByPlayer.get(player.getUniqueId());
+        if (entities != null) {
+            for (UUID entityId : entities) {
+                Entity entity = findEntityByUuid(entityId);
+                if (entity != null) {
+                    Location currentLocation = entity.getLocation();
+                    Location newLocation = currentLocation.clone().add(deltaX, 0, deltaZ);
+                    entity.teleport(newLocation);
+                }
+            }
         }
     }
 
     public void reload() {
         clearAll();
-
         configLoader.load();
-
         loadSavedDisplays();
     }
 
     public void clearAll() {
         for (World world : Bukkit.getWorlds()) {
-            world.getEntitiesByClass(ItemDisplay.class).forEach(Entity::remove);
-            world.getEntitiesByClass(TextDisplay.class).forEach(Entity::remove);
+            for (Entity entity : world.getEntities()) {
+                if (entity instanceof ItemDisplay || entity instanceof TextDisplay) {
+                    entity.remove();
+                }
+            }
         }
-        spawnedByPlayer.clear();
     }
 
     public ItemDisplay findEntity(Location location, double radius) {
-        return location.getWorld().getNearbyEntitiesByType(ItemDisplay.class, location, radius)
-                .stream()
-                .findFirst()
-                .orElse(null);
+        for (Entity entity : location.getWorld().getNearbyEntities(location, radius, radius, radius)) {
+            if (entity instanceof ItemDisplay) {
+                return (ItemDisplay) entity;
+            }
+        }
+        return null;
     }
 
     private Entity findEntityByUuid(UUID uuid) {
         for (World world : Bukkit.getWorlds()) {
-            Entity entity = world.getEntity(uuid);
-            if (entity != null) return entity;
+            for (Entity entity : world.getEntities()) {
+                if (entity.getUniqueId().equals(uuid)) {
+                    return entity;
+                }
+            }
         }
         return null;
     }
