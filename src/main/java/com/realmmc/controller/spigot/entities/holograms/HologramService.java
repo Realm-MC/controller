@@ -1,6 +1,6 @@
 package com.realmmc.controller.spigot.entities.holograms;
 
-import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
+import com.realmmc.controller.spigot.entities.config.HologramConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -14,10 +14,10 @@ import java.util.*;
 public class HologramService {
     private final Map<UUID, List<UUID>> spawnedByPlayer = new HashMap<>();
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
-    private final DisplayConfigLoader configLoader;
+    private final HologramConfigLoader configLoader;
 
     public HologramService() {
-        this.configLoader = new DisplayConfigLoader();
+        this.configLoader = new HologramConfigLoader();
     }
 
     public void show(Player player, Location location, List<String> lines) {

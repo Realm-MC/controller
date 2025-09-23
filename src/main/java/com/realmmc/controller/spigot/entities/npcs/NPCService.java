@@ -1,6 +1,6 @@
 package com.realmmc.controller.spigot.entities.npcs;
 
-import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
+import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
@@ -9,10 +9,10 @@ import java.util.*;
 
 public class NPCService {
     private final Map<UUID, List<UUID>> spawnedByPlayer = new HashMap<>();
-    private final DisplayConfigLoader configLoader;
+    private final NPCConfigLoader configLoader;
 
     public NPCService() {
-        this.configLoader = new DisplayConfigLoader();
+        this.configLoader = new NPCConfigLoader();
     }
 
     public void spawn(Player player, Location location, String name) {

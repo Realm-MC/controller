@@ -1,6 +1,6 @@
 package com.realmmc.controller.spigot.entities.displayitems;
 
-import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
+import com.realmmc.controller.spigot.entities.config.DisplayItemConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -23,10 +23,10 @@ import java.util.*;
 public class DisplayItemService {
     private final Map<UUID, List<UUID>> spawnedByPlayer = new HashMap<>();
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
-    private final DisplayConfigLoader configLoader;
+    private final DisplayItemConfigLoader configLoader;
 
     public DisplayItemService() {
-        this.configLoader = new DisplayConfigLoader();
+        this.configLoader = new DisplayItemConfigLoader();
         this.configLoader.load();
         loadSavedDisplays();
     }
@@ -104,7 +104,6 @@ public class DisplayItemService {
 
     public void show(Player player, Location base, ItemStack item, List<String> lines, boolean glow,
                      Display.Billboard billboard, float scale) {
-        // Criar e salvar a entrada no YAML
         DisplayEntry entry = new DisplayEntry();
         entry.setType(DisplayEntry.Type.DISPLAY_ITEM);
         entry.setWorld(base.getWorld().getName());
@@ -122,7 +121,6 @@ public class DisplayItemService {
         configLoader.addEntry(entry);
         configLoader.save();
 
-        // Criar o display visual
         List<UUID> entities = new ArrayList<>();
 
         Location itemLocation = base.clone().add(0, 1.4, 0);
