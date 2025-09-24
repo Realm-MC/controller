@@ -1,23 +1,30 @@
 package com.realmmc.controller.spigot.entities.npcs;
 
+import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
+import com.github.retrooper.packetevents.protocol.player.GameMode;
+import com.github.retrooper.packetevents.protocol.player.UserProfile;
+import com.github.retrooper.packetevents.protocol.player.TextureProperty;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerInfoUpdate;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerInfoRemove;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityHeadLook;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
 import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.EntityType;
-import org.bukkit.GameMode;
-import org.bukkit.OfflinePlayer;
-import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.*;
-import java.lang.reflect.*;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class NPCService {
-    private final Map<UUID, List<UUID>> spawnedByPlayer = new HashMap<>();
+    private final Map<UUID, List<NPCData>> spawnedByPlayer = new HashMap<>();
     private final NPCConfigLoader configLoader;
-    private final List<FakePlayer> globalNPCs = new ArrayList<>();
+    private final List<NPCData> globalNPCs = new ArrayList<>();
+    private final MojangSkinResolver skinResolver = new MojangSkinResolver();
 
     public NPCService() {
         this.configLoader = new NPCConfigLoader();
@@ -36,8 +43,17 @@ public class NPCService {
                 
                 String name = entry.getMessage();
                 String skin = entry.getItem() != null ? entry.getItem() : "default";
-
-                spawnWithoutSaving(location, name, skin);
+                if (entry.getTexturesValue() != null && entry.getTexturesSignature() != null) {
+                    NPCData npcData = createNPC(location, name, skin, entry.getTexturesValue(), entry.getTexturesSignature());
+                    if (npcData != null) {
+                        globalNPCs.add(npcData);
+                        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                            sendNPCPackets(onlinePlayer, npcData);
+                        }
+                    }
+                } else {
+                    spawnWithoutSaving(location, name, skin);
+                }
                 
             } catch (Exception e) {
                 System.err.println("Erro ao carregar NPC ID " + entry.getId() + ": " + e.getMessage());
@@ -47,11 +63,13 @@ public class NPCService {
 
     private void spawnWithoutSaving(Location location, String name, String skin) {
         try {
-            FakePlayer fakePlayer = createFakePlayer(location, name, skin);
-            globalNPCs.add(fakePlayer);
+            NPCData npcData = createNPC(location, name, skin);
+            if (npcData != null) {
+                globalNPCs.add(npcData);
 
-            for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                sendNPCPackets(onlinePlayer, fakePlayer);
+                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                    sendNPCPackets(onlinePlayer, npcData);
+                }
             }
         } catch (Exception e) {
             System.err.println("Erro ao criar NPC: " + e.getMessage());
@@ -59,70 +77,112 @@ public class NPCService {
         }
     }
 
-    private FakePlayer createFakePlayer(Location location, String name, String skin) {
+    private NPCData createNPC(Location location, String name, String skin) {
         try {
-            Class<?> gameProfileClass = Class.forName("com.mojang.authlib.GameProfile");
-            Constructor<?> gameProfileConstructor = gameProfileClass.getConstructor(UUID.class, String.class);
-            Object gameProfile = gameProfileConstructor.newInstance(UUID.randomUUID(), name);
+            UUID npcUUID = UUID.randomUUID();
+            int entityId = ThreadLocalRandom.current().nextInt(100000, 999999);
 
-            if (!"default".equals(skin)) {
+            UserProfile profile = new UserProfile(npcUUID, name);
+
+            // Tentar obter skin real via cache/Mojang APIs
+            if (!"default".equalsIgnoreCase(skin)) {
                 try {
-                    OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(skin);
-                    if (offlinePlayer.hasPlayedBefore()) {
-                        Player onlinePlayer = Bukkit.getPlayer(skin);
-                        if (onlinePlayer != null) {
-                            Method getProfileMethod = onlinePlayer.getClass().getMethod("getProfile");
-                            Object playerProfile = getProfileMethod.invoke(onlinePlayer);
-                            
-                            Method getPropertiesMethod = playerProfile.getClass().getMethod("getProperties");
-                            Object properties = getPropertiesMethod.invoke(playerProfile);
-                            
-                            Method containsKeyMethod = properties.getClass().getMethod("containsKey", Object.class);
-                            boolean hasTextures = (Boolean) containsKeyMethod.invoke(properties, "textures");
-                            
-                            if (hasTextures) {
-                                Method getMethod = properties.getClass().getMethod("get", Object.class);
-                                Object textureCollection = getMethod.invoke(properties, "textures");
-                                
-                                Method iteratorMethod = textureCollection.getClass().getMethod("iterator");
-                                Iterator<?> iterator = (Iterator<?>) iteratorMethod.invoke(textureCollection);
-                                
-                                if (iterator.hasNext()) {
-                                    Object textureProperty = iterator.next();
-                                    
-                                    Method putMethod = properties.getClass().getMethod("put", Object.class, Object.class);
-                                    putMethod.invoke(getPropertiesMethod.invoke(gameProfile), "textures", textureProperty);
-                                }
-                            }
-                        }
+                    TextureProperty tp = skinResolver.resolveByNameOrUuid(skin);
+                    if (tp != null) {
+                        profile.getTextureProperties().add(tp);
                     }
                 } catch (Exception e) {
                     System.err.println("Erro ao obter skin: " + e.getMessage());
                 }
             }
 
-            return new FakePlayer(gameProfile, location, name, skin);
+            return new NPCData(npcUUID, entityId, profile, location, name, skin);
+            
         } catch (Exception e) {
-            System.err.println("Erro ao criar FakePlayer: " + e.getMessage());
+            System.err.println("Erro ao criar NPC: " + e.getMessage());
             e.printStackTrace();
             return null;
         }
     }
 
-    private void sendNPCPackets(Player player, FakePlayer fakePlayer) {
+    private NPCData createNPC(Location location, String name, String skin, String texturesValue, String texturesSignature) {
         try {
-            Object craftPlayer = player.getClass().cast(player);
-            Method getHandleMethod = craftPlayer.getClass().getMethod("getHandle");
-            Object entityPlayer = getHandleMethod.invoke(craftPlayer);
-            
-            Field connectionField = entityPlayer.getClass().getField("connection");
-            Object connection = connectionField.get(entityPlayer);
+            UUID npcUUID = UUID.randomUUID();
+            int entityId = ThreadLocalRandom.current().nextInt(100000, 999999);
 
-            // TODO: necessário usar NMS packets
-            System.out.println("NPC " + fakePlayer.getName() + " criado em " + fakePlayer.getLocation());
+            UserProfile profile = new UserProfile(npcUUID, name);
+            if (texturesValue != null && texturesSignature != null) {
+                profile.getTextureProperties().add(new TextureProperty("textures", texturesValue, texturesSignature));
+            }
+            return new NPCData(npcUUID, entityId, profile, location, name, skin);
+
+        } catch (Exception e) {
+            System.err.println("Erro ao criar NPC (textures explícitas): " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private void sendNPCPackets(Player player, NPCData npcData) {
+        try {
+            WrapperPlayServerPlayerInfoUpdate.PlayerInfo playerInfo = 
+                new WrapperPlayServerPlayerInfoUpdate.PlayerInfo(
+                    npcData.getProfile(),
+                    false,
+                    0,
+                    GameMode.SURVIVAL,
+                    null,
+                    null
+                );
+            
+            WrapperPlayServerPlayerInfoUpdate addPlayerPacket = 
+                new WrapperPlayServerPlayerInfoUpdate(
+                    WrapperPlayServerPlayerInfoUpdate.Action.ADD_PLAYER,
+                    playerInfo
+                );
+            
+            PacketEvents.getAPI().getPlayerManager().sendPacket(player, addPlayerPacket);
+
+            com.github.retrooper.packetevents.protocol.world.Location position =
+                new com.github.retrooper.packetevents.protocol.world.Location(
+                    npcData.getLocation().getX(),
+                    npcData.getLocation().getY(),
+                    npcData.getLocation().getZ(),
+                    npcData.getLocation().getYaw(),
+                    npcData.getLocation().getPitch()
+                );
+            
+            WrapperPlayServerSpawnEntity spawnPacket = new WrapperPlayServerSpawnEntity(
+                npcData.getEntityId(),
+                npcData.getUuid(),
+                EntityTypes.PLAYER,
+                position,
+                npcData.getLocation().getYaw(),
+                0,
+                null
+            );
+            
+            PacketEvents.getAPI().getPlayerManager().sendPacket(player, spawnPacket);
+
+            WrapperPlayServerEntityHeadLook headLookPacket = new WrapperPlayServerEntityHeadLook(
+                npcData.getEntityId(),
+                npcData.getLocation().getYaw()
+            );
+            
+            PacketEvents.getAPI().getPlayerManager().sendPacket(player, headLookPacket);
+
+            Bukkit.getScheduler().runTaskLater(Bukkit.getPluginManager().getPlugins()[0], () -> {
+                try {
+                    WrapperPlayServerPlayerInfoRemove removePacket = 
+                        new WrapperPlayServerPlayerInfoRemove(Arrays.asList(npcData.getUuid()));
+                    PacketEvents.getAPI().getPlayerManager().sendPacket(player, removePacket);
+                } catch (Exception e) {
+                }
+            }, 20L);
             
         } catch (Exception e) {
             System.err.println("Erro ao enviar packets do NPC: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -132,18 +192,39 @@ public class NPCService {
 
     public void spawn(Player player, Location location, String name, String skin) {
         try {
-            FakePlayer fakePlayer = createFakePlayer(location, name, skin);
-            if (fakePlayer != null) {
-                List<UUID> entities = spawnedByPlayer.computeIfAbsent(player.getUniqueId(), k -> new ArrayList<>());
-                entities.add(fakePlayer.getUuid());
-
-                sendNPCPackets(player, fakePlayer);
-                
-                player.sendMessage("§aNPC '" + name + "' criado com sucesso!");
+            NPCData npcData = createNPC(location, name, skin);
+            if (npcData == null) {
+                player.sendMessage("§cErro ao criar NPC!");
+                return;
             }
+
+            spawnedByPlayer.computeIfAbsent(player.getUniqueId(), k -> new ArrayList<>()).add(npcData);
+
+            globalNPCs.add(npcData);
+
+            for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                sendNPCPackets(onlinePlayer, npcData);
+            }
+
+            DisplayEntry entry = new DisplayEntry();
+            entry.setType(DisplayEntry.Type.NPC);
+            entry.setWorld(location.getWorld().getName());
+            entry.setX(location.getX());
+            entry.setY(location.getY());
+            entry.setZ(location.getZ());
+            entry.setYaw(location.getYaw());
+            entry.setPitch(location.getPitch());
+            entry.setMessage(name);
+            entry.setItem(skin);
+            
+            configLoader.addEntry(entry);
+            configLoader.save();
+
+            player.sendMessage("§aNPC '" + name + "' criado com sucesso!");
+            
         } catch (Exception e) {
-            System.err.println("Erro ao criar NPC temporário: " + e.getMessage());
             player.sendMessage("§cErro ao criar NPC: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -170,29 +251,41 @@ public class NPCService {
     }
 
     public void remove(Player player) {
-        List<UUID> entities = spawnedByPlayer.get(player.getUniqueId());
+        List<NPCData> entities = spawnedByPlayer.get(player.getUniqueId());
         if (entities != null) {
-            for (UUID entityId : entities) {
-                removeNPCForPlayer(player, entityId);
+            for (NPCData npcData : entities) {
+                removeNPCFromAllPlayers(npcData);
+                globalNPCs.remove(npcData);
             }
             entities.clear();
             player.sendMessage("§aTodos os seus NPCs foram removidos!");
         }
     }
 
-    private void removeNPCForPlayer(Player player, UUID npcId) {
-        try {
-            globalNPCs.removeIf(fakePlayer -> fakePlayer.getUuid().equals(npcId));
-            player.sendMessage("§eNPC removido!");
-        } catch (Exception e) {
-            System.err.println("Erro ao remover NPC: " + e.getMessage());
+    private void removeNPCFromAllPlayers(NPCData npcData) {
+        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+            try {
+                WrapperPlayServerPlayerInfoRemove removePacket = 
+                    new WrapperPlayServerPlayerInfoRemove(Arrays.asList(npcData.getUuid()));
+                PacketEvents.getAPI().getPlayerManager().sendPacket(onlinePlayer, removePacket);
+
+                WrapperPlayServerDestroyEntities destroyPacket = 
+                    new WrapperPlayServerDestroyEntities(npcData.getEntityId());
+                PacketEvents.getAPI().getPlayerManager().sendPacket(onlinePlayer, destroyPacket);
+                
+            } catch (Exception e) {
+                System.err.println("Erro ao remover NPC para jogador " + onlinePlayer.getName() + ": " + e.getMessage());
+            }
         }
     }
 
     public void clearAll() {
+        for (NPCData npcData : globalNPCs) {
+            removeNPCFromAllPlayers(npcData);
+        }
         globalNPCs.clear();
 
-        for (Map.Entry<UUID, List<UUID>> entry : spawnedByPlayer.entrySet()) {
+        for (Map.Entry<UUID, List<NPCData>> entry : spawnedByPlayer.entrySet()) {
             Player player = Bukkit.getPlayer(entry.getKey());
             if (player != null) {
                 player.sendMessage("§eTodos os NPCs foram limpos!");
@@ -202,6 +295,28 @@ public class NPCService {
 
         configLoader.clearEntries();
         configLoader.save();
+    }
+
+    public void clearAll(Player player) {
+        try {
+            List<NPCData> playerNPCs = spawnedByPlayer.get(player.getUniqueId());
+            if (playerNPCs != null) {
+                for (NPCData npcData : playerNPCs) {
+                    removeNPCFromAllPlayers(npcData);
+                    globalNPCs.remove(npcData);
+                }
+                playerNPCs.clear();
+            }
+
+            configLoader.clearEntries();
+            configLoader.save();
+            
+            player.sendMessage("§aTodos os NPCs foram removidos!");
+            
+        } catch (Exception e) {
+            player.sendMessage("§cErro ao remover NPCs: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     public void reload() {
@@ -215,8 +330,14 @@ public class NPCService {
     }
 
     public void sendNPCsToPlayer(Player player) {
-        for (FakePlayer fakePlayer : globalNPCs) {
-            sendNPCPackets(player, fakePlayer);
+        for (NPCData npcData : globalNPCs) {
+            sendNPCPackets(player, npcData);
+        }
+    }
+
+    public void onPlayerJoin(Player player) {
+        for (NPCData npcData : globalNPCs) {
+            sendNPCPackets(player, npcData);
         }
     }
 
@@ -225,53 +346,23 @@ public class NPCService {
             player.sendMessage("§eNenhum NPC global encontrado.");
         } else {
             player.sendMessage("§aNPCs globais (" + globalNPCs.size() + "):");
-            for (FakePlayer fakePlayer : globalNPCs) {
-                Location loc = fakePlayer.getLocation();
-                player.sendMessage("§7- " + fakePlayer.getName() + " §8(" + 
-                    loc.getWorld().getName() + " " + 
-                    (int)loc.getX() + " " + (int)loc.getY() + " " + (int)loc.getZ() + ")");
+            for (NPCData npcData : globalNPCs) {
+                try {
+                    Location loc = npcData.getLocation();
+                    player.sendMessage("§7- " + npcData.getName() + " §8(" + 
+                        loc.getWorld().getName() + " " + 
+                        (int)loc.getX() + " " + (int)loc.getY() + " " + (int)loc.getZ() + ")");
+                } catch (Exception e) {
+                    player.sendMessage("§7- NPC (erro ao obter informações)");
+                }
             }
         }
         
-        List<UUID> playerNPCs = spawnedByPlayer.get(player.getUniqueId());
+        List<NPCData> playerNPCs = spawnedByPlayer.get(player.getUniqueId());
         if (playerNPCs != null && !playerNPCs.isEmpty()) {
             player.sendMessage("§aSeus NPCs (" + playerNPCs.size() + ")");
         }
     }
 
-    private static class FakePlayer {
-        private final Object gameProfile;
-        private final Location location;
-        private final String name;
-        private final String skin;
-        private final UUID uuid;
 
-        public FakePlayer(Object gameProfile, Location location, String name, String skin) {
-            this.gameProfile = gameProfile;
-            this.location = location;
-            this.name = name;
-            this.skin = skin;
-            this.uuid = UUID.randomUUID();
-        }
-
-        public Object getGameProfile() {
-            return gameProfile;
-        }
-
-        public UUID getUuid() {
-            return uuid;
-        }
-
-        public Location getLocation() {
-            return location;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public String getSkin() {
-            return skin;
-        }
-    }
 }

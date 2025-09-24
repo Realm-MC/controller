@@ -4,6 +4,7 @@ import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.RawMessage;
 import com.velocitypowered.api.proxy.Player;
+import net.kyori.adventure.text.Component;
 
 public class PlayerWrapper {
     private final Player player;
@@ -63,7 +64,7 @@ public class PlayerWrapper {
         return player.hasPermission(permission);
     }
     
-    public void sendMessage(net.kyori.adventure.text.Component message) {
+    public void sendMessage(Component message) {
         player.sendMessage(message);
     }
 }

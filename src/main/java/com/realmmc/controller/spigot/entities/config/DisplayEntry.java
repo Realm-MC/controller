@@ -15,6 +15,8 @@ public class DisplayEntry {
     private Boolean glow;
     private String billboard;
     private Float scale;
+    private String texturesValue;
+    private String texturesSignature;
 
     public Integer getId() {
         return id;
@@ -126,6 +128,22 @@ public class DisplayEntry {
 
     public void setScale(Float scale) {
         this.scale = scale;
+    }
+
+    public String getTexturesValue() {
+        return texturesValue;
+    }
+
+    public void setTexturesValue(String texturesValue) {
+        this.texturesValue = texturesValue;
+    }
+
+    public String getTexturesSignature() {
+        return texturesSignature;
+    }
+
+    public void setTexturesSignature(String texturesSignature) {
+        this.texturesSignature = texturesSignature;
     }
 
     public enum Type {
