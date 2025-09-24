@@ -15,6 +15,7 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEn
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
 import com.github.retrooper.packetevents.protocol.entity.pose.EntityPose;
+import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import org.bukkit.Bukkit;
@@ -24,6 +25,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.Team;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
@@ -33,6 +37,8 @@ public class NPCService implements Listener {
     private final NPCConfigLoader configLoader;
     private final List<NPCData> globalNPCs = new ArrayList<>();
     private final MojangSkinResolver skinResolver = new MojangSkinResolver();
+    private final Map<UUID, java.util.List<UUID>> nameHolograms = new HashMap<>();
+    private final MiniMessage mm = MiniMessage.miniMessage();
 
     public NPCService() {
         this.configLoader = new NPCConfigLoader();
@@ -67,6 +73,20 @@ public class NPCService implements Listener {
         for (Player p : Bukkit.getOnlinePlayers()) {
             despawnAllFor(p);
         }
+        try {
+            var holo = Main.getInstance().getHologramService();
+            for (List<UUID> ids : nameHolograms.values()) {
+                holo.removeByUUIDs(ids);
+            }
+        } catch (Throwable ignored) {}
+        nameHolograms.clear();
+        try {
+            Scoreboard sb = Bukkit.getScoreboardManager().getMainScoreboard();
+            for (NPCData npc : globalNPCs) {
+                Team t = sb.getTeam("npc_hide_" + npc.getEntityId());
+                if (t != null) t.unregister();
+            }
+        } catch (Throwable ignored) {}
     }
 
     public void reloadAll() {
@@ -90,16 +110,18 @@ public class NPCService implements Listener {
                 
                 String name = entry.getMessage();
                 String skin = entry.getItem() != null ? entry.getItem() : "default";
+                NPCData npcData;
                 if (entry.getTexturesValue() != null && entry.getTexturesSignature() != null) {
-                    NPCData npcData = createNPC(location, name, skin, entry.getTexturesValue(), entry.getTexturesSignature());
-                    if (npcData != null) {
-                        globalNPCs.add(npcData);
-                        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                            sendNPCPackets(onlinePlayer, npcData);
-                        }
-                    }
+                    npcData = createNPC(location, name, skin, entry.getTexturesValue(), entry.getTexturesSignature());
                 } else {
-                    spawnWithoutSaving(location, name, skin);
+                    npcData = createNPC(location, name, skin);
+                }
+                if (npcData != null) {
+                    globalNPCs.add(npcData);
+                    spawnNameHologram(npcData);
+                    for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                        sendNPCPackets(onlinePlayer, npcData);
+                    }
                 }
                 
             } catch (Exception e) {
@@ -113,6 +135,7 @@ public class NPCService implements Listener {
             NPCData npcData = createNPC(location, name, skin);
             if (npcData != null) {
                 globalNPCs.add(npcData);
+                spawnNameHologram(npcData);
 
                 for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
                     sendNPCPackets(onlinePlayer, npcData);
@@ -169,6 +192,19 @@ public class NPCService implements Listener {
         }
     }
 
+    private void spawnNameHologram(NPCData npc) {
+        try {
+            List<UUID> old = nameHolograms.remove(npc.getUuid());
+            if (old != null) {
+                Main.getInstance().getHologramService().removeByUUIDs(old);
+            }
+            Location base = npc.getLocation().clone().add(0, 2.2, 0);
+            List<String> lines = List.of("<white><b>" + (npc.getName() != null ? npc.getName() : "NPC") + "</b>");
+            var ids = Main.getInstance().getHologramService().spawnTemporary(base, lines, false);
+            nameHolograms.put(npc.getUuid(), ids);
+        } catch (Throwable ignored) {}
+    }
+
     private void sendNPCPackets(Player player, NPCData npcData) {
         try {
             WrapperPlayServerPlayerInfoUpdate.PlayerInfo playerInfo = 
@@ -218,11 +254,21 @@ public class NPCService implements Listener {
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, headLookPacket);
 
             try {
-                List<EntityData> metadata = new ArrayList<>();
+                java.util.List<EntityData> metadata = new java.util.ArrayList<>();
                 metadata.add(new EntityData(17, EntityDataTypes.BYTE, (byte) 0x7F));
                 metadata.add(new EntityData(6, EntityDataTypes.ENTITY_POSE, EntityPose.STANDING));
                 WrapperPlayServerEntityMetadata metaPacket = new WrapperPlayServerEntityMetadata(npcData.getEntityId(), (EntityMetadataProvider) metadata);
                 PacketEvents.getAPI().getPlayerManager().sendPacket(player, metaPacket);
+            } catch (Throwable ignored) {}
+
+            try {
+                Scoreboard sb = Bukkit.getScoreboardManager().getMainScoreboard();
+                String teamName = ("npc_hide_" + npcData.getEntityId());
+                Team team = sb.getTeam(teamName);
+                if (team == null) team = sb.registerNewTeam(teamName);
+                team.setOption(Team.Option.NAME_TAG_VISIBILITY, Team.OptionStatus.NEVER);
+                String entry = npcData.getProfile().getName();
+                if (!team.hasEntry(entry)) team.addEntry(entry);
             } catch (Throwable ignored) {}
 
             Bukkit.getScheduler().runTaskLater(Bukkit.getPluginManager().getPlugins()[0], () -> {

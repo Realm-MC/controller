@@ -117,8 +117,9 @@ public class HologramService {
         }
     }
 
-    private void showWithoutSaving(Location base, List<String> lines, boolean glow) {
-        if (lines == null || lines.isEmpty()) return;
+    private List<UUID> showWithoutSaving(Location base, List<String> lines, boolean glow) {
+        List<UUID> ids = new ArrayList<>();
+        if (lines == null || lines.isEmpty()) return ids;
         double step = 0.25;
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
@@ -135,6 +136,22 @@ public class HologramService {
             textDisplay.setLineWidth(200);
             textDisplay.setAlignment(TextDisplay.TextAlignment.CENTER);
             textDisplay.setGlowing(glow);
+            ids.add(textDisplay.getUniqueId());
+        }
+        return ids;
+    }
+
+    public List<UUID> spawnTemporary(Location base, List<String> lines, boolean glow) {
+        return showWithoutSaving(base, lines, glow);
+    }
+
+    public void removeByUUIDs(Collection<UUID> ids) {
+        if (ids == null) return;
+        for (World world : Bukkit.getWorlds()) {
+            for (UUID id : ids) {
+                org.bukkit.entity.Entity e = world.getEntity(id);
+                if (e != null) e.remove();
+            }
         }
     }
 
