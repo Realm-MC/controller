@@ -11,16 +11,9 @@ import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
 import com.realmmc.controller.spigot.entities.holograms.HologramService;
 import com.realmmc.controller.spigot.entities.npcs.NPCService;
 import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
-import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import lombok.Getter;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.World;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.logging.Logger;
 
 public class Main extends JavaPlugin {
@@ -113,9 +106,5 @@ public class Main extends JavaPlugin {
 
     public NPCService getNPCService() {
         return npcService;
-    }
-    
-    public HologramService getHologramService() {
-        return hologramService;
     }
 }

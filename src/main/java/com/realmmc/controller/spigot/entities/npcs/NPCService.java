@@ -1,6 +1,7 @@
 package com.realmmc.controller.spigot.entities.npcs;
 
 import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.protocol.entity.data.EntityMetadataProvider;
 import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
 import com.github.retrooper.packetevents.protocol.player.GameMode;
 import com.github.retrooper.packetevents.protocol.player.UserProfile;
@@ -10,6 +11,10 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPl
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityHeadLook;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityMetadata;
+import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
+import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
+import com.github.retrooper.packetevents.protocol.entity.pose.EntityPose;
 import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import org.bukkit.Bukkit;
@@ -84,7 +89,6 @@ public class NPCService {
 
             UserProfile profile = new UserProfile(npcUUID, name);
 
-            // Tentar obter skin real via cache/Mojang APIs
             if (!"default".equalsIgnoreCase(skin)) {
                 try {
                     TextureProperty tp = skinResolver.resolveByNameOrUuid(skin);
@@ -128,7 +132,7 @@ public class NPCService {
             WrapperPlayServerPlayerInfoUpdate.PlayerInfo playerInfo = 
                 new WrapperPlayServerPlayerInfoUpdate.PlayerInfo(
                     npcData.getProfile(),
-                    false,
+                    true,
                     0,
                     GameMode.SURVIVAL,
                     null,
@@ -171,6 +175,14 @@ public class NPCService {
             
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, headLookPacket);
 
+            try {
+                List<EntityData> metadata = new ArrayList<>();
+                metadata.add(new EntityData(17, EntityDataTypes.BYTE, (byte) 0x7F));
+                metadata.add(new EntityData(6, EntityDataTypes.ENTITY_POSE, EntityPose.STANDING));
+                WrapperPlayServerEntityMetadata metaPacket = new WrapperPlayServerEntityMetadata(npcData.getEntityId(), (EntityMetadataProvider) metadata);
+                PacketEvents.getAPI().getPlayerManager().sendPacket(player, metaPacket);
+            } catch (Throwable ignored) {}
+
             Bukkit.getScheduler().runTaskLater(Bukkit.getPluginManager().getPlugins()[0], () -> {
                 try {
                     WrapperPlayServerPlayerInfoRemove removePacket = 
@@ -178,7 +190,7 @@ public class NPCService {
                     PacketEvents.getAPI().getPlayerManager().sendPacket(player, removePacket);
                 } catch (Exception e) {
                 }
-            }, 20L);
+            }, 40L);
             
         } catch (Exception e) {
             System.err.println("Erro ao enviar packets do NPC: " + e.getMessage());
