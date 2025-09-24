@@ -21,11 +21,14 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
-public class NPCService {
+public class NPCService implements Listener {
     private final Map<UUID, List<NPCData>> spawnedByPlayer = new HashMap<>();
     private final NPCConfigLoader configLoader;
     private final List<NPCData> globalNPCs = new ArrayList<>();
@@ -35,6 +38,45 @@ public class NPCService {
         this.configLoader = new NPCConfigLoader();
         this.configLoader.load();
         loadSavedNPCs();
+    }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player p = event.getPlayer();
+        resendAllTo(p);
+    }
+
+    public void resendAllTo(Player player) {
+        for (NPCData npc : globalNPCs) {
+            try {
+                sendNPCPackets(player, npc);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    public void despawnAllFor(Player player) {
+        if (globalNPCs.isEmpty()) return;
+        int[] ids = globalNPCs.stream().mapToInt(NPCData::getEntityId).toArray();
+        try {
+            WrapperPlayServerDestroyEntities destroy = new WrapperPlayServerDestroyEntities(ids);
+            PacketEvents.getAPI().getPlayerManager().sendPacket(player, destroy);
+        } catch (Exception ignored) {}
+    }
+
+    public void despawnAll() {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            despawnAllFor(p);
+        }
+    }
+
+    public void reloadAll() {
+        despawnAll();
+        this.configLoader.load();
+        this.globalNPCs.clear();
+        loadSavedNPCs();
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            resendAllTo(p);
+        }
     }
 
     private void loadSavedNPCs() {

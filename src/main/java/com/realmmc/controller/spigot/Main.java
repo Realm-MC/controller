@@ -12,6 +12,8 @@ import com.realmmc.controller.spigot.entities.holograms.HologramService;
 import com.realmmc.controller.spigot.entities.npcs.NPCService;
 import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
 import lombok.Getter;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.logging.Logger;
@@ -59,6 +61,10 @@ public class Main extends JavaPlugin {
             displayItemService = new DisplayItemService();
             hologramService = new HologramService();
             npcService = new NPCService();
+            getServer().getPluginManager().registerEvents(npcService, this);
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                try { npcService.resendAllTo(p); } catch (Exception ignored) {}
+            }
             
             if (getResource("displays.yml") != null) {
                 saveResource("displays.yml", false);
