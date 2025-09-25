@@ -1,5 +1,8 @@
 package com.realmmc.controller.spigot;
 
+import com.realmmc.controller.shared.messaging.MessagingSDK;
+import java.io.File;
+
 import com.realmmc.controller.core.modules.ModuleManager;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.commands.CommandModule;
@@ -21,7 +24,7 @@ import java.util.logging.Logger;
 public class Main extends JavaPlugin {
     @Getter
     private static Main instance;
-    
+
     @Getter
     private DisplayItemService displayItemService;
     @Getter
@@ -30,7 +33,7 @@ public class Main extends JavaPlugin {
     private NPCService npcService;
     @Getter
     private DisplayConfigLoader displayConfigLoader;
-    
+
     @Getter
     private ModuleManager moduleManager;
     @Getter
@@ -48,7 +51,17 @@ public class Main extends JavaPlugin {
     public void onEnable() {
         try {
             logger.info("Inicializando Controller Core (Spigot)...");
+
             logger.info("Inicializando serviços compartilhados do Controller Core...");
+
+            File messagesDir = new File(getDataFolder(), "messages");
+            if (!messagesDir.exists()) {
+                messagesDir.mkdirs();
+            }
+
+            MessagingSDK.getInstance().initializeForSpigot(messagesDir);
+            logger.info("MessagingSDK inicializado para Spigot");
+
             serviceRegistry = new ServiceRegistry(logger);
             moduleManager = new ModuleManager(logger);
             moduleManager.registerModule(new DatabaseModule(logger));
@@ -65,7 +78,7 @@ public class Main extends JavaPlugin {
             for (Player p : Bukkit.getOnlinePlayers()) {
                 try { npcService.resendAllTo(p); } catch (Exception ignored) {}
             }
-            
+
             if (getResource("displays.yml") != null) {
                 saveResource("displays.yml", false);
             }
@@ -75,10 +88,10 @@ public class Main extends JavaPlugin {
             if (getResource("npcs.yml") != null) {
                 saveResource("npcs.yml", false);
             }
-            
+
             displayConfigLoader = new DisplayConfigLoader();
             displayConfigLoader.load();
-            
+
             logger.info("Controller Core (Spigot) inicializado com sucesso!");
         } catch (Exception e) {
             logger.severe("Erro durante inicialização: " + e.getMessage());
@@ -100,9 +113,9 @@ public class Main extends JavaPlugin {
             if (moduleManager != null) {
                 moduleManager.disableAllModules();
             }
-            
+
             logger.info("Finalizando serviços compartilhados do Controller Core...");
-            
+
             logger.info("Controller Core (Spigot) finalizado com sucesso!");
         } catch (Exception e) {
             logger.severe("Erro durante finalização: " + e.getMessage());
