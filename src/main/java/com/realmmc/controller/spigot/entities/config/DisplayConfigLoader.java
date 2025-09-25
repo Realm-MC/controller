@@ -6,8 +6,10 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
@@ -57,6 +59,7 @@ public class DisplayConfigLoader {
                     entry.setGlow(entrySection.getBoolean("glow", false));
                     entry.setBillboard(entrySection.getString("billboard", "CENTER"));
                     entry.setScale((float) entrySection.getDouble("scale", 3.0));
+                    entry.setActions(entrySection.getStringList("actions"));
 
                     if (entry.getWorld() != null && entry.getItem() != null) {
                         entries.put(id, entry);
@@ -88,6 +91,7 @@ public class DisplayConfigLoader {
             config.set(path + ".glow", entry.getGlow());
             config.set(path + ".billboard", entry.getBillboard());
             config.set(path + ".scale", entry.getScale());
+            config.set(path + ".actions", entry.getActions());
         }
 
         try {
@@ -107,7 +111,7 @@ public class DisplayConfigLoader {
     }
 
     public Collection<DisplayEntry> getEntries() {
-        return entries.values();
+        return new ArrayList<>(entries.values());
     }
 
     public DisplayEntry getById(String id) {

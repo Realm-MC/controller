@@ -18,6 +18,7 @@ public class DisplayEntry {
     private Float scale;
     private String texturesValue;
     private String texturesSignature;
+    private List<String> actions;
     private String id;
 
     public Type getType() { return type; }
@@ -50,6 +51,8 @@ public class DisplayEntry {
     public void setTexturesValue(String texturesValue) { this.texturesValue = texturesValue; }
     public String getTexturesSignature() { return texturesSignature; }
     public void setTexturesSignature(String texturesSignature) { this.texturesSignature = texturesSignature; }
+    public List<String> getActions() { return actions; }
+    public void setActions(List<String> actions) { this.actions = actions; }
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
