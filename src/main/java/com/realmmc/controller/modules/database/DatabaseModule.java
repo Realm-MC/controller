@@ -32,14 +32,14 @@ public class DatabaseModule extends AbstractCoreModule {
     protected void onEnable() throws Exception {
         logger.info("Inicializando conexões de banco de dados...");
         
-        String mongoUri = System.getProperty("MONGO_URI", "mongodb://admin:admin@198.1.195.85:32017");
+        String mongoUri = System.getProperty("MONGO_URI", "mongodb://localhost:27017");
         String mongoDb = System.getProperty("MONGO_DB", "controller");
         MongoManager.init(new MongoConfig(mongoUri, mongoDb));
         logger.info("MongoDB conectado: " + mongoUri + "/" + mongoDb);
         
-        String redisHost = System.getProperty("REDIS_HOST", "198.1.195.85");
+        String redisHost = System.getProperty("REDIS_HOST", "127.0.0.1");
         int redisPort = Integer.parseInt(System.getProperty("REDIS_PORT", "30379"));
-        String redisPassword = System.getProperty("REDIS_PASSWORD", "redevaley@123");
+        String redisPassword = System.getProperty("REDIS_PASSWORD", "n");
         int redisDatabase = Integer.parseInt(System.getProperty("REDIS_DATABASE", "0"));
         boolean redisSsl = Boolean.parseBoolean(System.getProperty("REDIS_SSL", "false"));
         
