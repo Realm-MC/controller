@@ -20,8 +20,8 @@ public class NpcCommand implements CommandInterface {
 
     @Override
     public void execute(CommandSender sender, String label, String[] args) {
-        if (!sender.hasPermission("controller.npc.admin")) {
-            Messages.send(sender, "<red>Você não tem permissão para usar este comando.");
+        if (!sender.hasPermission("controller.manager")) {
+            Messages.send(sender, "<red>Você не tem permissão para usar este comando.");
             return;
         }
 
@@ -49,14 +49,14 @@ public class NpcCommand implements CommandInterface {
             return;
         }
 
-        String npcId = args[1];
+        String id = args[1];
         String skinNick = args[2];
         String displayName = String.join(" ", Arrays.copyOfRange(args, 3, args.length));
 
         try {
             NPCService npcService = Main.getInstance().getNPCService();
-            npcService.spawnGlobal(npcId, player.getLocation(), displayName, skinNick);
-            Messages.send(player, "<green>NPC '" + npcId + "' criado com sucesso!");
+            npcService.spawnGlobal(id, player.getLocation(), displayName, skinNick);
+            Messages.send(player, "<green>NPC '" + id + "' criado com sucesso!");
         } catch (Exception e) {
             Messages.send(player, "<red>Ocorreu um erro ao criar o NPC: " + e.getMessage());
             e.printStackTrace();

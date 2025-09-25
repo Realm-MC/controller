@@ -6,16 +6,16 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.logging.Logger;
 
 public class NPCConfigLoader {
     private final Logger logger = Main.getInstance().getLogger();
     private final File configFile = new File(Main.getInstance().getDataFolder(), "npcs.yml");
     private YamlConfiguration config;
-    private final List<DisplayEntry> entries = new ArrayList<>();
-    private int nextId = 1;
+    private final Map<String, DisplayEntry> entries = new HashMap<>();
 
     public void load() {
         if (!configFile.exists()) {
@@ -34,13 +34,12 @@ public class NPCConfigLoader {
 
         ConfigurationSection entriesSection = config.getConfigurationSection("entries");
         if (entriesSection != null) {
-            for (String key : entriesSection.getKeys(false)) {
-                ConfigurationSection entrySection = entriesSection.getConfigurationSection(key);
+            for (String id : entriesSection.getKeys(false)) {
+                ConfigurationSection entrySection = entriesSection.getConfigurationSection(id);
                 if (entrySection != null) {
                     DisplayEntry entry = new DisplayEntry();
-                    entry.setId(Integer.parseInt(key));
+                    entry.setId(id);
                     entry.setType(DisplayEntry.Type.NPC);
-                    entry.setNpcId(entrySection.getString("npcId"));
                     entry.setWorld(entrySection.getString("world"));
                     entry.setX(entrySection.getDouble("x"));
                     entry.setY(entrySection.getDouble("y"));
@@ -53,23 +52,23 @@ public class NPCConfigLoader {
                     entry.setTexturesSignature(entrySection.getString("textures.signature"));
 
                     if (entry.getWorld() != null && entry.getMessage() != null) {
-                        entries.add(entry);
-                        nextId = Math.max(nextId, entry.getId() + 1);
+                        entries.put(id, entry);
                     }
                 }
             }
         }
-
         logger.info("Carregados " + entries.size() + " NPCs do npcs.yml");
     }
 
     public void save() {
         config = new YamlConfiguration();
 
-        for (DisplayEntry entry : entries) {
-            String path = "entries." + entry.getId();
+        for (Map.Entry<String, DisplayEntry> mapEntry : entries.entrySet()) {
+            String id = mapEntry.getKey();
+            DisplayEntry entry = mapEntry.getValue();
+            String path = "entries." + id;
+
             config.set(path + ".type", "NPC");
-            config.set(path + ".npcId", entry.getNpcId());
             config.set(path + ".world", entry.getWorld());
             config.set(path + ".x", entry.getX());
             config.set(path + ".y", entry.getY());
@@ -93,28 +92,22 @@ public class NPCConfigLoader {
     }
 
     public void addEntry(DisplayEntry entry) {
-        entry.setId(nextId++);
-        entry.setType(DisplayEntry.Type.NPC);
-        entries.add(entry);
+        if (entry.getId() == null || entry.getId().isEmpty()) {
+            logger.warning("Tentativa de salvar uma DisplayEntry sem um ID.");
+            return;
+        }
+        entries.put(entry.getId(), entry);
     }
 
-    public List<DisplayEntry> getEntries() {
-        return new ArrayList<>(entries);
+    public Collection<DisplayEntry> getEntries() {
+        return entries.values();
     }
 
-    public DisplayEntry getById(int id) {
-        return entries.stream()
-                .filter(entry -> entry.getId().equals(id))
-                .findFirst()
-                .orElse(null);
-    }
-
-    public int getNextId() {
-        return nextId;
+    public DisplayEntry getById(String id) {
+        return entries.get(id);
     }
 
     public void clearEntries() {
         entries.clear();
-        nextId = 1;
     }
 }
