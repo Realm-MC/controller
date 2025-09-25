@@ -27,21 +27,17 @@ import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class NPCService implements Listener {
-    private final Map<UUID, List<NPCData>> spawnedByPlayer = new HashMap<>();
     private final NPCConfigLoader configLoader;
-    private final List<NPCData> globalNPCs = new ArrayList<>();
-    private final MojangSkinResolver skinResolver = new MojangSkinResolver();
-    private final Map<UUID, java.util.List<UUID>> nameHolograms = new HashMap<>();
+    private final Map<String, NPCData> globalNPCs = new ConcurrentHashMap<>();
+    private final MojangSkinResolver mojangResolver = new MojangSkinResolver();
+    private final MineskinResolver mineskinResolver = new MineskinResolver();
+    private final Map<UUID, List<UUID>> nameHolograms = new HashMap<>();
     private final MiniMessage mm = MiniMessage.miniMessage();
-
-    private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.builder()
-            .character('&')
-            .hexColors()
-            .useUnusualXRepeatedCharacterHexFormat()
-            .build();
+    private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.builder().character('&').hexColors().build();
 
     public NPCService() {
         this.configLoader = new NPCConfigLoader();
@@ -55,7 +51,7 @@ public class NPCService implements Listener {
     }
 
     public void resendAllTo(Player player) {
-        for (NPCData npc : globalNPCs) {
+        for (NPCData npc : globalNPCs.values()) {
             try {
                 sendNPCPackets(player, npc);
             } catch (Exception ignored) {}
@@ -64,7 +60,7 @@ public class NPCService implements Listener {
 
     public void despawnAllFor(Player player) {
         if (globalNPCs.isEmpty()) return;
-        int[] ids = globalNPCs.stream().mapToInt(NPCData::getEntityId).toArray();
+        int[] ids = globalNPCs.values().stream().mapToInt(NPCData::getEntityId).toArray();
         try {
             WrapperPlayServerDestroyEntities destroy = new WrapperPlayServerDestroyEntities(ids);
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, destroy);
@@ -84,7 +80,7 @@ public class NPCService implements Listener {
         nameHolograms.clear();
         try {
             Scoreboard sb = Bukkit.getScoreboardManager().getMainScoreboard();
-            for (NPCData npc : globalNPCs) {
+            for (NPCData npc : globalNPCs.values()) {
                 Team t = sb.getTeam("npc_hide_" + npc.getEntityId());
                 if (t != null) t.unregister();
             }
@@ -106,51 +102,42 @@ public class NPCService implements Listener {
             try {
                 World world = Bukkit.getWorld(entry.getWorld());
                 if (world == null) continue;
-
-                Location location = new Location(world, entry.getX(), entry.getY(), entry.getZ(),
-                        entry.getYaw(), entry.getPitch());
-
+                Location location = new Location(world, entry.getX(), entry.getY(), entry.getZ(), entry.getYaw(), entry.getPitch());
                 String id = entry.getId();
                 String displayName = entry.getMessage();
                 String skin = entry.getItem() != null ? entry.getItem() : "default";
-
                 NPCData npcData = createNPC(id, location, displayName, skin, entry.getTexturesValue(), entry.getTexturesSignature());
-
                 if (npcData != null) {
-                    globalNPCs.add(npcData);
+                    globalNPCs.put(id, npcData);
                     spawnNameHologram(npcData);
-                    for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                        sendNPCPackets(onlinePlayer, npcData);
-                    }
                 }
-
             } catch (Exception e) {
                 System.err.println("Erro ao carregar NPC com ID de config " + entry.getId() + ": " + e.getMessage());
             }
         }
     }
 
-    private NPCData createNPC(String id, Location location, String displayName, String skin, String texturesValue, String texturesSignature) {
+    private NPCData createNPC(String id, Location location, String displayName, String skinSource, String texturesValue, String texturesSignature) {
         try {
             UUID npcUUID = UUID.randomUUID();
             int entityId = ThreadLocalRandom.current().nextInt(100000, 999999);
-
             String internalName = (id != null && !id.isEmpty()) ? id : "NPC_" + entityId;
             UserProfile profile = new UserProfile(npcUUID, internalName);
 
-            if (texturesValue != null && texturesSignature != null) {
-                profile.getTextureProperties().add(new TextureProperty("textures", texturesValue, texturesSignature));
-            } else if (!"default".equalsIgnoreCase(skin)) {
-                try {
-                    TextureProperty tp = skinResolver.resolveByNameOrUuid(skin);
-                    if (tp != null) {
-                        profile.getTextureProperties().add(tp);
-                    }
-                } catch (Exception e) {
-                    System.err.println("Erro ao obter skin: " + e.getMessage());
+            if (!"player".equalsIgnoreCase(skinSource)) {
+                TextureProperty texture = null;
+                if (skinSource != null && (skinSource.startsWith("http://") || skinSource.startsWith("https://"))) {
+                    texture = mineskinResolver.resolveFromUrl(skinSource);
+                } else if (skinSource != null && !"default".equalsIgnoreCase(skinSource)) {
+                    texture = mojangResolver.resolveByNameOrUuid(skinSource);
+                }
+
+                if (texture != null) {
+                    profile.getTextureProperties().add(texture);
                 }
             }
-            return new NPCData(npcUUID, entityId, profile, location, displayName, skin);
+
+            return new NPCData(npcUUID, entityId, profile, location, displayName, skinSource);
         } catch (Exception e) {
             System.err.println("Erro ao criar NPC: " + e.getMessage());
             e.printStackTrace();
@@ -178,32 +165,36 @@ public class NPCService implements Listener {
 
     private void sendNPCPackets(Player player, NPCData npcData) {
         try {
+            UserProfile profileToSend = npcData.getProfile();
+
+            if ("player".equalsIgnoreCase(npcData.getSkin())) {
+                profileToSend = new UserProfile(npcData.getUuid(), npcData.getProfile().getName());
+                for (com.destroystokyo.paper.profile.ProfileProperty property : player.getPlayerProfile().getProperties()) {
+                    if (property.getName().equals("textures")) {
+                        profileToSend.getTextureProperties().add(new TextureProperty("textures", property.getValue(), property.getSignature()));
+                    }
+                }
+            }
+
             sendTeamPackets(player, npcData);
 
             WrapperPlayServerPlayerInfoUpdate.PlayerInfo playerInfo =
-                    new WrapperPlayServerPlayerInfoUpdate.PlayerInfo(
-                            npcData.getProfile(), true, 0, GameMode.SURVIVAL, null, null);
-
+                    new WrapperPlayServerPlayerInfoUpdate.PlayerInfo(profileToSend, true, 0, GameMode.SURVIVAL, null, null);
             WrapperPlayServerPlayerInfoUpdate addPlayerPacket =
-                    new WrapperPlayServerPlayerInfoUpdate(
-                            WrapperPlayServerPlayerInfoUpdate.Action.ADD_PLAYER, playerInfo);
-
+                    new WrapperPlayServerPlayerInfoUpdate(WrapperPlayServerPlayerInfoUpdate.Action.ADD_PLAYER, playerInfo);
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, addPlayerPacket);
 
             com.github.retrooper.packetevents.protocol.world.Location position =
                     new com.github.retrooper.packetevents.protocol.world.Location(
                             npcData.getLocation().getX(), npcData.getLocation().getY(), npcData.getLocation().getZ(),
                             npcData.getLocation().getYaw(), npcData.getLocation().getPitch());
-
             WrapperPlayServerSpawnEntity spawnPacket = new WrapperPlayServerSpawnEntity(
                     npcData.getEntityId(), npcData.getUuid(), EntityTypes.PLAYER, position,
                     npcData.getLocation().getYaw(), 0, null);
-
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, spawnPacket);
 
             WrapperPlayServerEntityHeadLook headLookPacket = new WrapperPlayServerEntityHeadLook(
                     npcData.getEntityId(), npcData.getLocation().getYaw());
-
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, headLookPacket);
 
             try {
@@ -216,12 +207,10 @@ public class NPCService implements Listener {
 
             Bukkit.getScheduler().runTaskLater(Main.getPlugin(Main.class), () -> {
                 try {
-                    WrapperPlayServerPlayerInfoRemove removePacket =
-                            new WrapperPlayServerPlayerInfoRemove(Collections.singletonList(npcData.getUuid()));
+                    WrapperPlayServerPlayerInfoRemove removePacket = new WrapperPlayServerPlayerInfoRemove(List.of(npcData.getUuid()));
                     PacketEvents.getAPI().getPlayerManager().sendPacket(player, removePacket);
                 } catch (Exception e) {}
             }, 40L);
-
         } catch (Exception e) {
             System.err.println("Erro ao enviar packets do NPC: " + e.getMessage());
             e.printStackTrace();
@@ -244,18 +233,10 @@ public class NPCService implements Listener {
             );
 
             WrapperPlayServerTeams teamCreatePacket = new WrapperPlayServerTeams(
-                    teamName,
-                    WrapperPlayServerTeams.TeamMode.CREATE,
-                    Optional.of(teamInfo),
-                    Collections.emptyList()
-            );
+                    teamName, WrapperPlayServerTeams.TeamMode.CREATE, Optional.of(teamInfo), Collections.emptyList());
 
             WrapperPlayServerTeams teamAddPlayerPacket = new WrapperPlayServerTeams(
-                    teamName,
-                    WrapperPlayServerTeams.TeamMode.ADD_ENTITIES,
-                    Optional.empty(),
-                    List.of(npcProfileName)
-            );
+                    teamName, WrapperPlayServerTeams.TeamMode.ADD_ENTITIES, Optional.empty(), List.of(npcProfileName));
 
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, teamCreatePacket);
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, teamAddPlayerPacket);
@@ -264,7 +245,7 @@ public class NPCService implements Listener {
         }
     }
 
-    public void spawnGlobal(String id, Location location, String displayName, String skin) {
+    public void spawnGlobal(String id, Location location, String displayName, String skinSource) {
         DisplayEntry entry = new DisplayEntry();
         entry.setId(id);
         entry.setType(DisplayEntry.Type.NPC);
@@ -275,35 +256,35 @@ public class NPCService implements Listener {
         entry.setYaw(location.getYaw());
         entry.setPitch(location.getPitch());
         entry.setMessage(displayName);
-        entry.setItem(skin);
-
+        entry.setItem(skinSource);
         configLoader.addEntry(entry);
         configLoader.save();
-
         reloadAll();
     }
 
-    public void remove(Player player) {
-        List<NPCData> entities = spawnedByPlayer.get(player.getUniqueId());
-        if (entities != null) {
-            for (NPCData npcData : entities) {
-                removeNPCFromAllPlayers(npcData);
-                globalNPCs.remove(npcData);
-            }
-            entities.clear();
-            player.sendMessage("§aTodos os seus NPCs foram removidos!");
+    public void updateNpcSkin(String id, String newSkinSource) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry == null) {
+            throw new IllegalArgumentException("Nenhuma entry encontrada para o ID: " + id);
         }
+        entry.setItem(newSkinSource);
+        configLoader.save();
+        reloadAll();
+    }
+
+    public NPCData getNpcById(String id) {
+        return globalNPCs.get(id);
+    }
+
+    public Set<String> getAllNpcIds() {
+        return globalNPCs.keySet();
     }
 
     private void removeNPCFromAllPlayers(NPCData npcData) {
         for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
             try {
                 WrapperPlayServerTeams teamRemovePacket = new WrapperPlayServerTeams(
-                        "npc_hide_" + npcData.getEntityId(),
-                        WrapperPlayServerTeams.TeamMode.REMOVE,
-                        Optional.empty(),
-                        Collections.emptyList()
-                );
+                        "npc_hide_" + npcData.getEntityId(), WrapperPlayServerTeams.TeamMode.REMOVE, Optional.empty(), Collections.emptyList());
                 PacketEvents.getAPI().getPlayerManager().sendPacket(onlinePlayer, teamRemovePacket);
 
                 WrapperPlayServerPlayerInfoRemove removePacket =
@@ -317,75 +298,6 @@ public class NPCService implements Listener {
             } catch (Exception e) {
                 System.err.println("Erro ao remover NPC para jogador " + onlinePlayer.getName() + ": " + e.getMessage());
             }
-        }
-    }
-
-    public void clearAll() {
-        for (NPCData npcData : globalNPCs) {
-            removeNPCFromAllPlayers(npcData);
-        }
-        globalNPCs.clear();
-
-        for (Map.Entry<UUID, List<NPCData>> entry : spawnedByPlayer.entrySet()) {
-            Player player = Bukkit.getPlayer(entry.getKey());
-            if (player != null) {
-                player.sendMessage("§eTodos os NPCs foram limpos!");
-            }
-            entry.getValue().clear();
-        }
-
-        configLoader.clearEntries();
-        configLoader.save();
-    }
-
-    public void clearAll(Player player) {
-        try {
-            List<NPCData> playerNPCs = spawnedByPlayer.get(player.getUniqueId());
-            if (playerNPCs != null) {
-                for (NPCData npcData : playerNPCs) {
-                    removeNPCFromAllPlayers(npcData);
-                    globalNPCs.remove(npcData);
-                }
-                playerNPCs.clear();
-            }
-
-            configLoader.clearEntries();
-            configLoader.save();
-
-            player.sendMessage("§aTodos os NPCs foram removidos!");
-
-        } catch (Exception e) {
-            player.sendMessage("§cErro ao remover NPCs: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    public void sendNPCsToPlayer(Player player) {
-        for (NPCData npcData : globalNPCs) {
-            sendNPCPackets(player, npcData);
-        }
-    }
-
-    public void listNPCs(Player player) {
-        if (globalNPCs.isEmpty()) {
-            player.sendMessage("§eNenhum NPC global encontrado.");
-        } else {
-            player.sendMessage("§aNPCs globais (" + globalNPCs.size() + "):");
-            for (NPCData npcData : globalNPCs) {
-                try {
-                    Location loc = npcData.getLocation();
-                    player.sendMessage("§7- " + npcData.getName() + " §8(" +
-                            loc.getWorld().getName() + " " +
-                            (int)loc.getX() + " " + (int)loc.getY() + " " + (int)loc.getZ() + ")");
-                } catch (Exception e) {
-                    player.sendMessage("§7- NPC (erro ao obter informações)");
-                }
-            }
-        }
-
-        List<NPCData> playerNPCs = spawnedByPlayer.get(player.getUniqueId());
-        if (playerNPCs != null && !playerNPCs.isEmpty()) {
-            player.sendMessage("§aNPCs (" + playerNPCs.size() + ")");
         }
     }
 }
