@@ -40,6 +40,7 @@ public class NPCConfigLoader {
                     DisplayEntry entry = new DisplayEntry();
                     entry.setId(Integer.parseInt(key));
                     entry.setType(DisplayEntry.Type.NPC);
+                    entry.setNpcId(entrySection.getString("npcId"));
                     entry.setWorld(entrySection.getString("world"));
                     entry.setX(entrySection.getDouble("x"));
                     entry.setY(entrySection.getDouble("y"));
@@ -68,6 +69,7 @@ public class NPCConfigLoader {
         for (DisplayEntry entry : entries) {
             String path = "entries." + entry.getId();
             config.set(path + ".type", "NPC");
+            config.set(path + ".npcId", entry.getNpcId());
             config.set(path + ".world", entry.getWorld());
             config.set(path + ".x", entry.getX());
             config.set(path + ".y", entry.getY());
