@@ -1,5 +1,7 @@
 package com.realmmc.controller.spigot.entities.config;
 
+import java.util.List;
+
 public class DisplayEntry {
     private Integer id;
     private Type type;
@@ -11,12 +13,13 @@ public class DisplayEntry {
     private Float pitch;
     private String item;
     private String message;
-    private java.util.List<String> lines;
+    private List<String> lines;
     private Boolean glow;
     private String billboard;
     private Float scale;
     private String texturesValue;
     private String texturesSignature;
+    private String npcId;
 
     public Integer getId() {
         return id;
@@ -98,11 +101,11 @@ public class DisplayEntry {
         this.message = message;
     }
 
-    public java.util.List<String> getLines() {
+    public List<String> getLines() {
         return lines;
     }
 
-    public void setLines(java.util.List<String> lines) {
+    public void setLines(List<String> lines) {
         this.lines = lines;
     }
 
@@ -144,6 +147,14 @@ public class DisplayEntry {
 
     public void setTexturesSignature(String texturesSignature) {
         this.texturesSignature = texturesSignature;
+    }
+
+    public String getNpcId() {
+        return npcId;
+    }
+
+    public void setNpcId(String npcId) {
+        this.npcId = npcId;
     }
 
     public enum Type {
