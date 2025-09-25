@@ -21,7 +21,7 @@ public class NpcCommand implements CommandInterface {
     @Override
     public void execute(CommandSender sender, String label, String[] args) {
         if (!sender.hasPermission("controller.manager")) {
-            Messages.send(sender, "<red>Você не tem permissão para usar este comando.");
+            Messages.send(sender, "<red>Apenas o grupo Gerente ou superior pode executar este comando.");
             return;
         }
 
@@ -31,10 +31,16 @@ public class NpcCommand implements CommandInterface {
         }
 
         String subCommand = args[0].toLowerCase();
-        if ("criar".equals(subCommand)) {
-            handleCriar(sender, args);
-        } else {
-            Messages.send(sender, "<red>Subcomando desconhecido. Use /npc para ver a ajuda.");
+        switch (subCommand) {
+            case "criar":
+                handleCriar(sender, args);
+                break;
+            case "skin":
+                handleSkin(sender, args);
+                break;
+            default:
+                Messages.send(sender, "<red>Subcomando desconhecido. Use /npc para ver a ajuda.");
+                break;
         }
     }
 
@@ -45,17 +51,22 @@ public class NpcCommand implements CommandInterface {
         }
 
         if (args.length < 4) {
-            Messages.send(player, "<red>Uso incorreto! Use: /npc criar <id> <skin> <nome_de_exibicao>");
+            Messages.send(player, "<red>Uso: /npc criar <id> <skin_url|nick|player> <nome_de_exibicao>");
             return;
         }
 
         String id = args[1];
-        String skinNick = args[2];
+        String skinSource = args[2];
         String displayName = String.join(" ", Arrays.copyOfRange(args, 3, args.length));
 
         try {
             NPCService npcService = Main.getInstance().getNPCService();
-            npcService.spawnGlobal(id, player.getLocation(), displayName, skinNick);
+            if (npcService.getNpcById(id) != null) {
+                Messages.send(player, "<red>Já existe um NPC com o ID '" + id + "'.");
+                return;
+            }
+
+            npcService.spawnGlobal(id, player.getLocation(), displayName, skinSource);
             Messages.send(player, "<green>NPC '" + id + "' criado com sucesso!");
         } catch (Exception e) {
             Messages.send(player, "<red>Ocorreu um erro ao criar o NPC: " + e.getMessage());
@@ -63,9 +74,35 @@ public class NpcCommand implements CommandInterface {
         }
     }
 
+    private void handleSkin(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            Messages.send(sender, "<red>Uso: /npc skin <id> <nova_skin_url|nick|player>");
+            return;
+        }
+
+        String id = args[1];
+        String newSkinSource = args[2];
+
+        try {
+            NPCService npcService = Main.getInstance().getNPCService();
+            if (npcService.getNpcById(id) == null) {
+                Messages.send(sender, "<red>Nenhum NPC encontrado com o ID '" + id + "'.");
+                return;
+            }
+
+            npcService.updateNpcSkin(id, newSkinSource);
+            Messages.send(sender, "<green>A skin do NPC '" + id + "' foi atualizada com sucesso!");
+        } catch (Exception e) {
+            Messages.send(sender, "<red>Ocorreu um erro ao atualizar a skin: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
     private void showHelp(CommandSender sender) {
         Messages.send(sender, "<#FFD700>--- Ajuda do Comando /npc ---");
-        Messages.send(sender, "<#FFFF00>/npc criar <id> <skin> <nome_de_exibicao> <#777777>- Cria um NPC.");
+        Messages.send(sender, "<#FFFF00>/npc criar <id> <skin> <nome> <#777777>- Cria um NPC.");
+        Messages.send(sender, "<#FFFF00>/npc skin <id> <nova_skin> <#777777>- Altera a skin de um NPC.");
+        Messages.send(sender, "<gray>Para a skin, você pode usar um nick, uma URL de imagem .png ou a palavra 'player'.");
     }
 
     @Override
@@ -75,15 +112,21 @@ public class NpcCommand implements CommandInterface {
         }
 
         if (args.length == 1) {
-            return StringUtil.copyPartialMatches(args[0], List.of("criar"), new ArrayList<>());
+            return StringUtil.copyPartialMatches(args[0], List.of("criar", "skin"), new ArrayList<>());
         }
 
-        if (args.length == 3 && args[0].equalsIgnoreCase("criar")) {
-            List<String> playerNames = new ArrayList<>();
+        if (args.length == 2 && args[0].equalsIgnoreCase("skin")) {
+            NPCService npcService = Main.getInstance().getNPCService();
+            return StringUtil.copyPartialMatches(args[1], npcService.getAllNpcIds(), new ArrayList<>());
+        }
+
+        if ((args[0].equalsIgnoreCase("criar") && args.length == 3) || (args[0].equalsIgnoreCase("skin") && args.length == 3)) {
+            List<String> suggestions = new ArrayList<>();
             for (Player p : Bukkit.getOnlinePlayers()) {
-                playerNames.add(p.getName());
+                suggestions.add(p.getName());
             }
-            return StringUtil.copyPartialMatches(args[2], playerNames, new ArrayList<>());
+            suggestions.add("player");
+            return StringUtil.copyPartialMatches(args[2], suggestions, new ArrayList<>());
         }
 
         return Collections.emptyList();
