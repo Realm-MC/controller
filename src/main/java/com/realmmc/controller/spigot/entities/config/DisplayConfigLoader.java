@@ -34,25 +34,62 @@ public class DisplayConfigLoader {
 
         ConfigurationSection entriesSection = config.getConfigurationSection("entries");
         if (entriesSection != null) {
-            for (String id : entriesSection.getKeys(false)) { // A chave da seção é o ID (String)
+            for (String id : entriesSection.getKeys(false)) {
                 ConfigurationSection entrySection = entriesSection.getConfigurationSection(id);
                 if (entrySection != null) {
+                    String type = entrySection.getString("type", "DISPLAY_ITEM");
+                    if (!"DISPLAY_ITEM".equals(type)) {
+                        continue;
+                    }
+
                     DisplayEntry entry = new DisplayEntry();
                     entry.setId(id);
-                    entries.put(id, entry);
+                    entry.setType(DisplayEntry.Type.DISPLAY_ITEM);
+                    entry.setWorld(entrySection.getString("world"));
+                    entry.setX(entrySection.getDouble("x"));
+                    entry.setY(entrySection.getDouble("y"));
+                    entry.setZ(entrySection.getDouble("z"));
+                    entry.setYaw((float) entrySection.getDouble("yaw"));
+                    entry.setPitch((float) entrySection.getDouble("pitch"));
+                    entry.setItem(entrySection.getString("item"));
+                    entry.setMessage(entrySection.getString("message"));
+                    entry.setLines(entrySection.getStringList("lines"));
+                    entry.setGlow(entrySection.getBoolean("glow", false));
+                    entry.setBillboard(entrySection.getString("billboard", "CENTER"));
+                    entry.setScale((float) entrySection.getDouble("scale", 3.0));
+
+                    if (entry.getWorld() != null && entry.getItem() != null) {
+                        entries.put(id, entry);
+                    }
                 }
             }
         }
-        logger.info("Carregadas " + entries.size() + " display items do displays.yml");
+        logger.info("Carregadas " + entries.size() + " entradas do displays.yml");
     }
 
     public void save() {
         config = new YamlConfiguration();
+
         for (Map.Entry<String, DisplayEntry> mapEntry : entries.entrySet()) {
             String id = mapEntry.getKey();
             DisplayEntry entry = mapEntry.getValue();
             String path = "entries." + id;
+
+            config.set(path + ".type", "DISPLAY_ITEM");
+            config.set(path + ".world", entry.getWorld());
+            config.set(path + ".x", entry.getX());
+            config.set(path + ".y", entry.getY());
+            config.set(path + ".z", entry.getZ());
+            config.set(path + ".yaw", entry.getYaw());
+            config.set(path + ".pitch", entry.getPitch());
+            config.set(path + ".item", entry.getItem());
+            config.set(path + ".message", entry.getMessage());
+            config.set(path + ".lines", entry.getLines());
+            config.set(path + ".glow", entry.getGlow());
+            config.set(path + ".billboard", entry.getBillboard());
+            config.set(path + ".scale", entry.getScale());
         }
+
         try {
             config.save(configFile);
             logger.info("Display items salvos no displays.yml");
@@ -63,7 +100,7 @@ public class DisplayConfigLoader {
 
     public void addEntry(DisplayEntry entry) {
         if (entry.getId() == null || entry.getId().isEmpty()) {
-            logger.warning("Tentativa de salvar uma DisplayEntry (Item) sem um ID.");
+            logger.warning("Tentativa de salvar uma DisplayEntry sem um ID.");
             return;
         }
         entries.put(entry.getId(), entry);
