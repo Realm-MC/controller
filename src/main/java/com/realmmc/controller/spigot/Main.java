@@ -1,8 +1,5 @@
 package com.realmmc.controller.spigot;
 
-import com.realmmc.controller.shared.messaging.MessagingSDK;
-import java.io.File;
-
 import com.realmmc.controller.core.modules.ModuleManager;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.commands.CommandModule;
@@ -10,15 +7,17 @@ import com.realmmc.controller.modules.database.DatabaseModule;
 import com.realmmc.controller.modules.profile.ProfileModule;
 import com.realmmc.controller.modules.scheduler.SchedulerModule;
 import com.realmmc.controller.modules.spigot.SpigotModule;
+import com.realmmc.controller.shared.messaging.MessagingSDK;
+import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
 import com.realmmc.controller.spigot.entities.holograms.HologramService;
 import com.realmmc.controller.spigot.entities.npcs.NPCService;
-import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
 import lombok.Getter;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
 import java.util.logging.Logger;
 
 public class Main extends JavaPlugin {
@@ -53,12 +52,10 @@ public class Main extends JavaPlugin {
             logger.info("Inicializando Controller Core (Spigot)...");
 
             logger.info("Inicializando serviços compartilhados do Controller Core...");
-
             File messagesDir = new File(getDataFolder(), "messages");
             if (!messagesDir.exists()) {
                 messagesDir.mkdirs();
             }
-
             MessagingSDK.getInstance().initializeForSpigot(messagesDir);
             logger.info("MessagingSDK inicializado para Spigot");
 
@@ -71,30 +68,25 @@ public class Main extends JavaPlugin {
             moduleManager.registerModule(new SpigotModule(this, logger));
             moduleManager.enableAllModules();
 
-            displayItemService = new DisplayItemService();
+            saveDefaultConfigResource("displays.yml");
+            saveDefaultConfigResource("holograms.yml");
+            saveDefaultConfigResource("npcs.yml");
+
+            displayConfigLoader = new DisplayConfigLoader();
+            displayConfigLoader.load();
+
+            displayItemService = new DisplayItemService(displayConfigLoader);
             hologramService = new HologramService();
             npcService = new NPCService();
+
             getServer().getPluginManager().registerEvents(npcService, this);
             for (Player p : Bukkit.getOnlinePlayers()) {
                 try { npcService.resendAllTo(p); } catch (Exception ignored) {}
             }
 
-            if (getResource("displays.yml") != null) {
-                saveResource("displays.yml", false);
-            }
-            if (getResource("holograms.yml") != null) {
-                saveResource("holograms.yml", false);
-            }
-            if (getResource("npcs.yml") != null) {
-                saveResource("npcs.yml", false);
-            }
-
-            displayConfigLoader = new DisplayConfigLoader();
-            displayConfigLoader.load();
-
             logger.info("Controller Core (Spigot) inicializado com sucesso!");
         } catch (Exception e) {
-            logger.severe("Erro durante inicialização: " + e.getMessage());
+            logger.severe("Erro fatal durante a inicialização: " + e.getMessage());
             e.printStackTrace();
             getServer().getPluginManager().disablePlugin(this);
         }
@@ -107,7 +99,15 @@ public class Main extends JavaPlugin {
 
             if (displayItemService != null) {
                 displayItemService.clearAll();
-                logger.info("Todas as entities de display foram removidas.");
+                logger.info("Todas as entidades de display de item foram removidas.");
+            }
+            if (hologramService != null) {
+                hologramService.clearAll();
+                logger.info("Todos os hologramas foram removidos.");
+            }
+            if (npcService != null) {
+                npcService.despawnAll();
+                logger.info("Todos os NPCs foram removidos.");
             }
 
             if (moduleManager != null) {
@@ -118,12 +118,18 @@ public class Main extends JavaPlugin {
 
             logger.info("Controller Core (Spigot) finalizado com sucesso!");
         } catch (Exception e) {
-            logger.severe("Erro durante finalização: " + e.getMessage());
+            logger.severe("Erro durante a finalização: " + e.getMessage());
             e.printStackTrace();
         }
     }
 
     public NPCService getNPCService() {
         return npcService;
+    }
+
+    private void saveDefaultConfigResource(String resourceName) {
+        if (getResource(resourceName) != null) {
+            saveResource(resourceName, false);
+        }
     }
 }
