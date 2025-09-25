@@ -6,9 +6,8 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
@@ -16,8 +15,7 @@ public class DisplayConfigLoader {
     private final Logger logger = Main.getInstance().getLogger();
     private final File configFile = new File(Main.getInstance().getDataFolder(), "displays.yml");
     private YamlConfiguration config;
-    private final List<DisplayEntry> entries = new ArrayList<>();
-    private int nextId = 1;
+    private final Map<String, DisplayEntry> entries = new HashMap<>();
 
     public void load() {
         if (!configFile.exists()) {
@@ -36,81 +34,46 @@ public class DisplayConfigLoader {
 
         ConfigurationSection entriesSection = config.getConfigurationSection("entries");
         if (entriesSection != null) {
-            for (String key : entriesSection.getKeys(false)) {
-                ConfigurationSection entrySection = entriesSection.getConfigurationSection(key);
+            for (String id : entriesSection.getKeys(false)) { // A chave da seção é o ID (String)
+                ConfigurationSection entrySection = entriesSection.getConfigurationSection(id);
                 if (entrySection != null) {
                     DisplayEntry entry = new DisplayEntry();
-                    entry.setId(Integer.parseInt(key));
-                    entry.setType(DisplayEntry.Type.valueOf(entrySection.getString("type", "DISPLAY_ITEM")));
-                    entry.setWorld(entrySection.getString("world"));
-                    entry.setX(entrySection.getDouble("x"));
-                    entry.setY(entrySection.getDouble("y"));
-                    entry.setZ(entrySection.getDouble("z"));
-                    entry.setYaw((float) entrySection.getDouble("yaw"));
-                    entry.setPitch((float) entrySection.getDouble("pitch"));
-                    entry.setItem(entrySection.getString("item"));
-                    entry.setMessage(entrySection.getString("message"));
-                    entry.setLines(entrySection.getStringList("lines"));
-                    entry.setGlow(entrySection.getBoolean("glow", false));
-                    entry.setBillboard(entrySection.getString("billboard", "CENTER"));
-                    entry.setScale((float) entrySection.getDouble("scale", 3.0));
-
-                    if (entry.getWorld() != null && entry.getItem() != null) {
-                        entries.add(entry);
-                        nextId = Math.max(nextId, entry.getId() + 1);
-                    }
+                    entry.setId(id);
+                    entries.put(id, entry);
                 }
             }
         }
-
-        logger.info("Carregadas " + entries.size() + " entries do displays.yml");
+        logger.info("Carregadas " + entries.size() + " display items do displays.yml");
     }
 
     public void save() {
         config = new YamlConfiguration();
-
-        for (DisplayEntry entry : entries) {
-            String path = "entries." + entry.getId();
-            config.set(path + ".type", entry.getType().name());
-            config.set(path + ".world", entry.getWorld());
-            config.set(path + ".x", entry.getX());
-            config.set(path + ".y", entry.getY());
-            config.set(path + ".z", entry.getZ());
-            config.set(path + ".yaw", entry.getYaw());
-            config.set(path + ".pitch", entry.getPitch());
-            config.set(path + ".item", entry.getItem());
-            config.set(path + ".message", entry.getMessage());
-            config.set(path + ".lines", entry.getLines());
-            config.set(path + ".glow", entry.getGlow());
-            config.set(path + ".billboard", entry.getBillboard());
-            config.set(path + ".scale", entry.getScale());
+        for (Map.Entry<String, DisplayEntry> mapEntry : entries.entrySet()) {
+            String id = mapEntry.getKey();
+            DisplayEntry entry = mapEntry.getValue();
+            String path = "entries." + id;
         }
-
         try {
             config.save(configFile);
-            logger.info("Displays salvos no displays.yml");
+            logger.info("Display items salvos no displays.yml");
         } catch (IOException e) {
             logger.severe("Erro ao salvar displays.yml: " + e.getMessage());
         }
     }
 
     public void addEntry(DisplayEntry entry) {
-        entry.setId(nextId++);
-        entries.add(entry);
+        if (entry.getId() == null || entry.getId().isEmpty()) {
+            logger.warning("Tentativa de salvar uma DisplayEntry (Item) sem um ID.");
+            return;
+        }
+        entries.put(entry.getId(), entry);
     }
 
-    public List<DisplayEntry> getEntries() {
-        return new ArrayList<>(entries);
+    public Collection<DisplayEntry> getEntries() {
+        return entries.values();
     }
 
-    public DisplayEntry getById(int id) {
-        return entries.stream()
-                .filter(entry -> entry.getId().equals(id))
-                .findFirst()
-                .orElse(null);
-    }
-
-    public int getNextId() {
-        return nextId;
+    public DisplayEntry getById(String id) {
+        return entries.get(id);
     }
 }
