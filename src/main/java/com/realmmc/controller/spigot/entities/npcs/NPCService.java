@@ -1,23 +1,20 @@
 package com.realmmc.controller.spigot.entities.npcs;
 
 import com.github.retrooper.packetevents.PacketEvents;
-import com.github.retrooper.packetevents.protocol.entity.data.EntityMetadataProvider;
-import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
-import com.github.retrooper.packetevents.protocol.player.GameMode;
-import com.github.retrooper.packetevents.protocol.player.UserProfile;
-import com.github.retrooper.packetevents.protocol.player.TextureProperty;
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerInfoUpdate;
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerInfoRemove;
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity;
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityHeadLook;
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityMetadata;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
 import com.github.retrooper.packetevents.protocol.entity.pose.EntityPose;
+import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
+import com.github.retrooper.packetevents.protocol.player.GameMode;
+import com.github.retrooper.packetevents.protocol.player.TextureProperty;
+import com.github.retrooper.packetevents.protocol.player.UserProfile;
+import com.github.retrooper.packetevents.wrapper.play.server.*;
 import com.realmmc.controller.spigot.Main;
-import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
+import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -25,12 +22,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.scoreboard.Scoreboard;
-import org.bukkit.scoreboard.Team;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 public class NPCService implements Listener {
     private final Map<UUID, List<NPCData>> spawnedByPlayer = new HashMap<>();
@@ -40,6 +35,12 @@ public class NPCService implements Listener {
     private final Map<UUID, java.util.List<UUID>> nameHolograms = new HashMap<>();
     private final MiniMessage mm = MiniMessage.miniMessage();
 
+    private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.builder()
+            .character('&')
+            .hexColors()
+            .useUnusualXRepeatedCharacterHexFormat()
+            .build();
+
     public NPCService() {
         this.configLoader = new NPCConfigLoader();
         this.configLoader.load();
@@ -48,8 +49,7 @@ public class NPCService implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        Player p = event.getPlayer();
-        resendAllTo(p);
+        resendAllTo(event.getPlayer());
     }
 
     public void resendAllTo(Player player) {
@@ -80,13 +80,6 @@ public class NPCService implements Listener {
             }
         } catch (Throwable ignored) {}
         nameHolograms.clear();
-        try {
-            Scoreboard sb = Bukkit.getScoreboardManager().getMainScoreboard();
-            for (NPCData npc : globalNPCs) {
-                Team t = sb.getTeam("npc_hide_" + npc.getEntityId());
-                if (t != null) t.unregister();
-            }
-        } catch (Throwable ignored) {}
     }
 
     public void reloadAll() {
@@ -105,17 +98,15 @@ public class NPCService implements Listener {
                 World world = Bukkit.getWorld(entry.getWorld());
                 if (world == null) continue;
 
-                Location location = new Location(world, entry.getX(), entry.getY(), entry.getZ(), 
-                                               entry.getYaw(), entry.getPitch());
-                
-                String name = entry.getMessage();
+                Location location = new Location(world, entry.getX(), entry.getY(), entry.getZ(),
+                        entry.getYaw(), entry.getPitch());
+
+                String npcId = entry.getNpcId();
+                String displayName = entry.getMessage();
                 String skin = entry.getItem() != null ? entry.getItem() : "default";
-                NPCData npcData;
-                if (entry.getTexturesValue() != null && entry.getTexturesSignature() != null) {
-                    npcData = createNPC(location, name, skin, entry.getTexturesValue(), entry.getTexturesSignature());
-                } else {
-                    npcData = createNPC(location, name, skin);
-                }
+
+                NPCData npcData = createNPC(npcId, location, displayName, skin, entry.getTexturesValue(), entry.getTexturesSignature());
+
                 if (npcData != null) {
                     globalNPCs.add(npcData);
                     spawnNameHologram(npcData);
@@ -123,38 +114,27 @@ public class NPCService implements Listener {
                         sendNPCPackets(onlinePlayer, npcData);
                     }
                 }
-                
+
             } catch (Exception e) {
-                System.err.println("Erro ao carregar NPC ID " + entry.getId() + ": " + e.getMessage());
+                System.err.println("Erro ao carregar NPC com ID de config " + entry.getId() + ": " + e.getMessage());
             }
         }
     }
 
-    private void spawnWithoutSaving(Location location, String name, String skin) {
-        try {
-            NPCData npcData = createNPC(location, name, skin);
-            if (npcData != null) {
-                globalNPCs.add(npcData);
-                spawnNameHologram(npcData);
-
-                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                    sendNPCPackets(onlinePlayer, npcData);
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Erro ao criar NPC: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    private NPCData createNPC(Location location, String name, String skin) {
+    private NPCData createNPC(String npcId, Location location, String displayName, String skin, String texturesValue, String texturesSignature) {
         try {
             UUID npcUUID = UUID.randomUUID();
             int entityId = ThreadLocalRandom.current().nextInt(100000, 999999);
 
-            UserProfile profile = new UserProfile(npcUUID, name);
+            String invisibleName = Arrays.stream(String.valueOf(entityId).split(""))
+                    .map(c -> "§" + c)
+                    .collect(Collectors.joining());
 
-            if (!"default".equalsIgnoreCase(skin)) {
+            UserProfile profile = new UserProfile(npcUUID, invisibleName);
+
+            if (texturesValue != null && texturesSignature != null) {
+                profile.getTextureProperties().add(new TextureProperty("textures", texturesValue, texturesSignature));
+            } else if (!"default".equalsIgnoreCase(skin)) {
                 try {
                     TextureProperty tp = skinResolver.resolveByNameOrUuid(skin);
                     if (tp != null) {
@@ -164,29 +144,10 @@ public class NPCService implements Listener {
                     System.err.println("Erro ao obter skin: " + e.getMessage());
                 }
             }
+            return new NPCData(npcUUID, entityId, profile, location, displayName, skin);
 
-            return new NPCData(npcUUID, entityId, profile, location, name, skin);
-            
         } catch (Exception e) {
             System.err.println("Erro ao criar NPC: " + e.getMessage());
-            e.printStackTrace();
-            return null;
-        }
-    }
-
-    private NPCData createNPC(Location location, String name, String skin, String texturesValue, String texturesSignature) {
-        try {
-            UUID npcUUID = UUID.randomUUID();
-            int entityId = ThreadLocalRandom.current().nextInt(100000, 999999);
-
-            UserProfile profile = new UserProfile(npcUUID, name);
-            if (texturesValue != null && texturesSignature != null) {
-                profile.getTextureProperties().add(new TextureProperty("textures", texturesValue, texturesSignature));
-            }
-            return new NPCData(npcUUID, entityId, profile, location, name, skin);
-
-        } catch (Exception e) {
-            System.err.println("Erro ao criar NPC (textures explícitas): " + e.getMessage());
             e.printStackTrace();
             return null;
         }
@@ -198,8 +159,13 @@ public class NPCService implements Listener {
             if (old != null) {
                 Main.getInstance().getHologramService().removeByUUIDs(old);
             }
-            Location base = npc.getLocation().clone().add(0, 2.2, 0);
-            List<String> lines = List.of("<white><b>" + (npc.getName() != null ? npc.getName() : "NPC") + "</b>");
+            Location base = npc.getLocation().clone().add(0, 2.0, 0);
+
+            String displayName = (npc.getName() != null ? npc.getName() : "NPC");
+            Component formattedComponent = legacySerializer.deserialize(displayName);
+            String miniMessageName = mm.serialize(formattedComponent);
+            List<String> lines = List.of(miniMessageName);
+
             var ids = Main.getInstance().getHologramService().spawnTemporary(base, lines, false);
             nameHolograms.put(npc.getUuid(), ids);
         } catch (Throwable ignored) {}
@@ -207,129 +173,57 @@ public class NPCService implements Listener {
 
     private void sendNPCPackets(Player player, NPCData npcData) {
         try {
-            WrapperPlayServerPlayerInfoUpdate.PlayerInfo playerInfo = 
-                new WrapperPlayServerPlayerInfoUpdate.PlayerInfo(
-                    npcData.getProfile(),
-                    true,
-                    0,
-                    GameMode.SURVIVAL,
-                    null,
-                    null
-                );
-            
-            WrapperPlayServerPlayerInfoUpdate addPlayerPacket = 
-                new WrapperPlayServerPlayerInfoUpdate(
-                    WrapperPlayServerPlayerInfoUpdate.Action.ADD_PLAYER,
-                    playerInfo
-                );
-            
+            WrapperPlayServerPlayerInfoUpdate.PlayerInfo playerInfo =
+                    new WrapperPlayServerPlayerInfoUpdate.PlayerInfo(
+                            npcData.getProfile(), true, 0, GameMode.SURVIVAL, null, null);
+
+            WrapperPlayServerPlayerInfoUpdate addPlayerPacket =
+                    new WrapperPlayServerPlayerInfoUpdate(
+                            WrapperPlayServerPlayerInfoUpdate.Action.ADD_PLAYER, playerInfo);
+
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, addPlayerPacket);
 
             com.github.retrooper.packetevents.protocol.world.Location position =
-                new com.github.retrooper.packetevents.protocol.world.Location(
-                    npcData.getLocation().getX(),
-                    npcData.getLocation().getY(),
-                    npcData.getLocation().getZ(),
-                    npcData.getLocation().getYaw(),
-                    npcData.getLocation().getPitch()
-                );
-            
+                    new com.github.retrooper.packetevents.protocol.world.Location(
+                            npcData.getLocation().getX(), npcData.getLocation().getY(), npcData.getLocation().getZ(),
+                            npcData.getLocation().getYaw(), npcData.getLocation().getPitch());
+
             WrapperPlayServerSpawnEntity spawnPacket = new WrapperPlayServerSpawnEntity(
-                npcData.getEntityId(),
-                npcData.getUuid(),
-                EntityTypes.PLAYER,
-                position,
-                npcData.getLocation().getYaw(),
-                0,
-                null
-            );
-            
+                    npcData.getEntityId(), npcData.getUuid(), EntityTypes.PLAYER, position,
+                    npcData.getLocation().getYaw(), 0, null);
+
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, spawnPacket);
 
             WrapperPlayServerEntityHeadLook headLookPacket = new WrapperPlayServerEntityHeadLook(
-                npcData.getEntityId(),
-                npcData.getLocation().getYaw()
-            );
-            
+                    npcData.getEntityId(), npcData.getLocation().getYaw());
+
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, headLookPacket);
 
             try {
-                java.util.List<EntityData> metadata = new java.util.ArrayList<>();
+                java.util.List<EntityData<?>> metadata = new java.util.ArrayList<>();
                 metadata.add(new EntityData(17, EntityDataTypes.BYTE, (byte) 0x7F));
                 metadata.add(new EntityData(6, EntityDataTypes.ENTITY_POSE, EntityPose.STANDING));
-                WrapperPlayServerEntityMetadata metaPacket = new WrapperPlayServerEntityMetadata(npcData.getEntityId(), (EntityMetadataProvider) metadata);
+                WrapperPlayServerEntityMetadata metaPacket = new WrapperPlayServerEntityMetadata(npcData.getEntityId(), metadata);
                 PacketEvents.getAPI().getPlayerManager().sendPacket(player, metaPacket);
             } catch (Throwable ignored) {}
 
-            try {
-                Scoreboard sb = Bukkit.getScoreboardManager().getMainScoreboard();
-                String teamName = ("npc_hide_" + npcData.getEntityId());
-                Team team = sb.getTeam(teamName);
-                if (team == null) team = sb.registerNewTeam(teamName);
-                team.setOption(Team.Option.NAME_TAG_VISIBILITY, Team.OptionStatus.NEVER);
-                String entry = npcData.getProfile().getName();
-                if (!team.hasEntry(entry)) team.addEntry(entry);
-            } catch (Throwable ignored) {}
-
-            Bukkit.getScheduler().runTaskLater(Bukkit.getPluginManager().getPlugins()[0], () -> {
+            Bukkit.getScheduler().runTaskLater(Main.getPlugin(Main.class), () -> {
                 try {
-                    WrapperPlayServerPlayerInfoRemove removePacket = 
-                        new WrapperPlayServerPlayerInfoRemove(Arrays.asList(npcData.getUuid()));
+                    WrapperPlayServerPlayerInfoRemove removePacket =
+                            new WrapperPlayServerPlayerInfoRemove(Collections.singletonList(npcData.getUuid()));
                     PacketEvents.getAPI().getPlayerManager().sendPacket(player, removePacket);
-                } catch (Exception e) {
-                }
+                } catch (Exception e) {}
             }, 40L);
-            
+
         } catch (Exception e) {
             System.err.println("Erro ao enviar packets do NPC: " + e.getMessage());
             e.printStackTrace();
         }
     }
 
-    public void spawn(Player player, Location location, String name) {
-        spawn(player, location, name, player.getName());
-    }
-
-    public void spawn(Player player, Location location, String name, String skin) {
-        try {
-            NPCData npcData = createNPC(location, name, skin);
-            if (npcData == null) {
-                player.sendMessage("§cErro ao criar NPC!");
-                return;
-            }
-
-            spawnedByPlayer.computeIfAbsent(player.getUniqueId(), k -> new ArrayList<>()).add(npcData);
-
-            globalNPCs.add(npcData);
-
-            for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                sendNPCPackets(onlinePlayer, npcData);
-            }
-
-            DisplayEntry entry = new DisplayEntry();
-            entry.setType(DisplayEntry.Type.NPC);
-            entry.setWorld(location.getWorld().getName());
-            entry.setX(location.getX());
-            entry.setY(location.getY());
-            entry.setZ(location.getZ());
-            entry.setYaw(location.getYaw());
-            entry.setPitch(location.getPitch());
-            entry.setMessage(name);
-            entry.setItem(skin);
-            
-            configLoader.addEntry(entry);
-            configLoader.save();
-
-            player.sendMessage("§aNPC '" + name + "' criado com sucesso!");
-            
-        } catch (Exception e) {
-            player.sendMessage("§cErro ao criar NPC: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    public void spawnGlobal(Location location, String name, String skin) {
+    public void spawnGlobal(String npcId, Location location, String displayName, String skin) {
         DisplayEntry entry = new DisplayEntry();
+        entry.setNpcId(npcId);
         entry.setType(DisplayEntry.Type.NPC);
         entry.setWorld(location.getWorld().getName());
         entry.setX(location.getX());
@@ -337,17 +231,13 @@ public class NPCService implements Listener {
         entry.setZ(location.getZ());
         entry.setYaw(location.getYaw());
         entry.setPitch(location.getPitch());
-        entry.setMessage(name);
+        entry.setMessage(displayName);
         entry.setItem(skin);
 
         configLoader.addEntry(entry);
         configLoader.save();
 
-        spawnWithoutSaving(location, name, skin);
-
-        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-            onlinePlayer.sendMessage("§aNPC global '" + name + "' foi criado!");
-        }
+        reloadAll();
     }
 
     public void remove(Player player) {
@@ -365,14 +255,14 @@ public class NPCService implements Listener {
     private void removeNPCFromAllPlayers(NPCData npcData) {
         for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
             try {
-                WrapperPlayServerPlayerInfoRemove removePacket = 
-                    new WrapperPlayServerPlayerInfoRemove(Arrays.asList(npcData.getUuid()));
+                WrapperPlayServerPlayerInfoRemove removePacket =
+                        new WrapperPlayServerPlayerInfoRemove(Collections.singletonList(npcData.getUuid()));
                 PacketEvents.getAPI().getPlayerManager().sendPacket(onlinePlayer, removePacket);
 
-                WrapperPlayServerDestroyEntities destroyPacket = 
-                    new WrapperPlayServerDestroyEntities(npcData.getEntityId());
+                WrapperPlayServerDestroyEntities destroyPacket =
+                        new WrapperPlayServerDestroyEntities(npcData.getEntityId());
                 PacketEvents.getAPI().getPlayerManager().sendPacket(onlinePlayer, destroyPacket);
-                
+
             } catch (Exception e) {
                 System.err.println("Erro ao remover NPC para jogador " + onlinePlayer.getName() + ": " + e.getMessage());
             }
@@ -410,32 +300,16 @@ public class NPCService implements Listener {
 
             configLoader.clearEntries();
             configLoader.save();
-            
+
             player.sendMessage("§aTodos os NPCs foram removidos!");
-            
+
         } catch (Exception e) {
             player.sendMessage("§cErro ao remover NPCs: " + e.getMessage());
             e.printStackTrace();
         }
     }
 
-    public void reload() {
-        clearAll();
-        configLoader.load();
-        loadSavedNPCs();
-        
-        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-            onlinePlayer.sendMessage("§aNPCs recarregados!");
-        }
-    }
-
     public void sendNPCsToPlayer(Player player) {
-        for (NPCData npcData : globalNPCs) {
-            sendNPCPackets(player, npcData);
-        }
-    }
-
-    public void onPlayerJoin(Player player) {
         for (NPCData npcData : globalNPCs) {
             sendNPCPackets(player, npcData);
         }
@@ -449,20 +323,18 @@ public class NPCService implements Listener {
             for (NPCData npcData : globalNPCs) {
                 try {
                     Location loc = npcData.getLocation();
-                    player.sendMessage("§7- " + npcData.getName() + " §8(" + 
-                        loc.getWorld().getName() + " " + 
-                        (int)loc.getX() + " " + (int)loc.getY() + " " + (int)loc.getZ() + ")");
+                    player.sendMessage("§7- " + npcData.getName() + " §8(" +
+                            loc.getWorld().getName() + " " +
+                            (int)loc.getX() + " " + (int)loc.getY() + " " + (int)loc.getZ() + ")");
                 } catch (Exception e) {
                     player.sendMessage("§7- NPC (erro ao obter informações)");
                 }
             }
         }
-        
+
         List<NPCData> playerNPCs = spawnedByPlayer.get(player.getUniqueId());
         if (playerNPCs != null && !playerNPCs.isEmpty()) {
             player.sendMessage("§aSeus NPCs (" + playerNPCs.size() + ")");
         }
     }
-
-
 }
