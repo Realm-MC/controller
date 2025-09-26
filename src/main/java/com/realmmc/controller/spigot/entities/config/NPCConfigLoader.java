@@ -50,6 +50,7 @@ public class NPCConfigLoader {
                     entry.setItem(entrySection.getString("skin", "default"));
                     entry.setTexturesValue(entrySection.getString("textures.value"));
                     entry.setTexturesSignature(entrySection.getString("textures.signature"));
+                    entry.setActions(entrySection.getStringList("actions"));
 
                     if (entry.getWorld() != null && entry.getMessage() != null) {
                         entries.put(id, entry);
@@ -81,6 +82,7 @@ public class NPCConfigLoader {
                 config.set(path + ".textures.value", entry.getTexturesValue());
                 config.set(path + ".textures.signature", entry.getTexturesSignature());
             }
+            config.set(path + ".actions", entry.getActions());
         }
 
         try {

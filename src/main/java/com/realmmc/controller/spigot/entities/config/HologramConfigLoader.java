@@ -50,6 +50,7 @@ public class HologramConfigLoader {
                     entry.setGlow(entrySection.getBoolean("glow", false));
                     entry.setBillboard(entrySection.getString("billboard", "CENTER"));
                     entry.setScale((float) entrySection.getDouble("scale", 1.0));
+                    entry.setActions(entrySection.getStringList("actions"));
 
                     if (entry.getWorld() != null && entry.getLines() != null && !entry.getLines().isEmpty()) {
                         entries.put(id, entry);
@@ -79,6 +80,7 @@ public class HologramConfigLoader {
             config.set(path + ".glow", entry.getGlow());
             config.set(path + ".billboard", entry.getBillboard());
             config.set(path + ".scale", entry.getScale());
+            config.set(path + ".actions", entry.getActions());
         }
 
         try {

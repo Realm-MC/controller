@@ -1,15 +1,21 @@
 package com.realmmc.controller.spigot.entities.npcs;
 
 import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.event.PacketListener;
+import com.github.retrooper.packetevents.event.PacketListenerPriority;
+import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
 import com.github.retrooper.packetevents.protocol.entity.pose.EntityPose;
 import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
+import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.protocol.player.GameMode;
 import com.github.retrooper.packetevents.protocol.player.TextureProperty;
 import com.github.retrooper.packetevents.protocol.player.UserProfile;
+import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity;
 import com.github.retrooper.packetevents.wrapper.play.server.*;
 import com.realmmc.controller.spigot.Main;
+import com.realmmc.controller.spigot.entities.actions.Actions;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
 import net.kyori.adventure.text.Component;
@@ -29,20 +35,67 @@ import org.bukkit.scoreboard.Team;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.logging.Level;
 
 public class NPCService implements Listener {
     private final NPCConfigLoader configLoader;
     private final Map<String, NPCData> globalNPCs = new ConcurrentHashMap<>();
+    private final Map<Integer, NPCData> npcByEntityId = new ConcurrentHashMap<>();
     private final MojangSkinResolver mojangResolver = new MojangSkinResolver();
     private final MineskinResolver mineskinResolver = new MineskinResolver();
     private final Map<UUID, List<UUID>> nameHolograms = new HashMap<>();
     private final MiniMessage mm = MiniMessage.miniMessage();
     private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.builder().character('&').hexColors().build();
+    private final Map<UUID, Long> clickCooldowns = new ConcurrentHashMap<>();
+    private static final long COOLDOWN_MS = 1000L; // 1 segundo de cooldown
 
     public NPCService() {
         this.configLoader = new NPCConfigLoader();
         this.configLoader.load();
         loadSavedNPCs();
+        registerClickListener();
+    }
+
+    private void registerClickListener() {
+        PacketEvents.getAPI().getEventManager().registerListener(
+                new PacketListener() {
+                    @Override
+                    public void onPacketReceive(PacketReceiveEvent event) {
+                        if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY) {
+                            Player player = (Player) event.getPlayer();
+                            WrapperPlayClientInteractEntity packet = new WrapperPlayClientInteractEntity(event);
+
+                            if (packet.getAction() == WrapperPlayClientInteractEntity.InteractAction.ATTACK ||
+                                    packet.getAction() == WrapperPlayClientInteractEntity.InteractAction.INTERACT) {
+
+                                NPCData clickedNpc = npcByEntityId.get(packet.getEntityId());
+
+                                if (clickedNpc != null) {
+                                    event.setCancelled(true);
+                                    handleNpcClick(player, clickedNpc);
+                                }
+                            }
+                        }
+                    }
+                }.asAbstract(PacketListenerPriority.NORMAL)
+        );
+    }
+
+    private void handleNpcClick(Player player, NPCData npc) {
+        long now = System.currentTimeMillis();
+        long lastClick = clickCooldowns.getOrDefault(player.getUniqueId(), 0L);
+
+        if (now - lastClick < COOLDOWN_MS) {
+            return;
+        }
+        clickCooldowns.put(player.getUniqueId(), now);
+
+        DisplayEntry entry = configLoader.getById(npc.getProfile().getName());
+        if (entry == null || entry.getActions() == null || entry.getActions().isEmpty()) {
+            return;
+        }
+
+        Actions.runAll(player, entry, npc.getLocation());
     }
 
     @EventHandler
@@ -54,7 +107,9 @@ public class NPCService implements Listener {
         for (NPCData npc : globalNPCs.values()) {
             try {
                 sendNPCPackets(player, npc);
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                Main.getInstance().getLogger().log(Level.WARNING, "Falha ao reenviar NPC para o jogador " + player.getName(), e);
+            }
         }
     }
 
@@ -90,7 +145,6 @@ public class NPCService implements Listener {
     public void reloadAll() {
         despawnAll();
         this.configLoader.load();
-        this.globalNPCs.clear();
         loadSavedNPCs();
         for (Player p : Bukkit.getOnlinePlayers()) {
             resendAllTo(p);
@@ -98,6 +152,9 @@ public class NPCService implements Listener {
     }
 
     private void loadSavedNPCs() {
+        globalNPCs.clear();
+        npcByEntityId.clear();
+
         for (DisplayEntry entry : configLoader.getEntries()) {
             try {
                 World world = Bukkit.getWorld(entry.getWorld());
@@ -109,6 +166,7 @@ public class NPCService implements Listener {
                 NPCData npcData = createNPC(id, location, displayName, skin, entry.getTexturesValue(), entry.getTexturesSignature());
                 if (npcData != null) {
                     globalNPCs.put(id, npcData);
+                    npcByEntityId.put(npcData.getEntityId(), npcData);
                     spawnNameHologram(npcData);
                 }
             } catch (Exception e) {
@@ -209,7 +267,7 @@ public class NPCService implements Listener {
                 try {
                     WrapperPlayServerPlayerInfoRemove removePacket = new WrapperPlayServerPlayerInfoRemove(List.of(npcData.getUuid()));
                     PacketEvents.getAPI().getPlayerManager().sendPacket(player, removePacket);
-                } catch (Exception e) {}
+                } catch (Exception ignored) {}
             }, 40L);
         } catch (Exception e) {
             System.err.println("Erro ao enviar packets do NPC: " + e.getMessage());
