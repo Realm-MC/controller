@@ -22,6 +22,7 @@ public class NpcCommand implements CommandInterface {
     public void execute(CommandSender sender, String label, String[] args) {
         if (!sender.hasPermission("controller.manager")) {
             Messages.send(sender, "<red>Apenas o grupo Gerente ou superior pode executar este comando.");
+
             return;
         }
 
