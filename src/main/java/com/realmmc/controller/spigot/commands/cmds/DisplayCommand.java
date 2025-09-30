@@ -8,13 +8,15 @@ import com.realmmc.controller.spigot.entities.npcs.NPCService;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
 import com.realmmc.controller.spigot.entities.holograms.HologramService;
+import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
+import com.realmmc.controller.spigot.entities.config.HologramConfigLoader;
+import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
+import org.bukkit.entity.*;
 import org.bukkit.util.StringUtil;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.entity.Display;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -42,6 +44,56 @@ public class DisplayCommand implements CommandInterface {
         }
 
         String typeArg = args[0];
+
+        if (typeArg.equalsIgnoreCase("reload")) {
+            if (args.length >= 2) {
+                String id = args[1];
+                try {
+                    DisplayConfigLoader dcl = new DisplayConfigLoader();
+                    dcl.load();
+                    if (dcl.getById(id) != null) {
+                        Main.getInstance().getDisplayItemService().reload();
+                        Messages.send(player, "<green>Displays recarregados (id=" + id + ")");
+                        return;
+                    }
+                } catch (Exception ignored) {}
+                try {
+                    HologramConfigLoader hcl = new HologramConfigLoader();
+                    hcl.load();
+                    if (hcl.getById(id) != null) {
+                        Main.getInstance().getHologramService().reload();
+                        Messages.send(player, "<green>Hologramas recarregados (id=" + id + ")");
+                        return;
+                    }
+                } catch (Exception ignored) {}
+                try {
+                    NPCConfigLoader ncl = new NPCConfigLoader();
+                    ncl.load();
+                    if (ncl.getById(id) != null) {
+                        Main.getInstance().getNPCService().reloadAll();
+                        Messages.send(player, "<green>NPCs recarregados (id=" + id + ")");
+                        return;
+                    }
+                } catch (Exception ignored) {}
+
+                Messages.send(player, "<red>Nenhuma entidade com id '" + id + "' encontrada nos YMLs.");
+                return;
+            } else {
+                Entity target = player.getTargetEntity(6);
+                if (target instanceof ItemDisplay) {
+                    Main.getInstance().getDisplayItemService().reload();
+                    Messages.send(player, "<green>Displays recarregados (alvo: ItemDisplay)");
+                    return;
+                }
+                if (target instanceof TextDisplay) {
+                    Main.getInstance().getHologramService().reload();
+                    Messages.send(player, "<green>Hologramas recarregados (alvo: TextDisplay)");
+                    return;
+                }
+                Messages.send(player, "<red>Nenhuma entidade suportada no alvo. Use /display reload <id>.");
+                return;
+            }
+        }
         DisplayEntry.Type type = DisplayEntry.Type.fromString(typeArg);
         if (type == null) {
             Messages.send(player, "<red>Tipo desconhecido: " + typeArg + ". Use NPC/HOLOGRAM/DISPLAY_ITEM.");
@@ -81,7 +133,7 @@ public class DisplayCommand implements CommandInterface {
             try {
                 Material mat = Material.valueOf(matArg.toUpperCase());
                 ItemStack item = new ItemStack(mat);
-                List<String> lines = text == null || text.isBlank() ? java.util.Collections.emptyList() : java.util.List.of(text);
+                List<String> lines = text == null || text.isBlank() ? Collections.emptyList() : List.of(text);
                 DisplayItemService svc = Main.getInstance().getDisplayItemService();
                 String genId = "disp_" + System.currentTimeMillis();
                 svc.show(player, player.getLocation(), item, lines, false, Display.Billboard.CENTER, 3.0f, genId);
@@ -130,6 +182,7 @@ public class DisplayCommand implements CommandInterface {
         Messages.send(sender, "<#FFFF00>/display NPC <id> <skin> <name> <#777777>- Cria um NPC no seu local.");
         Messages.send(sender, "<#FFFF00>/display DISPLAY_ITEM <material> [text...] <#777777>- Cria um item display.");
         Messages.send(sender, "<#FFFF00>/display HOLOGRAM <text or line1|line2|...> <#777777>- Cria um holograma.");
+        Messages.send(sender, "<#FFFF00>/display reload [id] <#777777>- Recarrega a entidade do alvo ou por id (releitura do YML).");
         Messages.send(sender, "<gray>Types: DISPLAY_ITEM, HOLOGRAM, NPC (case-insensitive)");
     }
 
