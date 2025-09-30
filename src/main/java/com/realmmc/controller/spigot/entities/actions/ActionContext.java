@@ -4,9 +4,9 @@ import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
-import java.util.Optional;
-import java.util.Map;
 import java.util.Collections;
+import java.util.Map;
+import java.util.Optional;
 
 public class ActionContext {
     private final Player player;
@@ -28,8 +28,19 @@ public class ActionContext {
         this.labels = labels == null ? Collections.emptyMap() : labels;
     }
 
-    public Player getPlayer() { return player; }
-    public Optional<DisplayEntry> getEntry() { return Optional.ofNullable(entry); }
-    public Optional<Location> getLocation() { return Optional.ofNullable(location); }
-    public Map<String, String> getLabels() { return labels; }
+    public Player getPlayer() {
+        return player;
+    }
+
+    public Optional<DisplayEntry> getEntry() {
+        return Optional.ofNullable(entry);
+    }
+
+    public Optional<Location> getLocation() {
+        return Optional.ofNullable(location);
+    }
+
+    public Map<String, String> getLabels() {
+        return labels;
+    }
 }

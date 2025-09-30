@@ -1,13 +1,13 @@
 package com.realmmc.controller.spigot.extensions;
 
-import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.messaging.MessageKey;
+import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.messaging.RawMessage;
 import org.bukkit.entity.Player;
 
 public class PlayerWrapper {
     private final Player player;
-    
+
     private PlayerWrapper(Player player) {
         this.player = player;
     }
@@ -58,11 +58,11 @@ public class PlayerWrapper {
     public String getName() {
         return player.getName();
     }
-    
+
     public boolean hasPermission(String permission) {
         return player.hasPermission(permission);
     }
-    
+
     public void sendMessage(String message) {
         player.sendMessage(message);
     }

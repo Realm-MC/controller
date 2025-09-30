@@ -1,16 +1,12 @@
 package com.realmmc.controller.spigot.entities.actions;
 
+import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.title.Title;
-import com.realmmc.controller.spigot.Main;
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
-import org.bukkit.Sound;
+import org.bukkit.*;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.Material;
-import org.bukkit.World;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.*;
@@ -19,11 +15,16 @@ public class Actions {
     private static final Map<ActionType, Action> registry = new HashMap<>();
 
     static {
-        registry.put(ActionType.MESSAGE, (player, ctx) -> {});
-        registry.put(ActionType.TITLE, (player, ctx) -> {});
-        registry.put(ActionType.PLAYER_COMMAND, (player, ctx) -> {});
-        registry.put(ActionType.CONSOLE_COMMAND, (player, ctx) -> {});
-        registry.put(ActionType.SOUND, (player, ctx) -> {});
+        registry.put(ActionType.MESSAGE, (player, ctx) -> {
+        });
+        registry.put(ActionType.TITLE, (player, ctx) -> {
+        });
+        registry.put(ActionType.PLAYER_COMMAND, (player, ctx) -> {
+        });
+        registry.put(ActionType.CONSOLE_COMMAND, (player, ctx) -> {
+        });
+        registry.put(ActionType.SOUND, (player, ctx) -> {
+        });
     }
 
     public static void runAll(Player player, DisplayEntry entry, Location location) {
@@ -37,7 +38,8 @@ public class Actions {
             try {
                 if (!isLabelStyle(raw)) continue;
                 runLabelStyle(player, entry, location, raw);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -75,14 +77,25 @@ public class Actions {
             float vol = p.argF(1, 1.0f);
             float pit = p.argF(2, 1.0f);
             player.playSound(player.getLocation(), s, vol, pit);
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     private record Parsed(ActionType type, List<String> args) {
-        String arg0() { return args.size() > 0 ? args.get(0) : null; }
-        String arg1() { return args.size() > 1 ? args.get(1) : null; }
+        String arg0() {
+            return args.size() > 0 ? args.get(0) : null;
+        }
+
+        String arg1() {
+            return args.size() > 1 ? args.get(1) : null;
+        }
+
         float argF(int idx, float def) {
-            try { return Float.parseFloat(args.get(idx)); } catch (Exception e) { return def; }
+            try {
+                return Float.parseFloat(args.get(idx));
+            } catch (Exception e) {
+                return def;
+            }
         }
     }
 
@@ -95,7 +108,11 @@ public class Actions {
         String typeStr = s.substring(0, idx).trim().toUpperCase(Locale.ROOT);
         String rest = s.substring(idx + 1).trim();
         ActionType type;
-        try { type = ActionType.valueOf(typeStr.replace(" ", "_")); } catch (Exception e) { return null; }
+        try {
+            type = ActionType.valueOf(typeStr.replace(" ", "_"));
+        } catch (Exception e) {
+            return null;
+        }
         String[] parts = rest.split(";");
         List<String> args = new ArrayList<>();
         for (String part : parts) args.add(part.trim());
@@ -205,14 +222,17 @@ public class Actions {
         }
 
         switch (name) {
-            case "message" -> handleMessage(player, ctx, new Parsed(ActionType.MESSAGE, List.of(args.isEmpty()? "" : args.get(0))));
+            case "message" ->
+                    handleMessage(player, ctx, new Parsed(ActionType.MESSAGE, List.of(args.isEmpty() ? "" : args.get(0))));
             case "title" -> {
                 String t = args.size() > 0 ? args.get(0) : "";
                 String st = args.size() > 1 ? args.get(1) : "";
                 handleTitle(player, ctx, new Parsed(ActionType.TITLE, List.of(t, st)));
             }
-            case "playercmd", "player_command" -> handlePlayerCommand(player, ctx, new Parsed(ActionType.PLAYER_COMMAND, List.of(args.isEmpty()? "" : args.get(0))));
-            case "consolecmd", "console_command" -> handleConsoleCommand(player, ctx, new Parsed(ActionType.CONSOLE_COMMAND, List.of(args.isEmpty()? "" : args.get(0))));
+            case "playercmd", "player_command" ->
+                    handlePlayerCommand(player, ctx, new Parsed(ActionType.PLAYER_COMMAND, List.of(args.isEmpty() ? "" : args.get(0))));
+            case "consolecmd", "console_command" ->
+                    handleConsoleCommand(player, ctx, new Parsed(ActionType.CONSOLE_COMMAND, List.of(args.isEmpty() ? "" : args.get(0))));
             case "sound" -> {
                 String snd = args.size() > 0 ? args.get(0) : "ENTITY_PLAYER_LEVELUP";
                 String vol = args.size() > 1 ? args.get(1) : "1.0";
@@ -236,7 +256,8 @@ public class Actions {
                         if (maybe != null) w = maybe;
                     }
                     player.teleport(new Location(w, x, y, z, player.getLocation().getYaw(), player.getLocation().getPitch()));
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
             case "give" -> {
                 try {
@@ -248,13 +269,15 @@ public class Actions {
                     if (!left.isEmpty()) {
                         left.values().forEach(item -> player.getWorld().dropItemNaturally(player.getLocation(), item));
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
             case "broadcast" -> {
                 try {
-                    String msg = args.isEmpty()? "" : args.get(0);
+                    String msg = args.isEmpty() ? "" : args.get(0);
                     Bukkit.broadcast(MiniMessage.miniMessage().deserialize(msg));
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
             default -> { /* no-op or hook for custom handlers */ }
         }

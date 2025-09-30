@@ -81,7 +81,10 @@ public class Main extends JavaPlugin {
 
             getServer().getPluginManager().registerEvents(npcService, this);
             for (Player p : Bukkit.getOnlinePlayers()) {
-                try { npcService.resendAllTo(p); } catch (Exception ignored) {}
+                try {
+                    npcService.resendAllTo(p);
+                } catch (Exception ignored) {
+                }
             }
 
             logger.info("Controller Core (Spigot) inicializado com sucesso!");

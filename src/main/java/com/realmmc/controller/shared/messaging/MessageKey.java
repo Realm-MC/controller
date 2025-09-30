@@ -23,17 +23,17 @@ public enum MessageKey {
     SYSTEM_SHUTDOWN("system.shutdown"),
     MODULE_ENABLED("module.enabled"),
     MODULE_DISABLED("module.disabled");
-    
+
     private final String key;
-    
+
     MessageKey(String key) {
         this.key = key;
     }
-    
+
     public String getKey() {
         return key;
     }
-    
+
     @Override
     public String toString() {
         return key;

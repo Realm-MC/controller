@@ -6,7 +6,6 @@ import com.github.retrooper.packetevents.protocol.player.TextureProperty;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.Locale;
 
 /**
  * Lightweight resolver for Mojang skins (value/signature) from player name or UUID.
@@ -54,7 +53,8 @@ public class MojangSkinResolver {
                     }
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
         return null;
     }
 

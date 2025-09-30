@@ -8,14 +8,14 @@ import java.io.File;
 import java.util.logging.Logger;
 
 public class MessagingSDK {
-    
+
     private static final Logger LOGGER = Logger.getLogger(MessagingSDK.class.getName());
-    
+
     private static volatile MessagingSDK instance;
     private MessageTranslator translator;
     private MessageSender sender;
     private boolean initialized = false;
-    
+
     private MessagingSDK() {
     }
 
@@ -35,11 +35,11 @@ public class MessagingSDK {
             LOGGER.warning("MessagingSDK already initialized!");
             return;
         }
-        
+
         this.translator = new FileBasedMessageTranslator(messagesDirectory);
         this.sender = new SpigotMessageSender(translator);
         this.initialized = true;
-        
+
         LOGGER.info("MessagingSDK initialized for Spigot platform");
     }
 
@@ -48,36 +48,36 @@ public class MessagingSDK {
             LOGGER.warning("MessagingSDK already initialized!");
             return;
         }
-        
+
         this.translator = new FileBasedMessageTranslator(messagesDirectory);
         this.sender = new VelocityMessageSender(translator);
         this.initialized = true;
-        
+
         LOGGER.info("MessagingSDK initialized for Velocity platform");
     }
-    
+
     /**
      * Inicializa o SDK com implementações customizadas.
-     * 
+     *
      * @param translator O translator a ser usado
-     * @param sender O sender a ser usado
+     * @param sender     O sender a ser usado
      */
     public void initialize(MessageTranslator translator, MessageSender sender) {
         if (initialized) {
             LOGGER.warning("MessagingSDK already initialized!");
             return;
         }
-        
+
         this.translator = translator;
         this.sender = sender;
         this.initialized = true;
-        
+
         LOGGER.info("MessagingSDK initialized with custom implementations");
     }
 
     /**
      * Obtém o translator atual.
-     * 
+     *
      * @return O MessageTranslator
      * @throws IllegalStateException se o SDK não foi inicializado
      */
@@ -85,10 +85,10 @@ public class MessagingSDK {
         ensureInitialized();
         return translator;
     }
-    
+
     /**
      * Obtém o sender atual.
-     * 
+     *
      * @return O MessageSender
      * @throws IllegalStateException se o SDK não foi inicializado
      */
@@ -96,41 +96,41 @@ public class MessagingSDK {
         ensureInitialized();
         return sender;
     }
-    
+
     /**
      * Envia uma mensagem para um destinatário.
-     * 
+     *
      * @param recipient O destinatário
-     * @param message A mensagem
+     * @param message   A mensagem
      */
     public void sendMessage(Object recipient, Message message) {
         getSender().sendMessage(recipient, message);
     }
-    
+
     /**
      * Envia uma mensagem simples para um destinatário.
-     * 
+     *
      * @param recipient O destinatário
-     * @param key A chave da mensagem
+     * @param key       A chave da mensagem
      */
     public void sendMessage(Object recipient, MessageKey key) {
         getSender().sendMessage(recipient, key);
     }
-    
+
     /**
      * Envia uma mensagem de texto puro para um destinatário.
-     * 
+     *
      * @param recipient O destinatário
-     * @param text O texto
+     * @param text      O texto
      */
     public void sendRawMessage(Object recipient, String text) {
         getSender().sendRawMessage(recipient, text);
     }
-    
+
     /**
      * Envia uma mensagem de texto direto para um destinatário.
-     * 
-     * @param recipient O destinatário
+     *
+     * @param recipient  O destinatário
      * @param rawMessage A mensagem de texto direto
      */
     public void sendRawMessage(Object recipient, RawMessage rawMessage) {
@@ -143,23 +143,23 @@ public class MessagingSDK {
                 processedText = processedText.replace(placeholder, value);
             }
         }
-        
+
         getSender().sendRawMessage(recipient, processedText);
     }
-    
+
     /**
      * Traduz uma mensagem.
-     * 
+     *
      * @param message A mensagem
      * @return A mensagem traduzida
      */
     public String translate(Message message) {
         return getTranslator().translate(message);
     }
-    
+
     /**
      * Traduz uma mensagem simples.
-     * 
+     *
      * @param key A chave da mensagem
      * @return A mensagem traduzida
      */
@@ -181,7 +181,7 @@ public class MessagingSDK {
             LOGGER.info("MessagingSDK shutdown");
         }
     }
-    
+
     private void ensureInitialized() {
         if (!initialized) {
             throw new IllegalStateException("MessagingSDK not initialized! Call initialize() first.");

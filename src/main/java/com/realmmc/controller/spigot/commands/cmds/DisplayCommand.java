@@ -4,20 +4,19 @@ import com.realmmc.controller.shared.annotations.Cmd;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.commands.CommandInterface;
-import com.realmmc.controller.spigot.entities.npcs.NPCService;
-import com.realmmc.controller.spigot.entities.config.DisplayEntry;
-import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
-import com.realmmc.controller.spigot.entities.holograms.HologramService;
 import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
+import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.config.HologramConfigLoader;
 import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
-import org.bukkit.Bukkit;
+import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
+import com.realmmc.controller.spigot.entities.holograms.HologramService;
+import com.realmmc.controller.spigot.entities.npcs.NPCService;
+import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.*;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.StringUtil;
-import org.bukkit.Material;
-import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -57,7 +56,8 @@ public class DisplayCommand implements CommandInterface {
                         Messages.send(player, "<green>Displays recarregados (id=" + id + ")");
                         return;
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
                 try {
                     HologramConfigLoader hcl = new HologramConfigLoader();
                     hcl.load();
@@ -66,7 +66,8 @@ public class DisplayCommand implements CommandInterface {
                         Messages.send(player, "<green>Hologramas recarregados (id=" + id + ")");
                         return;
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
                 try {
                     NPCConfigLoader ncl = new NPCConfigLoader();
                     ncl.load();
@@ -75,7 +76,8 @@ public class DisplayCommand implements CommandInterface {
                         Messages.send(player, "<green>NPCs recarregados (id=" + id + ")");
                         return;
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
 
                 Messages.send(player, "<red>Nenhuma entidade com id '" + id + "' encontrada nos YMLs.");
                 return;
@@ -139,7 +141,7 @@ public class DisplayCommand implements CommandInterface {
                     for (String idNpc : npcSvc.getAllNpcIds()) {
                         var data = npcSvc.getNpcById(idNpc);
                         if (data == null) continue;
-                        var npcHead = data.getLocation().clone().add(0, 1.6, 0).toVector();
+                        var npcHead = data.location().clone().add(0, 1.6, 0).toVector();
                         var v = npcHead.clone().subtract(origin);
                         double t = dir.dot(v);
                         if (t < 0 || t > 8.0) continue;
@@ -155,11 +157,21 @@ public class DisplayCommand implements CommandInterface {
                         Messages.send(player, "<green>NPCs recarregados (alvo: NPC em visão)");
                         return;
                     }
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+                }
 
-                try { Main.getInstance().getDisplayItemService().reload(); } catch (Throwable ignored) {}
-                try { Main.getInstance().getHologramService().reload(); } catch (Throwable ignored) {}
-                try { Main.getInstance().getNPCService().reloadAll(); } catch (Throwable ignored) {}
+                try {
+                    Main.getInstance().getDisplayItemService().reload();
+                } catch (Throwable ignored) {
+                }
+                try {
+                    Main.getInstance().getHologramService().reload();
+                } catch (Throwable ignored) {
+                }
+                try {
+                    Main.getInstance().getNPCService().reloadAll();
+                } catch (Throwable ignored) {
+                }
                 Messages.send(player, "<yellow>Nenhuma entidade detectada com precisão. Recarreguei Displays, Hologramas e NPCs.");
                 return;
             }

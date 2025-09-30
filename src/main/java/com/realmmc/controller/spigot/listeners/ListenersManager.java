@@ -19,7 +19,8 @@ import java.util.logging.Level;
 
 public final class ListenersManager {
 
-    private ListenersManager() {}
+    private ListenersManager() {
+    }
 
     public static void registerAll(Plugin plugin) {
         final String basePackage = "com.realmmc.controller.spigot.listeners";
@@ -64,7 +65,8 @@ public final class ListenersManager {
                             .filter(p -> p.toString().endsWith(".class"))
                             .forEach(p -> {
                                 String fqcn = toClassName(codeSource.toPath(), p);
-                                if (fqcn != null && !fqcn.contains("$")) tryAddIfAnnotated(result, fqcn, annotation, classLoader);
+                                if (fqcn != null && !fqcn.contains("$"))
+                                    tryAddIfAnnotated(result, fqcn, annotation, classLoader);
                             });
                 } catch (IOException e) {
                     e.printStackTrace();
@@ -94,7 +96,8 @@ public final class ListenersManager {
             if (path.endsWith(".class")) {
                 return path.replace(File.separatorChar, '.').replace(".class", "");
             }
-        } catch (IllegalArgumentException ignored) {}
+        } catch (IllegalArgumentException ignored) {
+        }
         return null;
     }
 

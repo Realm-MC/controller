@@ -5,8 +5,6 @@ import com.realmmc.controller.proxy.commands.CommandManager;
 import com.realmmc.controller.proxy.listeners.ListenersManager;
 import com.velocitypowered.api.proxy.ProxyServer;
 
-import java.util.Collections;
-import java.util.List;
 import java.util.logging.Logger;
 
 public class ProxyModule extends AbstractCoreModule {

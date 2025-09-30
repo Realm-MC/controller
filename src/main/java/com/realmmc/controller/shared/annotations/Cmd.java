@@ -9,6 +9,8 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Cmd {
     String cmd();
+
     String[] aliases();
+
     boolean onlyPlayer() default false;
 }

@@ -1,15 +1,15 @@
 package com.realmmc.controller.spigot.entities.holograms;
 
-import com.realmmc.controller.spigot.entities.config.HologramConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
+import com.realmmc.controller.spigot.entities.config.HologramConfigLoader;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
-import org.bukkit.Bukkit;
-import org.bukkit.World;
 
 import java.util.*;
 
@@ -33,7 +33,7 @@ public class HologramService {
 
         if (lines != null && !lines.isEmpty()) {
             double step = 0.25;
-            
+
             for (int i = 0; i < lines.size(); i++) {
                 String line = lines.get(i);
                 double textY = base.getY() + (lines.size() - 1 - i) * step;

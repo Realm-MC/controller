@@ -165,7 +165,8 @@ public class CommandManager implements SimpleCommand {
             if (path.endsWith(".class")) {
                 return path.replace(File.separatorChar, '.').replace(".class", "");
             }
-        } catch (IllegalArgumentException ignored) {}
+        } catch (IllegalArgumentException ignored) {
+        }
         return null;
     }
 

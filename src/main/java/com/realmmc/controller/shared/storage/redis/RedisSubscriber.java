@@ -1,14 +1,14 @@
 package com.realmmc.controller.shared.storage.redis;
 
+import com.realmmc.controller.shared.utils.TaskScheduler;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPubSub;
 
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
-import com.realmmc.controller.shared.utils.TaskScheduler;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class RedisSubscriber {
     private final Map<String, RedisMessageListener> listeners = new ConcurrentHashMap<>();
@@ -58,7 +58,8 @@ public final class RedisSubscriber {
         running = false;
         try {
             if (pubSub != null) pubSub.unsubscribe();
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
         if (future != null) {
             future.cancel(true);
             future = null;

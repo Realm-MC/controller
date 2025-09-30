@@ -11,7 +11,8 @@ public final class RedisManager {
     private static JedisPool pool;
     private static RedisConfig config;
 
-    private RedisManager() { }
+    private RedisManager() {
+    }
 
     public static synchronized void init(RedisConfig cfg) {
         if (pool != null) return;
@@ -22,10 +23,10 @@ public final class RedisManager {
         pc.setMinIdle(1);
         pc.setMaxWait(Duration.ofSeconds(10));
 
-        if (cfg.getPassword() == null || cfg.getPassword().isEmpty()) {
-            pool = new JedisPool(pc, cfg.getHost(), cfg.getPort(), 10000, null, cfg.getDatabase(), cfg.isSsl());
+        if (cfg.password() == null || cfg.password().isEmpty()) {
+            pool = new JedisPool(pc, cfg.host(), cfg.port(), 10000, null, cfg.database(), cfg.ssl());
         } else {
-            pool = new JedisPool(pc, cfg.getHost(), cfg.getPort(), 10000, cfg.getPassword(), cfg.getDatabase(), cfg.isSsl());
+            pool = new JedisPool(pc, cfg.host(), cfg.port(), 10000, cfg.password(), cfg.database(), cfg.ssl());
         }
     }
 
