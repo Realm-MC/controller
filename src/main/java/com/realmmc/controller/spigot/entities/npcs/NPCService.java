@@ -97,6 +97,13 @@ public class NPCService implements Listener {
         }
     }
 
+    public boolean isNameHologram(java.util.UUID hologramUuid) {
+        for (java.util.List<java.util.UUID> ids : nameHolograms.values()) {
+            if (ids != null && ids.contains(hologramUuid)) return true;
+        }
+        return false;
+    }
+
     private void loadSavedNPCs() {
         for (DisplayEntry entry : configLoader.getEntries()) {
             try {

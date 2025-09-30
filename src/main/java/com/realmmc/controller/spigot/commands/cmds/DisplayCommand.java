@@ -14,6 +14,7 @@ import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.*;
+import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.StringUtil;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
@@ -79,17 +80,83 @@ public class DisplayCommand implements CommandInterface {
                 Messages.send(player, "<red>Nenhuma entidade com id '" + id + "' encontrada nos YMLs.");
                 return;
             } else {
-                Entity target = player.getTargetEntity(6);
+                RayTraceResult rt = player.getWorld().rayTraceEntities(
+                        player.getEyeLocation(),
+                        player.getEyeLocation().getDirection(),
+                        8.0,
+                        0.3,
+                        e -> e instanceof ItemDisplay || e instanceof TextDisplay
+                );
+                Entity target = rt != null ? rt.getHitEntity() : player.getTargetEntity(6);
                 if (target instanceof ItemDisplay) {
                     Main.getInstance().getDisplayItemService().reload();
                     Messages.send(player, "<green>Displays recarregados (alvo: ItemDisplay)");
                     return;
                 }
-                if (target instanceof TextDisplay) {
+                if (target instanceof TextDisplay td) {
+                    if (Main.getInstance().getNPCService().isNameHologram(td.getUniqueId())) {
+                        Main.getInstance().getNPCService().reloadAll();
+                        Messages.send(player, "<green>NPCs recarregados (alvo: holograma de nome)");
+                        return;
+                    }
                     Main.getInstance().getHologramService().reload();
                     Messages.send(player, "<green>Hologramas recarregados (alvo: TextDisplay)");
                     return;
                 }
+
+                var dir = player.getEyeLocation().getDirection().normalize();
+                var origin = player.getEyeLocation().toVector();
+                double maxDist = 6.0;
+                double cosThreshold = 0.8;
+                for (Entity e : player.getWorld().getNearbyEntities(player.getEyeLocation(), 4, 4, 4)) {
+                    if (!(e instanceof ItemDisplay) && !(e instanceof TextDisplay)) continue;
+                    var to = e.getLocation().toVector().subtract(origin);
+                    double dist = to.length();
+                    if (dist > maxDist || dist < 0.2) continue;
+                    to.normalize();
+                    double dot = dir.dot(to);
+                    if (dot < cosThreshold) continue;
+
+                    if (e instanceof ItemDisplay) {
+                        Main.getInstance().getDisplayItemService().reload();
+                        Messages.send(player, "<green>Displays recarregados (alvo próximo: ItemDisplay)");
+                        return;
+                    } else if (e instanceof TextDisplay td2) {
+                        if (Main.getInstance().getNPCService().isNameHologram(td2.getUniqueId())) {
+                            Main.getInstance().getNPCService().reloadAll();
+                            Messages.send(player, "<green>NPCs recarregados (alvo próximo: holograma de nome)");
+                            return;
+                        }
+                        Main.getInstance().getHologramService().reload();
+                        Messages.send(player, "<green>Hologramas recarregados (alvo próximo: TextDisplay)");
+                        return;
+                    }
+                }
+
+                try {
+                    var npcSvc = Main.getInstance().getNPCService();
+                    boolean npcInSight = false;
+                    for (String idNpc : npcSvc.getAllNpcIds()) {
+                        var data = npcSvc.getNpcById(idNpc);
+                        if (data == null) continue;
+                        var npcHead = data.getLocation().clone().add(0, 1.6, 0).toVector();
+                        var v = npcHead.clone().subtract(origin);
+                        double t = dir.dot(v);
+                        if (t < 0 || t > 8.0) continue;
+                        var perp = v.clone().subtract(dir.clone().multiply(t));
+                        double dLine = perp.length();
+                        if (dLine <= 0.75) {
+                            npcInSight = true;
+                            break;
+                        }
+                    }
+                    if (npcInSight) {
+                        npcSvc.reloadAll();
+                        Messages.send(player, "<green>NPCs recarregados (alvo: NPC em visão)");
+                        return;
+                    }
+                } catch (Throwable ignored) {}
+
                 Messages.send(player, "<red>Nenhuma entidade suportada no alvo. Use /display reload <id>.");
                 return;
             }
