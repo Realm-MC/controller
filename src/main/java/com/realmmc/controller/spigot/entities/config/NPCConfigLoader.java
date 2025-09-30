@@ -103,7 +103,6 @@ public class NPCConfigLoader {
             config.set(path + ".z", entry.getZ());
             config.set(path + ".yaw", entry.getYaw());
             config.set(path + ".pitch", entry.getPitch());
-            config.set(path + ".name", entry.getMessage());
             config.set(path + ".skin", entry.getItem() != null ? entry.getItem() : "default");
             if (entry.getTexturesValue() != null && entry.getTexturesSignature() != null) {
                 config.set(path + ".textures.value", entry.getTexturesValue());
@@ -111,6 +110,9 @@ public class NPCConfigLoader {
             }
             if (entry.getActions() != null) {
                 config.set(path + ".actions", entry.getActions());
+            }
+            if (entry.getLines() != null) {
+                config.set(path + ".lines", entry.getLines());
             }
         }
 

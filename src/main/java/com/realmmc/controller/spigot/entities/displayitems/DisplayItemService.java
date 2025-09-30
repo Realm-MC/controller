@@ -62,6 +62,9 @@ public class DisplayItemService {
         itemDisplay.setShadowStrength(0.0f);
         itemDisplay.setBrightness(new Display.Brightness(15, 15));
         itemDisplay.setGlowing(glow);
+        itemDisplay.customName(null);
+        itemDisplay.setCustomNameVisible(false);
+        itemDisplay.addScoreboardTag("controller_display_item");
 
         Transformation transformation = new Transformation(
                 new Vector3f(0f, 0f, 0f),
@@ -91,6 +94,9 @@ public class DisplayItemService {
                 textDisplay.setLineWidth(200);
                 textDisplay.setAlignment(TextDisplay.TextAlignment.CENTER);
                 textDisplay.setGlowing(glow);
+                textDisplay.customName(null);
+                textDisplay.setCustomNameVisible(false);
+                textDisplay.addScoreboardTag("controller_display_line");
 
                 entities.add(textDisplay.getUniqueId());
             }
@@ -128,7 +134,9 @@ public class DisplayItemService {
     public void clearAll() {
         for (World world : Bukkit.getWorlds()) {
             for (Entity entity : world.getEntities()) {
-                if (entity instanceof ItemDisplay || (entity instanceof TextDisplay && !entity.getScoreboardTags().contains("hologram_line"))) {
+                if (entity instanceof ItemDisplay && entity.getScoreboardTags().contains("controller_display_item")) {
+                    entity.remove();
+                } else if (entity instanceof TextDisplay && entity.getScoreboardTags().contains("controller_display_line")) {
                     entity.remove();
                 }
             }

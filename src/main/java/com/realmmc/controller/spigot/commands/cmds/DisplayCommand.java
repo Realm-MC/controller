@@ -189,14 +189,13 @@ public class DisplayCommand implements CommandInterface {
             }
             String id = args[1];
             String skin = args[2];
-            String name = String.join(" ", Arrays.copyOfRange(args, 3, args.length));
             try {
                 NPCService npcService = Main.getInstance().getNPCService();
                 if (npcService.getNpcById(id) != null) {
                     Messages.send(player, "<red>Já existe um NPC com o ID '" + id + "'.");
                     return;
                 }
-                npcService.spawnGlobal(id, player.getLocation(), name, skin);
+                npcService.spawnGlobal(id, player.getLocation(), null, skin);
                 Messages.send(player, "<green>NPC '" + id + "' criado com sucesso!");
             } catch (Exception e) {
                 Messages.send(player, "<red>Erro ao criar NPC: " + e.getMessage());
