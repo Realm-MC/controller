@@ -208,10 +208,23 @@ public class NPCService implements Listener {
             }
             Location base = npc.location().clone().add(0, 2.0, 0);
 
-            String displayName = (npc.name() != null ? npc.name() : "NPC");
-            Component formattedComponent = legacySerializer.deserialize(displayName);
-            String miniMessageName = mm.serialize(formattedComponent);
-            List<String> lines = List.of(miniMessageName);
+            List<String> lines = null;
+            try {
+                String entryId = entityIdToEntryId.get(npc.entityId());
+                if (entryId != null) {
+                    DisplayEntry entry = configLoader.getById(entryId);
+                    if (entry != null) {
+                        if (entry.getLines() != null && !entry.getLines().isEmpty()) {
+                            lines = entry.getLines();
+                        } else if (entry.getMessage() != null) {
+                            Component formattedComponent = legacySerializer.deserialize(entry.getMessage());
+                            String mmName = mm.serialize(formattedComponent);
+                            lines = List.of(mmName);
+                        }
+                    }
+                }
+            } catch (Throwable ignoredInner) {}
+            if (lines == null) lines = List.of("<gray>NPC</gray>");
 
             var ids = Main.getInstance().getHologramService().spawnTemporary(base, lines, false);
             nameHolograms.put(npc.uuid(), ids);
