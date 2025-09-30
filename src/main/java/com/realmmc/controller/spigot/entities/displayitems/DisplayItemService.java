@@ -101,8 +101,7 @@ public class DisplayItemService {
         }
     }
 
-    public void show(Player player, Location base, ItemStack item, List<String> lines, boolean glow,
-                     Display.Billboard billboard, float scale, String id) {
+    public void show(Player player, Location base, ItemStack item, List<String> lines, boolean glow, Display.Billboard billboard, float scale, String id) {
         DisplayEntry entry = new DisplayEntry();
         entry.setId(id);
         entry.setType(DisplayEntry.Type.DISPLAY_ITEM);
