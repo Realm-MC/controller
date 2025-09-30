@@ -12,6 +12,7 @@ import com.github.retrooper.packetevents.wrapper.play.server.*;
 import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
+import com.realmmc.controller.spigot.entities.actions.Actions;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -33,6 +34,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public class NPCService implements Listener {
     private final NPCConfigLoader configLoader;
     private final Map<String, NPCData> globalNPCs = new ConcurrentHashMap<>();
+    private final Map<Integer, String> entityIdToEntryId = new ConcurrentHashMap<>();
     private final MojangSkinResolver mojangResolver = new MojangSkinResolver();
     private final MineskinResolver mineskinResolver = new MineskinResolver();
     private final Map<UUID, List<UUID>> nameHolograms = new HashMap<>();
@@ -43,6 +45,27 @@ public class NPCService implements Listener {
         this.configLoader = new NPCConfigLoader();
         this.configLoader.load();
         loadSavedNPCs();
+        // Listener de clique (UseEntity)
+        try {
+            com.github.retrooper.packetevents.event.PacketListener listener = new com.github.retrooper.packetevents.event.PacketListener() {
+                @Override
+                public void onPacketReceive(com.github.retrooper.packetevents.event.PacketReceiveEvent event) {
+                    if (event.getPacketType() == com.github.retrooper.packetevents.protocol.packettype.PacketType.Play.Client.USE_ENTITY) {
+                        var wrapper = new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientUseEntity(event);
+                        int targetId = wrapper.getEntityId();
+                        String entryId = entityIdToEntryId.get(targetId);
+                        if (entryId == null) return;
+                        Player player = (Player) event.getPlayer();
+                        DisplayEntry entry = configLoader.getById(entryId);
+                        if (entry == null || entry.getActions() == null || entry.getActions().isEmpty()) return;
+                        Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
+                            Actions.runAll(player, entry, player.getLocation(), entry.getActions());
+                        });
+                    }
+                }
+            };
+            PacketEvents.getAPI().getEventManager().registerListener(listener);
+        } catch (Throwable ignored) {}
     }
 
     @EventHandler
@@ -116,6 +139,7 @@ public class NPCService implements Listener {
                 NPCData npcData = createNPC(id, location, displayName, skin, entry.getTexturesValue(), entry.getTexturesSignature());
                 if (npcData != null) {
                     globalNPCs.put(id, npcData);
+                    entityIdToEntryId.put(npcData.getEntityId(), id);
                     spawnNameHologram(npcData);
                 }
             } catch (Exception e) {
