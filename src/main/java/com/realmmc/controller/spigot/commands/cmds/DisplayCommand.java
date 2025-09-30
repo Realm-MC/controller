@@ -183,8 +183,8 @@ public class DisplayCommand implements CommandInterface {
         }
 
         if (type == DisplayEntry.Type.NPC) {
-            if (args.length < 4) {
-                Messages.send(player, "<red>Uso: /display NPC <id> <skin_url|nick|player> <name>");
+            if (args.length < 3) {
+                Messages.send(player, "<red>Uso: /display NPC <id> <skin_url|nick|player>");
                 return;
             }
             String id = args[1];

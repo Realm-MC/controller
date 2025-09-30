@@ -23,6 +23,7 @@ public class DisplayItemService {
 
     public DisplayItemService(DisplayConfigLoader configLoader) {
         this.configLoader = configLoader;
+        try { clearAll(); } catch (Throwable ignored) {}
         loadSavedDisplays();
     }
 

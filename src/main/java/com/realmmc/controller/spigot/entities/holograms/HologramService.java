@@ -8,6 +8,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 
@@ -21,6 +22,7 @@ public class HologramService {
     public HologramService() {
         this.configLoader = new HologramConfigLoader();
         this.configLoader.load();
+        try { clearAll(); } catch (Throwable ignored) {}
         loadSavedHolograms();
     }
 
@@ -96,8 +98,10 @@ public class HologramService {
 
     public void clearAll() {
         for (World world : Bukkit.getWorlds()) {
-            for (org.bukkit.entity.Entity entity : world.getEntities()) {
-                if (entity instanceof TextDisplay) {
+            for (Entity entity : world.getEntities()) {
+                if (entity instanceof TextDisplay &&
+                        (entity.getScoreboardTags().contains("controller_hologram_line") ||
+                         entity.getScoreboardTags().contains("controller_npc_name_line"))) {
                     entity.remove();
                 }
             }
@@ -136,6 +140,9 @@ public class HologramService {
             textDisplay.setLineWidth(200);
             textDisplay.setAlignment(TextDisplay.TextAlignment.CENTER);
             textDisplay.setGlowing(glow);
+            textDisplay.customName(null);
+            textDisplay.setCustomNameVisible(false);
+            textDisplay.addScoreboardTag("controller_hologram_line");
             ids.add(textDisplay.getUniqueId());
         }
         return ids;
@@ -149,15 +156,27 @@ public class HologramService {
         if (ids == null) return;
         for (World world : Bukkit.getWorlds()) {
             for (UUID id : ids) {
-                org.bukkit.entity.Entity e = world.getEntity(id);
+                Entity e = world.getEntity(id);
                 if (e != null) e.remove();
             }
         }
     }
 
-    private org.bukkit.entity.Entity findEntityByUuid(UUID uuid) {
-        for (org.bukkit.World world : org.bukkit.Bukkit.getWorlds()) {
-            for (org.bukkit.entity.Entity entity : world.getEntities()) {
+    public void addTagToUUIDs(Collection<UUID> ids, String tag) {
+        if (ids == null || tag == null) return;
+        for (World world : Bukkit.getWorlds()) {
+            for (UUID id : ids) {
+                Entity e = world.getEntity(id);
+                if (e instanceof TextDisplay) {
+                    e.addScoreboardTag(tag);
+                }
+            }
+        }
+    }
+
+    private Entity findEntityByUuid(UUID uuid) {
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
                 if (entity.getUniqueId().equals(uuid)) {
                     return entity;
                 }
