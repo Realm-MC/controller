@@ -224,9 +224,12 @@ public class NPCService implements Listener {
                     }
                 }
             } catch (Throwable ignoredInner) {}
-            if (lines == null) lines = List.of("<gray>NPC</gray>");
+            if (lines == null || lines.isEmpty()) {
+                return;
+            }
 
             var ids = Main.getInstance().getHologramService().spawnTemporary(base, lines, false);
+            try { Main.getInstance().getHologramService().addTagToUUIDs(ids, "controller_npc_name_line"); } catch (Throwable ignored2) {}
             nameHolograms.put(npc.uuid(), ids);
         } catch (Throwable ignored) {
         }
@@ -328,6 +331,9 @@ public class NPCService implements Listener {
         entry.setPitch(location.getPitch());
         entry.setMessage(displayName);
         entry.setItem(skinSource);
+        if (entry.getLines() == null || entry.getLines().isEmpty()) {
+            entry.setLines(List.of("npc"));
+        }
         configLoader.addEntry(entry);
         configLoader.save();
         reloadAll();

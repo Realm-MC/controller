@@ -6,6 +6,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -52,6 +53,11 @@ public class NPCConfigLoader {
             for (String id : entriesSection.getKeys(false)) {
                 ConfigurationSection entrySection = entriesSection.getConfigurationSection(id);
                 if (entrySection != null) {
+                    String type = entrySection.getString("type", "NPC");
+                    if (!"NPC".equalsIgnoreCase(type)) {
+                        continue;
+                    }
+
                     DisplayEntry entry = new DisplayEntry();
                     entry.setId(id);
                     entry.setType(DisplayEntry.Type.NPC);
@@ -66,8 +72,9 @@ public class NPCConfigLoader {
                     entry.setTexturesValue(entrySection.getString("textures.value"));
                     entry.setTexturesSignature(entrySection.getString("textures.signature"));
                     entry.setActions(entrySection.getStringList("actions"));
+                    entry.setLines(entrySection.getStringList("lines"));
 
-                    if (entry.getWorld() != null && entry.getMessage() != null) {
+                    if (entry.getWorld() != null) {
                         entries.put(id, entry);
                     }
                 }
@@ -80,14 +87,15 @@ public class NPCConfigLoader {
         config = new YamlConfiguration();
         config.options().header(String.join("\n",
                 "# RealmMC Controller - NPCs",
-                "# Actions por labels (delay padrão 2s):",
+                "# Somente sintaxe de actions por labels é suportada.",
+                "# Exemplos:",
                 "#   actions:",
                 "#     - author={player}; action=openmenu(\"loja_principal\"); delay=1.5s",
-                "#     - action=message(\"<green>Olá {player}!\")",
+                "#     - action=message(\"<green>Olá {player}!\"); delay=500ms",
                 "#     - action=sound(ENTITY_PLAYER_LEVELUP, 1.0, 1.2)",
-                "#     - action=consolecmd(\"say {player} clicou no {id}\")",
-                "#     - action=teleport(100, 65, -30)",
-                "#     - action=give(DIAMOND, 3)"
+                "#     - menu=\"vip\"; action=broadcast(\"<gold>{player}</gold> abriu {menu}\")",
+                "#     - action=teleport(100.5, 65, -30, \"world\"); delay=3s",
+                "#     - action=give(DIAMOND, 5); delay=0"
         ));
         config.options().copyHeader(true);
 
@@ -111,9 +119,7 @@ public class NPCConfigLoader {
             if (entry.getActions() != null) {
                 config.set(path + ".actions", entry.getActions());
             }
-            if (entry.getLines() != null) {
-                config.set(path + ".lines", entry.getLines());
-            }
+            config.set(path + ".lines", entry.getLines());
         }
 
         try {
@@ -133,7 +139,7 @@ public class NPCConfigLoader {
     }
 
     public Collection<DisplayEntry> getEntries() {
-        return entries.values();
+        return new ArrayList<>(entries.values());
     }
 
     public DisplayEntry getById(String id) {
