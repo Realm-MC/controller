@@ -1,14 +1,19 @@
 package com.realmmc.controller.spigot.entities.npcs;
 
 import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.event.PacketListener;
+import com.github.retrooper.packetevents.event.PacketListenerAbstract;
+import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
 import com.github.retrooper.packetevents.protocol.entity.pose.EntityPose;
 import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
+import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.protocol.player.GameMode;
 import com.github.retrooper.packetevents.protocol.player.TextureProperty;
 import com.github.retrooper.packetevents.protocol.player.UserProfile;
 import com.github.retrooper.packetevents.wrapper.play.server.*;
+import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity;
 import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
@@ -45,13 +50,12 @@ public class NPCService implements Listener {
         this.configLoader = new NPCConfigLoader();
         this.configLoader.load();
         loadSavedNPCs();
-        // Listener de clique (UseEntity)
         try {
-            com.github.retrooper.packetevents.event.PacketListener listener = new com.github.retrooper.packetevents.event.PacketListener() {
+            PacketListenerAbstract listener = new PacketListenerAbstract() {
                 @Override
-                public void onPacketReceive(com.github.retrooper.packetevents.event.PacketReceiveEvent event) {
-                    if (event.getPacketType() == com.github.retrooper.packetevents.protocol.packettype.PacketType.Play.Client.USE_ENTITY) {
-                        var wrapper = new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientUseEntity(event);
+                public void onPacketReceive(PacketReceiveEvent event) {
+                    if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY) {
+                        WrapperPlayClientInteractEntity wrapper = new WrapperPlayClientInteractEntity(event);
                         int targetId = wrapper.getEntityId();
                         String entryId = entityIdToEntryId.get(targetId);
                         if (entryId == null) return;

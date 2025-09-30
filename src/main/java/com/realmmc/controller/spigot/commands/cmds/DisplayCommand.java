@@ -157,7 +157,10 @@ public class DisplayCommand implements CommandInterface {
                     }
                 } catch (Throwable ignored) {}
 
-                Messages.send(player, "<red>Nenhuma entidade suportada no alvo. Use /display reload <id>.");
+                try { Main.getInstance().getDisplayItemService().reload(); } catch (Throwable ignored) {}
+                try { Main.getInstance().getHologramService().reload(); } catch (Throwable ignored) {}
+                try { Main.getInstance().getNPCService().reloadAll(); } catch (Throwable ignored) {}
+                Messages.send(player, "<yellow>Nenhuma entidade detectada com precisão. Recarreguei Displays, Hologramas e NPCs.");
                 return;
             }
         }

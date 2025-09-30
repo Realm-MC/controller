@@ -124,6 +124,7 @@ public class DisplayItemService {
     }
 
     public void reload() {
+        configLoader.load();
         clearAll();
         loadSavedDisplays();
     }
