@@ -23,6 +23,21 @@ public class NPCConfigLoader {
                 configFile.getParentFile().mkdirs();
                 configFile.createNewFile();
                 logger.info("Arquivo npcs.yml criado.");
+                YamlConfiguration created = new YamlConfiguration();
+                created.options().header(String.join("\n",
+                        "# RealmMC Controller - NPCs",
+                        "# Somente sintaxe de actions por labels é suportada.",
+                        "# Exemplos:",
+                        "#   actions:",
+                        "#     - author={player}; action=openmenu(\"loja_principal\"); delay=1.5s",
+                        "#     - action=message(\"<green>Olá {player}!\"); delay=500ms",
+                        "#     - action=sound(ENTITY_PLAYER_LEVELUP, 1.0, 1.2)",
+                        "#     - menu=\"vip\"; action=broadcast(\"<gold>{player}</gold> abriu {menu}\")",
+                        "#     - action=teleport(100.5, 65, -30, \"world\"); delay=3s",
+                        "#     - action=give(DIAMOND, 5); delay=0"
+                ));
+                created.options().copyHeader(true);
+                created.save(configFile);
             } catch (IOException e) {
                 logger.severe("Erro ao criar npcs.yml: " + e.getMessage());
                 return;
@@ -62,6 +77,18 @@ public class NPCConfigLoader {
 
     public void save() {
         config = new YamlConfiguration();
+        config.options().header(String.join("\n",
+                "# RealmMC Controller - NPCs",
+                "# Actions por labels (delay padrão 2s):",
+                "#   actions:",
+                "#     - author={player}; action=openmenu(\"loja_principal\"); delay=1.5s",
+                "#     - action=message(\"<green>Olá {player}!\")",
+                "#     - action=sound(ENTITY_PLAYER_LEVELUP, 1.0, 1.2)",
+                "#     - action=consolecmd(\"say {player} clicou no {id}\")",
+                "#     - action=teleport(100, 65, -30)",
+                "#     - action=give(DIAMOND, 3)"
+        ));
+        config.options().copyHeader(true);
 
         for (Map.Entry<String, DisplayEntry> mapEntry : entries.entrySet()) {
             String id = mapEntry.getKey();

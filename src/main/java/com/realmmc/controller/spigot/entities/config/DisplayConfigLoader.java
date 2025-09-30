@@ -25,6 +25,21 @@ public class DisplayConfigLoader {
                 configFile.getParentFile().mkdirs();
                 configFile.createNewFile();
                 logger.info("Arquivo displays.yml criado.");
+                YamlConfiguration created = new YamlConfiguration();
+                created.options().header(String.join("\n",
+                        "# RealmMC Controller - Displays",
+                        "# Somente sintaxe de actions por labels é suportada.",
+                        "# Exemplos:",
+                        "#   actions:",
+                        "#     - action=message(\"<green>Olá {player}!\"); delay=750ms",
+                        "#     - author={player}; action=openmenu(\"loja_principal\")",
+                        "#     - action=sound(ENTITY_PLAYER_LEVELUP, 1.0, 1.2)",
+                        "#     - action=consolecmd(\"say {player} clicou no {id}\")",
+                        "#     - action=teleport(100.5, 65, -30, \"world\"); delay=2s",
+                        "#     - action=give(DIAMOND, 2)"
+                ));
+                created.options().copyHeader(true);
+                created.save(configFile);
             } catch (IOException e) {
                 logger.severe("Erro ao criar displays.yml: " + e.getMessage());
                 return;
@@ -72,6 +87,17 @@ public class DisplayConfigLoader {
 
     public void save() {
         config = new YamlConfiguration();
+        config.options().header(String.join("\n",
+                "# RealmMC Controller - Displays",
+                "# Actions por labels (delay padrão 2s):",
+                "#   actions:",
+                "#     - action=message(\"<green>Olá {player}!\")",
+                "#     - action=openmenu(\"loja_principal\"); delay=1.2s",
+                "#     - action=sound(ENTITY_PLAYER_LEVELUP, 1.0, 1.2)",
+                "#     - action=teleport(100, 65, -30)",
+                "#     - action=give(DIAMOND, 2)"
+        ));
+        config.options().copyHeader(true);
 
         for (Map.Entry<String, DisplayEntry> mapEntry : entries.entrySet()) {
             String id = mapEntry.getKey();
