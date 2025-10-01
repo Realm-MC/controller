@@ -143,12 +143,12 @@ public class Actions {
     }
 
     private static boolean isLabelStyle(String raw) {
-        return raw != null && raw.contains("=") && raw.contains(";");
+        return raw != null && raw.contains("=");
     }
 
     private static void runLabelStyle(Player player, DisplayEntry entry, Location location, String raw) {
         Map<String, String> labels = parseLabels(raw);
-        long delayTicks = parseDelayToTicks(labels.getOrDefault("delay", "2s"));
+        long delayTicks = parseDelayToTicks(labels.getOrDefault("delay", "0s"));
         ActionContext baseCtx = new ActionContext(player, entry, location, labels);
         Map<String, String> resolved = new HashMap<>();
         for (Map.Entry<String, String> e : labels.entrySet()) {
