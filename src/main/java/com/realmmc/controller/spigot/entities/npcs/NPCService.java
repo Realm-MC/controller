@@ -60,22 +60,36 @@ public class NPCService implements Listener {
                             WrapperPlayClientInteractEntity wrapper = new WrapperPlayClientInteractEntity(event);
                             int targetId = wrapper.getEntityId();
                             String entryId = entityIdToEntryId.get(targetId);
-                            if (entryId == null) return;
+                            try { Main.getInstance().getLogger().info("[NPC] Interact packet: entityId=" + targetId + ", packetAction=" + wrapper.getAction() + ", hand=" + wrapper.getHand()); } catch (Throwable ignored) {}
+                            if (entryId == null) {
+                                try { Main.getInstance().getLogger().info("[NPC] Ignored: entityId " + targetId + " not mapped to any entryId"); } catch (Throwable ignored) {}
+                                return;
+                            }
                             Player player = event.getPlayer();
                             String actionName = String.valueOf(wrapper.getAction());
                             if ("ATTACK".equals(actionName)) return;
-                            if (!("INTERACT".equals(actionName) || "INTERACT_AT".equals(actionName))) return;
                             String handName = String.valueOf(wrapper.getHand());
-                            if (handName != null && !handName.equals("MAIN_HAND")) return;
+                            if (handName != null && handName.equals("OFF_HAND")) return;
 
                             long now = System.currentTimeMillis();
                             String key = player.getUniqueId() + ":" + targetId;
                             Long last = clickDebounce.get(key);
-                            if (last != null && now - last < 300) return;
+                            if (last != null && now - last < 300) {
+                                try { Main.getInstance().getLogger().info("[NPC] Debounced click for key=" + key + " (" + (now - last) + "ms)"); } catch (Throwable ignored) {}
+                                return;
+                            }
                             clickDebounce.put(key, now);
 
                             DisplayEntry entry = configLoader.getById(entryId);
-                            if (entry == null || entry.getActions() == null || entry.getActions().isEmpty()) return;
+                            if (entry == null) {
+                                try { Main.getInstance().getLogger().info("[NPC] Entry null for entryId=" + entryId); } catch (Throwable ignored) {}
+                                return;
+                            }
+                            if (entry.getActions() == null || entry.getActions().isEmpty()) {
+                                try { Main.getInstance().getLogger().info("[NPC] No actions for entryId=" + entryId); } catch (Throwable ignored) {}
+                                return;
+                            }
+                            try { Main.getInstance().getLogger().info("[NPC] Running actions (" + entry.getActions().size() + ") for entryId=" + entryId + " player=" + player.getName()); } catch (Throwable ignored) {}
                             Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
                                 Actions.runAll(player, entry, player.getLocation(), entry.getActions());
                             });
