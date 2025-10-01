@@ -68,6 +68,27 @@ public class DisplayCommand implements CommandInterface {
                 return;
             }
 
+            try {
+                NPCConfigLoader n = new NPCConfigLoader(); n.load();
+                var dir = player.getEyeLocation().getDirection().normalize();
+                var origin = player.getEyeLocation().toVector();
+                double maxDist = 8.0;
+                double maxPerp = 0.75;
+                DisplayEntry nearestNpc = null; double bestT = Double.MAX_VALUE;
+                for (DisplayEntry e : n.getEntries()) {
+                    if (e.getType() != DisplayEntry.Type.NPC) continue;
+                    if (!player.getWorld().getName().equalsIgnoreCase(e.getWorld())) continue;
+                    var head = new org.bukkit.Location(player.getWorld(), e.getX(), e.getY(), e.getZ()).add(0, 1.6, 0).toVector();
+                    var v = head.clone().subtract(origin);
+                    double t = dir.dot(v);
+                    if (t < 0 || t > maxDist) continue;
+                    var perp = v.clone().subtract(dir.clone().multiply(t));
+                    double dLine = perp.length();
+                    if (dLine <= maxPerp && t < bestT) { bestT = t; nearestNpc = e; }
+                }
+                if (nearestNpc != null) { sendEntryInfo(player, nearestNpc, "npcs.yml"); return; }
+            } catch (Throwable ignored) {}
+
             RayTraceResult rt = player.getWorld().rayTraceEntities(
                     player.getEyeLocation(), player.getEyeLocation().getDirection(), 8.0, 0.3,
                     e -> e instanceof ItemDisplay || e instanceof TextDisplay
@@ -228,8 +249,8 @@ public class DisplayCommand implements CommandInterface {
                     if (e instanceof ItemDisplay) {
                         Main.getInstance().getDisplayItemService().reload();
                         Messages.send(player, "<green>Displays recarregados (alvo próximo: ItemDisplay)");
-                        return;
-                    } else if (e instanceof TextDisplay td2) {
+                    } else {
+                        TextDisplay td2 = (TextDisplay) e;
                         if (Main.getInstance().getNPCService().isNameHologram(td2.getUniqueId())) {
                             Main.getInstance().getNPCService().reloadAll();
                             Messages.send(player, "<green>NPCs recarregados (alvo próximo: holograma de nome)");
@@ -237,8 +258,8 @@ public class DisplayCommand implements CommandInterface {
                         }
                         Main.getInstance().getHologramService().reload();
                         Messages.send(player, "<green>Hologramas recarregados (alvo próximo: TextDisplay)");
-                        return;
                     }
+                    return;
                 }
 
                 try {
@@ -342,13 +363,13 @@ public class DisplayCommand implements CommandInterface {
             String joined = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
             List<String> lines;
             if (joined.contains("|")) {
-                lines = new java.util.ArrayList<>();
+                lines = new ArrayList<>();
                 for (String part : joined.split("\\|")) {
                     String s = part.trim();
                     if (!s.isEmpty()) lines.add(s);
                 }
             } else {
-                lines = java.util.List.of(joined);
+                lines = List.of(joined);
             }
             try {
                 HologramService svc = Main.getInstance().getHologramService();
