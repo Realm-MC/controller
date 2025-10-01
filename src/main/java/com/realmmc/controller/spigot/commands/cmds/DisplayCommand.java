@@ -1,5 +1,6 @@
 package com.realmmc.controller.spigot.commands.cmds;
 
+import com.destroystokyo.paper.profile.ProfileProperty;
 import com.realmmc.controller.shared.annotations.Cmd;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.spigot.Main;
@@ -8,18 +9,14 @@ import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.config.HologramConfigLoader;
 import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
-import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
-import com.realmmc.controller.spigot.entities.holograms.HologramService;
 import com.realmmc.controller.spigot.entities.npcs.NPCService;
-import org.bukkit.Material;
+import org.bukkit.Location;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.*;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.StringUtil;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -108,7 +105,7 @@ public class DisplayCommand implements CommandInterface {
                     for (DisplayEntry e : n.getEntries()) {
                         if (e.getType() != DisplayEntry.Type.NPC) continue;
                         if (!player.getWorld().getName().equalsIgnoreCase(e.getWorld())) continue;
-                        double d = td.getLocation().distance(new org.bukkit.Location(player.getWorld(), e.getX(), e.getY() + 2.0, e.getZ()));
+                        double d = td.getLocation().distance(new Location(player.getWorld(), e.getX(), e.getY() + 2.0, e.getZ()));
                         if (d < best) {
                             best = d;
                             nearest = e;
@@ -130,7 +127,7 @@ public class DisplayCommand implements CommandInterface {
                     for (DisplayEntry e : d.getEntries()) {
                         if (e.getType() != DisplayEntry.Type.DISPLAY_ITEM) continue;
                         if (!player.getWorld().getName().equalsIgnoreCase(e.getWorld())) continue;
-                        double dist = target.getLocation().distance(new org.bukkit.Location(player.getWorld(), e.getX(), e.getY(), e.getZ()));
+                        double dist = target.getLocation().distance(new Location(player.getWorld(), e.getX(), e.getY(), e.getZ()));
                         if (dist < best) {
                             best = dist;
                             nearest = e;
@@ -152,7 +149,7 @@ public class DisplayCommand implements CommandInterface {
                     for (DisplayEntry e : h.getEntries()) {
                         if (e.getType() != DisplayEntry.Type.HOLOGRAM) continue;
                         if (!player.getWorld().getName().equalsIgnoreCase(e.getWorld())) continue;
-                        double dist = target.getLocation().distance(new org.bukkit.Location(player.getWorld(), e.getX(), e.getY(), e.getZ()));
+                        double dist = target.getLocation().distance(new Location(player.getWorld(), e.getX(), e.getY(), e.getZ()));
                         if (dist < best) {
                             best = dist;
                             nearest = e;
@@ -310,102 +307,57 @@ public class DisplayCommand implements CommandInterface {
         }
 
         if (type == DisplayEntry.Type.NPC) {
-            if (args.length < 3) {
-                Messages.send(player, "<red>Uso: /display NPC <id> <skin_url|nick|player>");
+            if (args.length < 2) {
+                Messages.send(player, "<red>Uso: /display NPC <id> [skin_url|nick|player|self|auto]");
                 return;
             }
             String id = args[1];
-            String skin = args[2];
+            String skin = args.length >= 3 ? args[2] : null;
             try {
                 NPCService npcService = Main.getInstance().getNPCService();
                 if (npcService.getNpcById(id) != null) {
                     Messages.send(player, "<red>Já existe um NPC com o ID '" + id + "'.");
                     return;
                 }
-                npcService.spawnGlobal(id, player.getLocation(), null, skin);
-                Messages.send(player, "<green>NPC '" + id + "' criado com sucesso!");
+
+                boolean useSelf = (skin == null) || skin.equalsIgnoreCase("self") || skin.equalsIgnoreCase("auto");
+                if (useSelf) {
+                    String texVal = null, texSig = null;
+                    for (ProfileProperty prop : player.getPlayerProfile().getProperties()) {
+                        if ("textures".equals(prop.getName())) {
+                            texVal = prop.getValue();
+                            texSig = prop.getSignature();
+                            break;
+                        }
+                    }
+                    if (texVal != null && texSig != null) {
+                        npcService.spawnGlobal(id, player.getLocation(), null, "default");
+                        npcService.updateNpcTextures(id, texVal, texSig);
+                        Messages.send(player, "<green>NPC '" + id + "' criado com skin do executor.");
+                    } else {
+                        npcService.spawnGlobal(id, player.getLocation(), null, player.getName());
+                        Messages.send(player, "<yellow>Não encontrei textures assinadas no seu perfil. Usei seu nick como skin.");
+                    }
+                } else {
+                    npcService.spawnGlobal(id, player.getLocation(), null, skin);
+                    Messages.send(player, "<green>NPC '" + id + "' criado (skin='" + skin + "').");
+                }
             } catch (Exception e) {
                 Messages.send(player, "<red>Erro ao criar NPC: " + e.getMessage());
                 e.printStackTrace();
             }
             return;
         }
-
-        if (type == DisplayEntry.Type.DISPLAY_ITEM) {
-            if (args.length < 2) {
-                Messages.send(player, "<red>Uso: /display DISPLAY_ITEM <material> [text...]");
-                return;
-            }
-            String matArg = args[1];
-            String text = args.length > 2 ? String.join(" ", Arrays.copyOfRange(args, 2, args.length)) : null;
-            try {
-                Material mat = Material.valueOf(matArg.toUpperCase());
-                ItemStack item = new ItemStack(mat);
-                List<String> lines = text == null || text.isBlank() ? Collections.emptyList() : List.of(text);
-                DisplayItemService svc = Main.getInstance().getDisplayItemService();
-                String genId = "disp_" + System.currentTimeMillis();
-                svc.show(player, player.getLocation(), item, lines, false, Display.Billboard.CENTER, 3.0f, genId);
-                Messages.send(player, "<green>Display Item criado com sucesso!");
-            } catch (IllegalArgumentException ex) {
-                Messages.send(player, "<red>Material inválido: " + matArg);
-            } catch (Exception e) {
-                Messages.send(player, "<red>Erro ao criar Display Item: " + e.getMessage());
-                e.printStackTrace();
-            }
-            return;
-        }
-
-        if (type == DisplayEntry.Type.HOLOGRAM) {
-            if (args.length < 2) {
-                Messages.send(player, "<red>Uso: /display HOLOGRAM <text or line1|line2|...>");
-                return;
-            }
-            String joined = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
-            List<String> lines;
-            if (joined.contains("|")) {
-                lines = new ArrayList<>();
-                for (String part : joined.split("\\|")) {
-                    String s = part.trim();
-                    if (!s.isEmpty()) lines.add(s);
-                }
-            } else {
-                lines = List.of(joined);
-            }
-            try {
-                HologramService svc = Main.getInstance().getHologramService();
-                svc.showGlobal(player.getLocation(), lines, false);
-                Messages.send(player, "<green>Holograma criado com sucesso!");
-            } catch (Exception e) {
-                Messages.send(player, "<red>Erro ao criar Holograma: " + e.getMessage());
-                e.printStackTrace();
-            }
-            return;
-        }
-
-        Messages.send(player, "<red>Tipo '" + type.name() + "' ainda não implementado aqui.");
     }
 
     private void showHelp(CommandSender sender) {
         Messages.send(sender, "<#FFD700>--- Ajuda do Comando /display ---");
-        Messages.send(sender, "<#781DFF>/display NPC <id> <skin> <name> <#777777>- Cria um NPC no seu local.");
+        Messages.send(sender, "<#781DFF>/display NPC <id> [skin_url|nick|player|self|auto] <#777777>- Cria um NPC no seu local.");
         Messages.send(sender, "<#781DFF>/display DISPLAY_ITEM <material> [text...] <#777777>- Cria um item display.");
         Messages.send(sender, "<#781DFF>/display HOLOGRAM <text or line1|line2|...> <#777777>- Cria um holograma.");
         Messages.send(sender, "<#781DFF>/display INFO [id] <#777777>- Mostra informações sobre a entidade alvo ou por id.");
         Messages.send(sender, "<#781DFF>/display reload [id] <#777777>- Recarrega a entidade do alvo ou por id (releitura do YML).");
         Messages.send(sender, "<gray>Types: DISPLAY_ITEM, HOLOGRAM, NPC (case-insensitive)");
-    }
-
-    @Override
-    public List<String> tabComplete(CommandSender sender, String[] args) {
-        if (!sender.hasPermission("controller.manager")) {
-            return Collections.emptyList();
-        }
-
-        if (args.length == 1) {
-            return StringUtil.copyPartialMatches(args[0], List.of("INFO", "NPC", "HOLOGRAM", "DISPLAY_ITEM"), new ArrayList<>());
-        }
-
-        return Collections.emptyList();
     }
 
     private void sendEntryInfo(Player player, DisplayEntry e, String source) {

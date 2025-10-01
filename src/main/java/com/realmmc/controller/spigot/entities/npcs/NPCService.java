@@ -179,7 +179,9 @@ public class NPCService implements Listener {
             String internalName = (id != null && !id.isEmpty()) ? id : "NPC_" + entityId;
             UserProfile profile = new UserProfile(npcUUID, internalName);
 
-            if (!"player".equalsIgnoreCase(skinSource)) {
+            if (texturesValue != null && texturesSignature != null) {
+                profile.getTextureProperties().add(new TextureProperty("textures", texturesValue, texturesSignature));
+            } else if (!"player".equalsIgnoreCase(skinSource)) {
                 TextureProperty texture = null;
                 if (skinSource != null && (skinSource.startsWith("http://") || skinSource.startsWith("https://"))) {
                     texture = mineskinResolver.resolveFromUrl(skinSource);
@@ -345,6 +347,17 @@ public class NPCService implements Listener {
             throw new IllegalArgumentException("Nenhuma entry encontrada para o ID: " + id);
         }
         entry.setItem(newSkinSource);
+        configLoader.save();
+        reloadAll();
+    }
+
+    public void updateNpcTextures(String id, String texturesValue, String texturesSignature) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry == null) {
+            throw new IllegalArgumentException("Nenhuma entry encontrada para o ID: " + id);
+        }
+        entry.setTexturesValue(texturesValue);
+        entry.setTexturesSignature(texturesSignature);
         configLoader.save();
         reloadAll();
     }
