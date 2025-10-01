@@ -45,6 +45,113 @@ public class DisplayCommand implements CommandInterface {
 
         String typeArg = args[0];
 
+        if (typeArg.equalsIgnoreCase("info")) {
+            if (args.length >= 2) {
+                String qid = args[1];
+                DisplayEntry found = null;
+                String source = null;
+                try {
+                    DisplayConfigLoader d = new DisplayConfigLoader(); d.load();
+                    found = d.getById(qid); if (found != null) source = "displays.yml";
+                } catch (Throwable ignored) {}
+                if (found == null) {
+                    try { HologramConfigLoader h = new HologramConfigLoader(); h.load(); found = h.getById(qid); if (found != null) source = "holograms.yml"; } catch (Throwable ignored) {}
+                }
+                if (found == null) {
+                    try { NPCConfigLoader n = new NPCConfigLoader(); n.load(); found = n.getById(qid); if (found != null) source = "npcs.yml"; } catch (Throwable ignored) {}
+                }
+                if (found == null) {
+                    Messages.send(player, "<red>Nenhuma entry com id '" + qid + "' encontrada nos YMLs.");
+                    return;
+                }
+                sendEntryInfo(player, found, source);
+                return;
+            }
+
+            RayTraceResult rt = player.getWorld().rayTraceEntities(
+                    player.getEyeLocation(), player.getEyeLocation().getDirection(), 8.0, 0.3,
+                    e -> e instanceof ItemDisplay || e instanceof TextDisplay
+            );
+            Entity target = rt != null ? rt.getHitEntity() : player.getTargetEntity(6);
+            switch (target) {
+                case null -> {
+                    Messages.send(player, "<red>Nenhuma entidade em foco para inspecionar.");
+                    return;
+                }
+
+                case TextDisplay td when Main.getInstance().getNPCService().isNameHologram(td.getUniqueId()) -> {
+                    NPCConfigLoader n = new NPCConfigLoader();
+                    n.load();
+                    DisplayEntry nearest = null;
+                    double best = Double.MAX_VALUE;
+                    for (DisplayEntry e : n.getEntries()) {
+                        if (e.getType() != DisplayEntry.Type.NPC) continue;
+                        if (!player.getWorld().getName().equalsIgnoreCase(e.getWorld())) continue;
+                        double d = td.getLocation().distance(new org.bukkit.Location(player.getWorld(), e.getX(), e.getY() + 2.0, e.getZ()));
+                        if (d < best) {
+                            best = d;
+                            nearest = e;
+                        }
+                    }
+                    if (nearest != null && best <= 4.0) {
+                        sendEntryInfo(player, nearest, "npcs.yml");
+                        return;
+                    }
+                    Messages.send(player, "<red>NPC alvo não encontrado no YAML.");
+                    return;
+                }
+
+                case ItemDisplay itemDisplay -> {
+                    DisplayConfigLoader d = new DisplayConfigLoader();
+                    d.load();
+                    DisplayEntry nearest = null;
+                    double best = Double.MAX_VALUE;
+                    for (DisplayEntry e : d.getEntries()) {
+                        if (e.getType() != DisplayEntry.Type.DISPLAY_ITEM) continue;
+                        if (!player.getWorld().getName().equalsIgnoreCase(e.getWorld())) continue;
+                        double dist = target.getLocation().distance(new org.bukkit.Location(player.getWorld(), e.getX(), e.getY(), e.getZ()));
+                        if (dist < best) {
+                            best = dist;
+                            nearest = e;
+                        }
+                    }
+                    if (nearest != null && best <= 3.0) {
+                        sendEntryInfo(player, nearest, "displays.yml");
+                        return;
+                    }
+                    Messages.send(player, "<red>Display Item alvo não encontrado no YAML.");
+                    return;
+                }
+
+                case TextDisplay textDisplay -> {
+                    HologramConfigLoader h = new HologramConfigLoader();
+                    h.load();
+                    DisplayEntry nearest = null;
+                    double best = Double.MAX_VALUE;
+                    for (DisplayEntry e : h.getEntries()) {
+                        if (e.getType() != DisplayEntry.Type.HOLOGRAM) continue;
+                        if (!player.getWorld().getName().equalsIgnoreCase(e.getWorld())) continue;
+                        double dist = target.getLocation().distance(new org.bukkit.Location(player.getWorld(), e.getX(), e.getY(), e.getZ()));
+                        if (dist < best) {
+                            best = dist;
+                            nearest = e;
+                        }
+                    }
+                    if (nearest != null && best <= 3.0) {
+                        sendEntryInfo(player, nearest, "holograms.yml");
+                        return;
+                    }
+                    Messages.send(player, "<red>Holograma alvo não encontrado no YAML.");
+                    return;
+                }
+                default -> {
+                }
+            }
+
+            Messages.send(player, "<red>Tipo de alvo não suportado para info.");
+            return;
+        }
+
         if (typeArg.equalsIgnoreCase("reload")) {
             if (args.length >= 2) {
                 String id = args[1];
@@ -80,7 +187,6 @@ public class DisplayCommand implements CommandInterface {
                 }
 
                 Messages.send(player, "<red>Nenhuma entidade com id '" + id + "' encontrada nos YMLs.");
-                return;
             } else {
                 RayTraceResult rt = player.getWorld().rayTraceEntities(
                         player.getEyeLocation(),
@@ -173,8 +279,8 @@ public class DisplayCommand implements CommandInterface {
                 } catch (Throwable ignored) {
                 }
                 Messages.send(player, "<yellow>Nenhuma entidade detectada com precisão. Recarreguei Displays, Hologramas e NPCs.");
-                return;
             }
+            return;
         }
         DisplayEntry.Type type = DisplayEntry.Type.fromString(typeArg);
         if (type == null) {
@@ -260,10 +366,11 @@ public class DisplayCommand implements CommandInterface {
 
     private void showHelp(CommandSender sender) {
         Messages.send(sender, "<#FFD700>--- Ajuda do Comando /display ---");
-        Messages.send(sender, "<#FFFF00>/display NPC <id> <skin> <name> <#777777>- Cria um NPC no seu local.");
-        Messages.send(sender, "<#FFFF00>/display DISPLAY_ITEM <material> [text...] <#777777>- Cria um item display.");
-        Messages.send(sender, "<#FFFF00>/display HOLOGRAM <text or line1|line2|...> <#777777>- Cria um holograma.");
-        Messages.send(sender, "<#FFFF00>/display reload [id] <#777777>- Recarrega a entidade do alvo ou por id (releitura do YML).");
+        Messages.send(sender, "<#781DFF>/display NPC <id> <skin> <name> <#777777>- Cria um NPC no seu local.");
+        Messages.send(sender, "<#781DFF>/display DISPLAY_ITEM <material> [text...] <#777777>- Cria um item display.");
+        Messages.send(sender, "<#781DFF>/display HOLOGRAM <text or line1|line2|...> <#777777>- Cria um holograma.");
+        Messages.send(sender, "<#781DFF>/display INFO [id] <#777777>- Mostra informações sobre a entidade alvo ou por id.");
+        Messages.send(sender, "<#781DFF>/display reload [id] <#777777>- Recarrega a entidade do alvo ou por id (releitura do YML).");
         Messages.send(sender, "<gray>Types: DISPLAY_ITEM, HOLOGRAM, NPC (case-insensitive)");
     }
 
@@ -274,9 +381,32 @@ public class DisplayCommand implements CommandInterface {
         }
 
         if (args.length == 1) {
-            return StringUtil.copyPartialMatches(args[0], List.of("NPC", "HOLOGRAM", "DISPLAY_ITEM"), new ArrayList<>());
+            return StringUtil.copyPartialMatches(args[0], List.of("INFO", "NPC", "HOLOGRAM", "DISPLAY_ITEM"), new ArrayList<>());
         }
 
         return Collections.emptyList();
+    }
+
+    private void sendEntryInfo(Player player, DisplayEntry e, String source) {
+        Messages.send(player, "<gray>--- <yellow>Entry Info</yellow> ---");
+        Messages.send(player, "<gray>source: <white>" + source);
+        Messages.send(player, "<gray>id: <white>" + e.getId());
+        Messages.send(player, "<gray>type: <white>" + e.getType());
+        Messages.send(player, "<gray>world: <white>" + e.getWorld());
+        Messages.send(player, String.format("<gray>pos: <white>(%.3f, %.3f, %.3f)</white> yaw=<white>%.2f</white> pitch=<white>%.2f</white>", e.getX(), e.getY(), e.getZ(), e.getYaw(), e.getPitch()));
+        if (e.getItem() != null) Messages.send(player, "<gray>item/skin: <white>" + e.getItem());
+        if (e.getBillboard() != null) Messages.send(player, "<gray>billboard: <white>" + e.getBillboard());
+        if (e.getScale() != null) Messages.send(player, "<gray>scale: <white>" + e.getScale());
+        if (e.getGlow() != null) Messages.send(player, "<gray>glow: <white>" + e.getGlow());
+        List<String> lines = e.getLines();
+        if (lines != null && !lines.isEmpty()) {
+            Messages.send(player, "<gray>lines:");
+            for (String l : lines) Messages.send(player, "  <white>• " + l);
+        }
+        List<String> actions = e.getActions();
+        if (actions != null && !actions.isEmpty()) {
+            Messages.send(player, "<gray>actions:");
+            for (String a : actions) Messages.send(player, "  <white>• " + a);
+        }
     }
 }
