@@ -16,9 +16,31 @@ import org.bukkit.entity.*;
 import org.bukkit.util.RayTraceResult;
 
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Cmd(cmd = "display", aliases = {})
 public class DisplayCommand implements CommandInterface {
+
+    private static final long CONFIRM_TIMEOUT_MS = 30_000L;
+    private static final Map<UUID, PendingRemoval> removeConfirm = new ConcurrentHashMap<>();
+    private record PendingRemoval(String id, long expiresAt) {}
+    private boolean confirmOrWarn(Player player, String id) {
+        long now = System.currentTimeMillis();
+        PendingRemoval pending = removeConfirm.get(player.getUniqueId());
+        if (pending != null && (pending.expiresAt() < now)) {
+            removeConfirm.remove(player.getUniqueId());
+            pending = null;
+        }
+        if (pending == null || !pending.id().equals(id)) {
+            removeConfirm.put(player.getUniqueId(), new PendingRemoval(id, now + CONFIRM_TIMEOUT_MS));
+            Messages.send(player, "<yellow>Você está preste a apagar <white>" + id + "</white>, utilize novamente o comando em até 30s para confirmar.");
+            return false;
+        }
+        removeConfirm.remove(player.getUniqueId());
+        return true;
+    }
 
     @Override
     public void execute(CommandSender sender, String label, String[] args) {
@@ -42,6 +64,7 @@ public class DisplayCommand implements CommandInterface {
         if (typeArg.equalsIgnoreCase("remove")) {
             if (args.length >= 2) {
                 String rid = args[1];
+                if (!confirmOrWarn(player, rid)) return;
                 boolean removed = false;
                 try { DisplayConfigLoader d = new DisplayConfigLoader(); d.load(); if (d.removeEntry(rid)) { removed = true; Main.getInstance().getDisplayItemService().reload(); } } catch (Throwable ignored) {}
                 try { HologramConfigLoader h = new HologramConfigLoader(); h.load(); if (h.removeEntry(rid)) { removed = true; Main.getInstance().getHologramService().reload(); } } catch (Throwable ignored) {}
@@ -63,7 +86,11 @@ public class DisplayCommand implements CommandInterface {
                     var v = head.clone().subtract(origin); double t = dir.dot(v); if (t < 0 || t > maxDist) continue;
                     var perp = v.clone().subtract(dir.clone().multiply(t)); if (perp.length() <= maxPerp && t < bestT) { bestT = t; nearestNpc = e; }
                 }
-                if (nearestNpc != null && n.removeEntry(nearestNpc.getId())) { Main.getInstance().getNPCService().reloadAll(); Messages.send(player, "<green>NPC removido (id=" + nearestNpc.getId() + ")"); return; }
+                if (nearestNpc != null) {
+                    String nid = nearestNpc.getId();
+                    if (!confirmOrWarn(player, nid)) return;
+                    if (n.removeEntry(nid)) { Main.getInstance().getNPCService().reloadAll(); Messages.send(player, "<green>NPC removido (id=" + nid + ")"); return; }
+                }
             } catch (Throwable ignored) {}
 
             RayTraceResult rt = player.getWorld().rayTraceEntities(
@@ -81,9 +108,11 @@ public class DisplayCommand implements CommandInterface {
                     if (dist < best) { best = dist; nearest = e; }
                 }
                 if (nearest != null && best <= 3.0) {
-                    d.removeEntry(nearest.getId());
+                    String did = nearest.getId();
+                    if (!confirmOrWarn(player, did)) return;
+                    d.removeEntry(did);
                     Main.getInstance().getDisplayItemService().reload();
-                    Messages.send(player, "<green>Display removido (id=" + nearest.getId() + ")");
+                    Messages.send(player, "<green>Display removido (id=" + did + ")");
                     return;
                 }
 
@@ -95,7 +124,11 @@ public class DisplayCommand implements CommandInterface {
                     double dist = target.getLocation().distance(new Location(player.getWorld(), e.getX(), e.getY(), e.getZ()));
                     if (dist < best) { best = dist; nearest = e; }
                 }
-                if (nearest != null && best <= 3.0 && h.removeEntry(nearest.getId())) { Main.getInstance().getHologramService().reload(); Messages.send(player, "<green>Holograma removido (id=" + nearest.getId() + ")"); return; }
+                if (nearest != null && best <= 3.0) {
+                    String hid = nearest.getId();
+                    if (!confirmOrWarn(player, hid)) return;
+                    if (h.removeEntry(hid)) { Main.getInstance().getHologramService().reload(); Messages.send(player, "<green>Holograma removido (id=" + hid + ")"); return; }
+                }
             }
 
             Messages.send(player, "<red>Nenhuma entidade alvo removível encontrada.");
