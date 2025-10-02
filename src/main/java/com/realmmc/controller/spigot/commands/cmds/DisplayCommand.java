@@ -14,10 +14,7 @@ import org.bukkit.Location;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.*;
 import org.bukkit.util.RayTraceResult;
-import org.bukkit.util.StringUtil;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 @Cmd(cmd = "display", aliases = {})
