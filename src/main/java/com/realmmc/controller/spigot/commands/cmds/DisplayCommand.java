@@ -39,6 +39,68 @@ public class DisplayCommand implements CommandInterface {
 
         String typeArg = args[0];
 
+        if (typeArg.equalsIgnoreCase("remove")) {
+            if (args.length >= 2) {
+                String rid = args[1];
+                boolean removed = false;
+                try { DisplayConfigLoader d = new DisplayConfigLoader(); d.load(); if (d.removeEntry(rid)) { removed = true; Main.getInstance().getDisplayItemService().reload(); } } catch (Throwable ignored) {}
+                try { HologramConfigLoader h = new HologramConfigLoader(); h.load(); if (h.removeEntry(rid)) { removed = true; Main.getInstance().getHologramService().reload(); } } catch (Throwable ignored) {}
+                try { NPCConfigLoader n = new NPCConfigLoader(); n.load(); if (n.removeEntry(rid)) { removed = true; Main.getInstance().getNPCService().reloadAll(); } } catch (Throwable ignored) {}
+                if (removed) { Messages.send(player, "<green>Removido ID '" + rid + "' e recarregado."); } else { Messages.send(player, "<red>ID '" + rid + "' não encontrado."); }
+                return;
+            }
+
+            try {
+                NPCConfigLoader n = new NPCConfigLoader(); n.load();
+                var dir = player.getEyeLocation().getDirection().normalize();
+                var origin = player.getEyeLocation().toVector();
+                double maxDist = 8.0; double maxPerp = 0.75;
+                DisplayEntry nearestNpc = null; double bestT = Double.MAX_VALUE;
+                for (DisplayEntry e : n.getEntries()) {
+                    if (e.getType() != DisplayEntry.Type.NPC) continue;
+                    if (!player.getWorld().getName().equalsIgnoreCase(e.getWorld())) continue;
+                    var head = new Location(player.getWorld(), e.getX(), e.getY(), e.getZ()).add(0, 1.6, 0).toVector();
+                    var v = head.clone().subtract(origin); double t = dir.dot(v); if (t < 0 || t > maxDist) continue;
+                    var perp = v.clone().subtract(dir.clone().multiply(t)); if (perp.length() <= maxPerp && t < bestT) { bestT = t; nearestNpc = e; }
+                }
+                if (nearestNpc != null && n.removeEntry(nearestNpc.getId())) { Main.getInstance().getNPCService().reloadAll(); Messages.send(player, "<green>NPC removido (id=" + nearestNpc.getId() + ")"); return; }
+            } catch (Throwable ignored) {}
+
+            RayTraceResult rt = player.getWorld().rayTraceEntities(
+                    player.getEyeLocation(), player.getEyeLocation().getDirection(), 8.0, 0.6,
+                    e -> e instanceof ItemDisplay || e instanceof TextDisplay
+            );
+            Entity target = rt != null ? rt.getHitEntity() : player.getTargetEntity(6);
+            if (target instanceof ItemDisplay || target instanceof TextDisplay) {
+                DisplayConfigLoader d = new DisplayConfigLoader(); d.load();
+                DisplayEntry nearest = null; double best = Double.MAX_VALUE;
+                for (DisplayEntry e : d.getEntries()) {
+                    if (e.getType() != DisplayEntry.Type.DISPLAY_ITEM) continue;
+                    if (!player.getWorld().getName().equalsIgnoreCase(e.getWorld())) continue;
+                    double dist = target.getLocation().distance(new Location(player.getWorld(), e.getX(), e.getY(), e.getZ()));
+                    if (dist < best) { best = dist; nearest = e; }
+                }
+                if (nearest != null && best <= 3.0) {
+                    d.removeEntry(nearest.getId());
+                    Main.getInstance().getDisplayItemService().reload();
+                    Messages.send(player, "<green>Display removido (id=" + nearest.getId() + ")");
+                    return;
+                }
+
+                HologramConfigLoader h = new HologramConfigLoader(); h.load();
+                nearest = null; best = Double.MAX_VALUE;
+                for (DisplayEntry e : h.getEntries()) {
+                    if (e.getType() != DisplayEntry.Type.HOLOGRAM) continue;
+                    if (!player.getWorld().getName().equalsIgnoreCase(e.getWorld())) continue;
+                    double dist = target.getLocation().distance(new Location(player.getWorld(), e.getX(), e.getY(), e.getZ()));
+                    if (dist < best) { best = dist; nearest = e; }
+                }
+                if (nearest != null && best <= 3.0 && h.removeEntry(nearest.getId())) { Main.getInstance().getHologramService().reload(); Messages.send(player, "<green>Holograma removido (id=" + nearest.getId() + ")"); return; }
+            }
+
+            Messages.send(player, "<red>Nenhuma entidade alvo removível encontrada.");
+            return;
+        }
         if (typeArg.equalsIgnoreCase("info")) {
             if (args.length >= 2) {
                 String qid = args[1];
@@ -72,7 +134,7 @@ public class DisplayCommand implements CommandInterface {
                 for (DisplayEntry e : n.getEntries()) {
                     if (e.getType() != DisplayEntry.Type.NPC) continue;
                     if (!player.getWorld().getName().equalsIgnoreCase(e.getWorld())) continue;
-                    var head = new org.bukkit.Location(player.getWorld(), e.getX(), e.getY(), e.getZ()).add(0, 1.6, 0).toVector();
+                    var head = new Location(player.getWorld(), e.getX(), e.getY(), e.getZ()).add(0, 1.6, 0).toVector();
                     var v = head.clone().subtract(origin);
                     double t = dir.dot(v);
                     if (t < 0 || t > maxDist) continue;
@@ -352,6 +414,7 @@ public class DisplayCommand implements CommandInterface {
         Messages.send(sender, "<#781DFF>/display NPC <id> [skin_url|nick|player|self|auto] <#777777>- Cria um NPC no seu local.");
         Messages.send(sender, "<#781DFF>/display DISPLAY_ITEM <material> [text...] <#777777>- Cria um item display.");
         Messages.send(sender, "<#781DFF>/display HOLOGRAM <text or line1|line2|...> <#777777>- Cria um holograma.");
+        Messages.send(sender, "<#781DFF>/display REMOVE [id] <#777777>- Remove por id ou pelo alvo que você está mirando.");
         Messages.send(sender, "<#781DFF>/display INFO [id] <#777777>- Mostra informações sobre a entidade alvo ou por id.");
         Messages.send(sender, "<#781DFF>/display reload [id] <#777777>- Recarrega a entidade do alvo ou por id (releitura do YML).");
         Messages.send(sender, "<gray>Types: DISPLAY_ITEM, HOLOGRAM, NPC (case-insensitive)");

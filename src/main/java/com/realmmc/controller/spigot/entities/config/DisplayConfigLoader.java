@@ -142,4 +142,12 @@ public class DisplayConfigLoader {
     public DisplayEntry getById(String id) {
         return entries.get(id);
     }
+
+    public boolean removeEntry(String id) {
+        if (id == null) return false;
+        DisplayEntry removed = entries.remove(id);
+        if (removed == null) return false;
+        save();
+        return true;
+    }
 }
