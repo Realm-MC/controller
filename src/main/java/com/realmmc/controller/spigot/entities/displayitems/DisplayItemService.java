@@ -1,5 +1,12 @@
 package com.realmmc.controller.spigot.entities.displayitems;
 
+import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.event.PacketListenerAbstract;
+import com.github.retrooper.packetevents.event.PacketReceiveEvent;
+import com.github.retrooper.packetevents.protocol.packettype.PacketType;
+import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity;
+import com.realmmc.controller.spigot.Main;
+import com.realmmc.controller.spigot.entities.actions.Actions;
 import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import net.kyori.adventure.text.Component;
@@ -15,16 +22,53 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class DisplayItemService {
     private final Map<UUID, List<UUID>> spawnedByPlayer = new HashMap<>();
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
     private final DisplayConfigLoader configLoader;
+    private final Map<Integer, String> entityIdToEntryId = new ConcurrentHashMap<>();
+    private final Map<String, Long> clickDebounce = new ConcurrentHashMap<>();
+    private PacketListenerAbstract interactListener;
 
     public DisplayItemService(DisplayConfigLoader configLoader) {
         this.configLoader = configLoader;
         try { clearAll(); } catch (Throwable ignored) {}
         loadSavedDisplays();
+        try {
+            if (interactListener == null) {
+                interactListener = new PacketListenerAbstract() {
+                    @Override
+                    public void onPacketReceive(PacketReceiveEvent event) {
+                        if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY) {
+                            WrapperPlayClientInteractEntity wrapper = new WrapperPlayClientInteractEntity(event);
+                            int targetId = wrapper.getEntityId();
+                            String entryId = entityIdToEntryId.get(targetId);
+                            if (entryId == null) return;
+                            Player player = event.getPlayer();
+                            String actionName = String.valueOf(wrapper.getAction());
+                            if ("ATTACK".equals(actionName)) return;
+                            String handName = String.valueOf(wrapper.getHand());
+                            if (handName != null && handName.equals("OFF_HAND")) return;
+
+                            long now = System.currentTimeMillis();
+                            String key = player.getUniqueId() + ":" + targetId;
+                            Long last = clickDebounce.get(key);
+                            if (last != null && now - last < 300) return;
+                            clickDebounce.put(key, now);
+
+                            DisplayEntry entry = configLoader.getById(entryId);
+                            if (entry == null || entry.getActions() == null || entry.getActions().isEmpty()) return;
+                            Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
+                                Actions.runAll(player, entry, player.getLocation(), entry.getActions());
+                            });
+                        }
+                    }
+                };
+                PacketEvents.getAPI().getEventManager().registerListener(interactListener);
+            }
+        } catch (Throwable ignored) {}
     }
 
     private void loadSavedDisplays() {
@@ -43,7 +87,7 @@ public class DisplayItemService {
                 ItemStack item = new ItemStack(Material.valueOf(entry.getItem()));
                 Display.Billboard billboard = Display.Billboard.valueOf(entry.getBillboard());
 
-                showWithoutSaving(location, item, entry.getLines(), entry.getGlow(), billboard, entry.getScale());
+                showWithoutSaving(entry, location, item, entry.getLines(), entry.getGlow(), billboard, entry.getScale());
 
             } catch (Exception e) {
                 System.err.println("Erro ao carregar display ID " + entry.getId() + ": " + e.getMessage());
@@ -51,7 +95,7 @@ public class DisplayItemService {
         }
     }
 
-    private void showWithoutSaving(Location base, ItemStack item, List<String> lines, boolean glow,
+    private void showWithoutSaving(DisplayEntry entry, Location base, ItemStack item, List<String> lines, boolean glow,
                                    Display.Billboard billboard, float scale) {
         List<UUID> entities = new ArrayList<>();
 
@@ -66,6 +110,7 @@ public class DisplayItemService {
         itemDisplay.customName(null);
         itemDisplay.setCustomNameVisible(false);
         itemDisplay.addScoreboardTag("controller_display_item");
+        try { entityIdToEntryId.put(itemDisplay.getEntityId(), entry.getId()); } catch (Throwable ignored) {}
 
         Transformation transformation = new Transformation(
                 new Vector3f(0f, 0f, 0f),
@@ -98,6 +143,7 @@ public class DisplayItemService {
                 textDisplay.customName(null);
                 textDisplay.setCustomNameVisible(false);
                 textDisplay.addScoreboardTag("controller_display_line");
+                try { entityIdToEntryId.put(textDisplay.getEntityId(), entry.getId()); } catch (Throwable ignored) {}
 
                 entities.add(textDisplay.getUniqueId());
             }
@@ -123,7 +169,7 @@ public class DisplayItemService {
         configLoader.addEntry(entry);
         configLoader.save();
 
-        showWithoutSaving(base, item, lines, glow, billboard, scale);
+        showWithoutSaving(entry, base, item, lines, glow, billboard, scale);
     }
 
     public void reload() {
