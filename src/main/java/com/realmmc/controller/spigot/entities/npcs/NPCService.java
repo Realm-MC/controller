@@ -46,6 +46,7 @@ public class NPCService implements Listener {
     private final Map<UUID, List<UUID>> nameHolograms = new HashMap<>();
     private final MiniMessage mm = MiniMessage.miniMessage();
     private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.builder().character('&').hexColors().build();
+    private final Map<Integer, Map<UUID, float[]>> npcViewerRot = new ConcurrentHashMap<>();
 
     public NPCService() {
         this.configLoader = new NPCConfigLoader();
@@ -92,55 +93,53 @@ public class NPCService implements Listener {
         try {
             Bukkit.getScheduler().runTaskTimer(Main.getInstance(), () -> {
                 if (globalNPCs.isEmpty()) return;
-
                 for (Map.Entry<String, NPCData> kv : globalNPCs.entrySet()) {
                     String id = kv.getKey();
                     NPCData npc = kv.getValue();
                     DisplayEntry entry = configLoader.getById(id);
-
                     if (entry == null || !Boolean.TRUE.equals(entry.getIsMovible())) continue;
-
                     double radius = 6.0;
                     Location npcLoc = npc.location();
 
-                    for (Player p : Bukkit.getOnlinePlayers()) {
-                        if (!p.isValid() || p.isDead()) continue;
-                        if (!p.getWorld().equals(npcLoc.getWorld())) continue;
+                    Map<UUID, float[]> perViewer = npcViewerRot.computeIfAbsent(npc.entityId(), k -> new ConcurrentHashMap<>());
 
-                        Location eye = p.getEyeLocation();
+                    for (Player viewer : Bukkit.getOnlinePlayers()) {
+                        if (!viewer.isValid() || viewer.isDead()) continue;
+                        if (!viewer.getWorld().equals(npcLoc.getWorld())) continue;
 
-                        double dx = eye.getX() - npcLoc.getX();
-                        double dy = eye.getY() - npcLoc.getY();
-                        double dz = eye.getZ() - npcLoc.getZ();
-                        double distSq = dx * dx + dy * dy + dz * dz;
-
-                        float targetYaw, targetPitch;
-
-                        if (distSq <= radius * radius) {
+                        float targetYaw;
+                        float targetPitch;
+                        double dsq = viewer.getLocation().distanceSquared(npcLoc);
+                        if (dsq <= radius * radius) {
+                            Location eye = viewer.getEyeLocation();
+                            double dx = eye.getX() - npcLoc.getX();
+                            double dy = eye.getY() - (npcLoc.getY() + 1.50);
+                            double dz = eye.getZ() - npcLoc.getZ();
                             double yawRad = Math.atan2(-dx, dz);
-                            double xz = Math.sqrt(dx * dx + dz * dz);
+                            double xz = Math.max(0.0001, Math.sqrt(dx * dx + dz * dz));
                             double pitchRad = -Math.atan2(dy, xz);
-
                             targetYaw = normalizeYaw((float) Math.toDegrees(yawRad));
-                            targetPitch = (float) Math.toDegrees(pitchRad);
+                            targetPitch = clampPitch((float) Math.toDegrees(pitchRad));
                         } else {
-                            targetYaw = npcLoc.getYaw();
-                            targetPitch = npcLoc.getPitch();
+                            targetYaw = normalizeYaw(npcLoc.getYaw());
+                            targetPitch = clampPitch(npcLoc.getPitch());
                         }
 
+                        float[] current = perViewer.computeIfAbsent(viewer.getUniqueId(), u -> new float[]{normalizeYaw(npcLoc.getYaw()), clampPitch(npcLoc.getPitch())});
+                        float newYaw = stepAngle(current[0], targetYaw, 5.0f);
+                        float newPitch = stepAngle(current[1], targetPitch, 5.0f);
+                        current[0] = newYaw;
+                        current[1] = newPitch;
+
                         try {
-                            WrapperPlayServerEntityHeadLook head =
-                                    new WrapperPlayServerEntityHeadLook(npc.entityId(), targetYaw);
-                            PacketEvents.getAPI().getPlayerManager().sendPacket(p, head);
-
-                            WrapperPlayServerEntityRotation rotation =
-                                    new WrapperPlayServerEntityRotation(npc.entityId(), targetYaw, targetPitch, false);
-                            PacketEvents.getAPI().getPlayerManager().sendPacket(p, rotation);
-
+                            WrapperPlayServerEntityHeadLook head = new WrapperPlayServerEntityHeadLook(npc.entityId(), newYaw);
+                            WrapperPlayServerEntityRotation rotation = new WrapperPlayServerEntityRotation(npc.entityId(), newYaw, newPitch, false);
+                            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, head);
+                            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, rotation);
                         } catch (Throwable ignored) {}
                     }
                 }
-            }, 20L, 10L);
+            }, 10L, 1L);
         } catch (Throwable ignored) {}
     }
 
@@ -149,6 +148,18 @@ public class NPCService implements Listener {
         if (yaw >= 180.0F) yaw -= 360.0F;
         if (yaw < -180.0F) yaw += 360.0F;
         return yaw;
+    }
+
+    private float clampPitch(float pitch) {
+        if (pitch > 89.9f) return 89.9f;
+        if (pitch < -89.9f) return -89.9f;
+        return pitch;
+    }
+
+    private float stepAngle(float current, float target, float maxStep) {
+        float delta = normalizeYaw(target - current);
+        if (Math.abs(delta) > maxStep) delta = (delta > 0 ? maxStep : -maxStep);
+        return normalizeYaw(current + delta);
     }
 
 
