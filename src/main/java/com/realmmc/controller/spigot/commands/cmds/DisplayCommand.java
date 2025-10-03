@@ -13,8 +13,11 @@ import com.realmmc.controller.spigot.entities.npcs.NPCService;
 import org.bukkit.Location;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.*;
+import org.bukkit.Material;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.RayTraceResult;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -392,9 +395,76 @@ public class DisplayCommand implements CommandInterface {
             }
             return;
         }
+
         DisplayEntry.Type type = DisplayEntry.Type.fromString(typeArg);
         if (type == null) {
             Messages.send(player, "<red>Tipo desconhecido: " + typeArg + ". Use NPC/HOLOGRAM/DISPLAY_ITEM.");
+            return;
+        }
+
+        if (type == DisplayEntry.Type.DISPLAY_ITEM) {
+            if (args.length < 3) {
+                Messages.send(player, "<red>Uso: /display DISPLAY_ITEM <id> <material> [texto ou line1|line2]");
+                return;
+            }
+            String id = args[1];
+            String material = args[2].toUpperCase();
+            List<String> lines = null;
+            if (args.length > 3) {
+                String joined = String.join(" ", Arrays.copyOfRange(args, 3, args.length));
+                if (joined.contains("|")) lines = Arrays.asList(joined.split("\\|"));
+                else lines = List.of(joined);
+            }
+            try {
+                ItemStack stack = new ItemStack(Material.valueOf(material));
+                Main.getInstance().getDisplayItemService().show(
+                        player,
+                        player.getLocation(),
+                        stack,
+                        lines,
+                        false,
+                        Display.Billboard.VERTICAL,
+                        3.0f,
+                        id
+                );
+                Messages.send(player, "<green>DisplayItem '" + id + "' criado.");
+            } catch (Exception e) {
+                Messages.send(player, "<red>Falha ao criar DisplayItem: " + e.getMessage());
+            }
+            return;
+        }
+
+        if (type == DisplayEntry.Type.HOLOGRAM) {
+            if (args.length < 3) {
+                Messages.send(player, "<red>Uso: /display HOLOGRAM <id> <texto ou line1|line2>");
+                return;
+            }
+            String id = args[1];
+            String joined = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
+            List<String> lines = joined.contains("|") ? Arrays.asList(joined.split("\\|")) : List.of(joined);
+            try {
+                HologramConfigLoader h = new HologramConfigLoader();
+                h.load();
+                DisplayEntry entry = new DisplayEntry();
+                entry.setId(id);
+                entry.setType(DisplayEntry.Type.HOLOGRAM);
+                entry.setWorld(player.getWorld().getName());
+                entry.setX(player.getLocation().getX());
+                entry.setY(player.getLocation().getY());
+                entry.setZ(player.getLocation().getZ());
+                entry.setYaw(player.getLocation().getYaw());
+                entry.setPitch(player.getLocation().getPitch());
+                entry.setLines(lines);
+                entry.setGlow(false);
+                entry.setBillboard("CENTER");
+                entry.setScale(1.0f);
+                h.addEntry(entry);
+                h.save();
+                Main.getInstance().getHologramService().reload();
+                Messages.send(player, "<green>Holograma '" + id + "' criado.");
+            } catch (Exception e) {
+                Messages.send(player, "<red>Falha ao criar Holograma: " + e.getMessage());
+            }
             return;
         }
 
