@@ -73,6 +73,7 @@ public class NPCConfigLoader {
                     entry.setTexturesSignature(entrySection.getString("textures.signature"));
                     entry.setActions(entrySection.getStringList("actions"));
                     entry.setLines(entrySection.getStringList("lines"));
+                    entry.setIsMovible(entrySection.getBoolean("isMovible", false));
 
                     if (entry.getWorld() != null) {
                         entries.put(id, entry);
@@ -115,6 +116,9 @@ public class NPCConfigLoader {
             if (entry.getTexturesValue() != null && entry.getTexturesSignature() != null) {
                 config.set(path + ".textures.value", entry.getTexturesValue());
                 config.set(path + ".textures.signature", entry.getTexturesSignature());
+            }
+            if (entry.getIsMovible() != null) {
+                config.set(path + ".isMovible", entry.getIsMovible());
             }
             if (entry.getActions() != null) {
                 config.set(path + ".actions", entry.getActions());

@@ -48,35 +48,28 @@ public class DisplayItemService {
                             int targetId = wrapper.getEntityId();
                             String entryId = entityIdToEntryId.get(targetId);
                             if (entryId == null) {
-                                try { Main.getInstance().getLogger().fine("[DisplayItem] INTERACT ignored: no entry mapping for entityId=" + targetId); } catch (Throwable ignored) {}
                                 return;
                             }
                             Player player = event.getPlayer();
                             String actionName = String.valueOf(wrapper.getAction());
                             String handName = String.valueOf(wrapper.getHand());
                             if (handName != null && handName.equals("OFF_HAND")) {
-                                try { Main.getInstance().getLogger().fine("[DisplayItem] OFF_HAND ignored: player=" + player.getName() + ", entityId=" + targetId + ", entryId=" + entryId); } catch (Throwable ignored) {}
                                 return;
                             }
-
-                            try { Main.getInstance().getLogger().info("[DisplayItem] INTERACT: player=" + player.getName() + ", action=" + actionName + ", hand=" + handName + ", entityId=" + targetId + ", entryId=" + entryId); } catch (Throwable ignored) {}
 
                             long now = System.currentTimeMillis();
                             String key = player.getUniqueId() + ":" + targetId;
                             Long last = clickDebounce.get(key);
                             if (last != null && now - last < 300) {
-                                try { Main.getInstance().getLogger().fine("[DisplayItem] Debounced click for player=" + player.getName() + ", entityId=" + targetId); } catch (Throwable ignored) {}
                                 return;
                             }
                             clickDebounce.put(key, now);
 
                             DisplayEntry entry = configLoader.getById(entryId);
                             if (entry == null) {
-                                try { Main.getInstance().getLogger().warning("[DisplayItem] Entry not found for id=" + entryId + " (entityId=" + targetId + ")"); } catch (Throwable ignored) {}
                                 return;
                             }
                             if (entry.getActions() == null || entry.getActions().isEmpty()) {
-                                try { Main.getInstance().getLogger().info("[DisplayItem] No actions to run for entryId=" + entryId); } catch (Throwable ignored) {}
                                 return;
                             }
                             Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
@@ -86,7 +79,6 @@ public class DisplayItemService {
                                     if (maybe != null) w = maybe;
                                 } catch (Throwable ignored) {}
                                 Location eloc = new Location(w, entry.getX(), entry.getY(), entry.getZ(), entry.getYaw(), entry.getPitch());
-                                try { Main.getInstance().getLogger().info("[DisplayItem] Dispatch actions for entryId=" + entryId + " at loc=" + eloc + ", actions=" + entry.getActions().size()); } catch (Throwable ignored) {}
                                 Actions.runAll(player, entry, eloc, entry.getActions());
                             });
                         }

@@ -51,6 +51,7 @@ public class NPCService implements Listener {
         this.configLoader = new NPCConfigLoader();
         this.configLoader.load();
         loadSavedNPCs();
+        startLookTask();
         try {
             if (interactListener == null) {
                 interactListener = new PacketListenerAbstract() {
@@ -86,6 +87,70 @@ public class NPCService implements Listener {
         } catch (Throwable ignored) {
         }
     }
+
+    private void startLookTask() {
+        try {
+            Bukkit.getScheduler().runTaskTimer(Main.getInstance(), () -> {
+                if (globalNPCs.isEmpty()) return;
+
+                for (Map.Entry<String, NPCData> kv : globalNPCs.entrySet()) {
+                    String id = kv.getKey();
+                    NPCData npc = kv.getValue();
+                    DisplayEntry entry = configLoader.getById(id);
+
+                    if (entry == null || !Boolean.TRUE.equals(entry.getIsMovible())) continue;
+
+                    double radius = 6.0;
+                    Location npcLoc = npc.location();
+
+                    for (Player p : Bukkit.getOnlinePlayers()) {
+                        if (!p.isValid() || p.isDead()) continue;
+                        if (!p.getWorld().equals(npcLoc.getWorld())) continue;
+
+                        Location eye = p.getEyeLocation();
+
+                        double dx = eye.getX() - npcLoc.getX();
+                        double dy = eye.getY() - npcLoc.getY();
+                        double dz = eye.getZ() - npcLoc.getZ();
+                        double distSq = dx * dx + dy * dy + dz * dz;
+
+                        float targetYaw, targetPitch;
+
+                        if (distSq <= radius * radius) {
+                            double yawRad = Math.atan2(-dx, dz);
+                            double xz = Math.sqrt(dx * dx + dz * dz);
+                            double pitchRad = -Math.atan2(dy, xz);
+
+                            targetYaw = normalizeYaw((float) Math.toDegrees(yawRad));
+                            targetPitch = (float) Math.toDegrees(pitchRad);
+                        } else {
+                            targetYaw = npcLoc.getYaw();
+                            targetPitch = npcLoc.getPitch();
+                        }
+
+                        try {
+                            WrapperPlayServerEntityHeadLook head =
+                                    new WrapperPlayServerEntityHeadLook(npc.entityId(), targetYaw);
+                            PacketEvents.getAPI().getPlayerManager().sendPacket(p, head);
+
+                            WrapperPlayServerEntityRotation rotation =
+                                    new WrapperPlayServerEntityRotation(npc.entityId(), targetYaw, targetPitch, false);
+                            PacketEvents.getAPI().getPlayerManager().sendPacket(p, rotation);
+
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }, 20L, 10L);
+        } catch (Throwable ignored) {}
+    }
+
+    private float normalizeYaw(float yaw) {
+        yaw %= 360.0F;
+        if (yaw >= 180.0F) yaw -= 360.0F;
+        if (yaw < -180.0F) yaw += 360.0F;
+        return yaw;
+    }
+
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {

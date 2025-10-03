@@ -20,6 +20,7 @@ public class DisplayEntry {
     private String texturesSignature;
     private List<String> actions;
     private String id;
+    private Boolean isMovible;
 
     public Type getType() {
         return type;
@@ -155,6 +156,14 @@ public class DisplayEntry {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public Boolean getIsMovible() {
+        return isMovible;
+    }
+
+    public void setIsMovible(Boolean isMovible) {
+        this.isMovible = isMovible;
     }
 
     public enum Type {
