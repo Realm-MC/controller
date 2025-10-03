@@ -75,7 +75,7 @@ public class Main extends JavaPlugin {
             displayConfigLoader = new DisplayConfigLoader();
             displayConfigLoader.load();
 
-            displayItemService = new DisplayItemService(displayConfigLoader);
+            displayItemService = new DisplayItemService();
             hologramService = new HologramService();
             npcService = new NPCService();
 

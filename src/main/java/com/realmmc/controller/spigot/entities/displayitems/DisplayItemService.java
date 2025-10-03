@@ -9,6 +9,7 @@ import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.entities.actions.Actions;
 import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
+import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
@@ -32,8 +33,9 @@ public class DisplayItemService {
     private final Map<String, Long> clickDebounce = new ConcurrentHashMap<>();
     private PacketListenerAbstract interactListener;
 
-    public DisplayItemService(DisplayConfigLoader configLoader) {
-        this.configLoader = configLoader;
+    public DisplayItemService() {
+        this.configLoader = new DisplayConfigLoader();
+        this.configLoader.load();
         try { clearAll(); } catch (Throwable ignored) {}
         loadSavedDisplays();
         try {
@@ -45,23 +47,47 @@ public class DisplayItemService {
                             WrapperPlayClientInteractEntity wrapper = new WrapperPlayClientInteractEntity(event);
                             int targetId = wrapper.getEntityId();
                             String entryId = entityIdToEntryId.get(targetId);
-                            if (entryId == null) return;
+                            if (entryId == null) {
+                                try { Main.getInstance().getLogger().fine("[DisplayItem] INTERACT ignored: no entry mapping for entityId=" + targetId); } catch (Throwable ignored) {}
+                                return;
+                            }
                             Player player = event.getPlayer();
                             String actionName = String.valueOf(wrapper.getAction());
-                            if ("ATTACK".equals(actionName)) return;
                             String handName = String.valueOf(wrapper.getHand());
-                            if (handName != null && handName.equals("OFF_HAND")) return;
+                            if (handName != null && handName.equals("OFF_HAND")) {
+                                try { Main.getInstance().getLogger().fine("[DisplayItem] OFF_HAND ignored: player=" + player.getName() + ", entityId=" + targetId + ", entryId=" + entryId); } catch (Throwable ignored) {}
+                                return;
+                            }
+
+                            try { Main.getInstance().getLogger().info("[DisplayItem] INTERACT: player=" + player.getName() + ", action=" + actionName + ", hand=" + handName + ", entityId=" + targetId + ", entryId=" + entryId); } catch (Throwable ignored) {}
 
                             long now = System.currentTimeMillis();
                             String key = player.getUniqueId() + ":" + targetId;
                             Long last = clickDebounce.get(key);
-                            if (last != null && now - last < 300) return;
+                            if (last != null && now - last < 300) {
+                                try { Main.getInstance().getLogger().fine("[DisplayItem] Debounced click for player=" + player.getName() + ", entityId=" + targetId); } catch (Throwable ignored) {}
+                                return;
+                            }
                             clickDebounce.put(key, now);
 
                             DisplayEntry entry = configLoader.getById(entryId);
-                            if (entry == null || entry.getActions() == null || entry.getActions().isEmpty()) return;
+                            if (entry == null) {
+                                try { Main.getInstance().getLogger().warning("[DisplayItem] Entry not found for id=" + entryId + " (entityId=" + targetId + ")"); } catch (Throwable ignored) {}
+                                return;
+                            }
+                            if (entry.getActions() == null || entry.getActions().isEmpty()) {
+                                try { Main.getInstance().getLogger().info("[DisplayItem] No actions to run for entryId=" + entryId); } catch (Throwable ignored) {}
+                                return;
+                            }
                             Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
-                                Actions.runAll(player, entry, player.getLocation(), entry.getActions());
+                                World w = player.getWorld();
+                                try {
+                                    World maybe = Bukkit.getWorld(entry.getWorld());
+                                    if (maybe != null) w = maybe;
+                                } catch (Throwable ignored) {}
+                                Location eloc = new Location(w, entry.getX(), entry.getY(), entry.getZ(), entry.getYaw(), entry.getPitch());
+                                try { Main.getInstance().getLogger().info("[DisplayItem] Dispatch actions for entryId=" + entryId + " at loc=" + eloc + ", actions=" + entry.getActions().size()); } catch (Throwable ignored) {}
+                                Actions.runAll(player, entry, eloc, entry.getActions());
                             });
                         }
                     }
@@ -121,6 +147,21 @@ public class DisplayItemService {
         itemDisplay.setTransformation(transformation);
         entities.add(itemDisplay.getUniqueId());
 
+        try {
+            ArmorStand hitbox = base.getWorld().spawn(itemLocation.clone().add(0, 0.2, 0), ArmorStand.class);
+            hitbox.setInvisible(true);
+            hitbox.setSmall(false);
+            hitbox.setMarker(false);
+            hitbox.setGravity(false);
+            hitbox.setCollidable(false);
+            hitbox.getEquipment().clear();
+            hitbox.customName(null);
+            hitbox.setCustomNameVisible(false);
+            hitbox.addScoreboardTag("controller_display_hitbox");
+            entities.add(hitbox.getUniqueId());
+            entityIdToEntryId.put(hitbox.getEntityId(), entry.getId());
+        } catch (Throwable ignored) {}
+
         if (lines != null && !lines.isEmpty()) {
             double baseY = itemLocation.getY() + (scale * 0.5);
             double step = 0.25;
@@ -147,6 +188,25 @@ public class DisplayItemService {
 
                 entities.add(textDisplay.getUniqueId());
             }
+
+            try {
+                int segments = Math.max(1, (int) Math.ceil(lines.size() * 0.5));
+                for (int s = 0; s < segments; s++) {
+                    double y = base.getY() + 0.3 + s * 0.6;
+                    ArmorStand hb = base.getWorld().spawn(new Location(base.getWorld(), base.getX(), y, base.getZ()), ArmorStand.class);
+                    hb.setInvisible(true);
+                    hb.setSmall(false);
+                    hb.setMarker(false);
+                    hb.setGravity(false);
+                    hb.setCollidable(false);
+                    hb.getEquipment().clear();
+                    hb.customName(null);
+                    hb.setCustomNameVisible(false);
+                    hb.addScoreboardTag("controller_display_hitbox");
+                    entities.add(hb.getUniqueId());
+                    entityIdToEntryId.put(hb.getEntityId(), entry.getId());
+                }
+            } catch (Throwable ignored) {}
         }
     }
 
@@ -190,6 +250,8 @@ public class DisplayItemService {
                 if (entity instanceof ItemDisplay && entity.getScoreboardTags().contains("controller_display_item")) {
                     entity.remove();
                 } else if (entity instanceof TextDisplay && entity.getScoreboardTags().contains("controller_display_line")) {
+                    entity.remove();
+                } else if (entity instanceof ArmorStand && entity.getScoreboardTags().contains("controller_display_hitbox")) {
                     entity.remove();
                 }
             }
