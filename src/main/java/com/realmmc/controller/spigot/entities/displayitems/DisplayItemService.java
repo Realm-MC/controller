@@ -161,10 +161,16 @@ public class DisplayItemService {
         entry.setYaw(base.getYaw());
         entry.setPitch(base.getPitch());
         entry.setItem(item != null ? item.getType().name() : Material.DIAMOND.name());
+        if (lines == null || lines.isEmpty()) {
+            lines = List.of("display_item");
+        }
         entry.setLines(lines);
         entry.setGlow(glow);
         entry.setBillboard(billboard.name());
         entry.setScale(scale);
+        if (entry.getActions() == null) {
+            entry.setActions(new ArrayList<>());
+        }
 
         configLoader.addEntry(entry);
         configLoader.save();
