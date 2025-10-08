@@ -34,6 +34,7 @@ import org.bukkit.scoreboard.Team;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.logging.Level;
 
 public class NPCService implements Listener {
     private final NPCConfigLoader configLoader;
@@ -85,7 +86,8 @@ public class NPCService implements Listener {
                 };
                 PacketEvents.getAPI().getEventManager().registerListener(interactListener);
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Main.getInstance().getLogger().log(Level.SEVERE, "Falha crítica ao registrar listener de interação de pacotes para NPCs.", t);
         }
     }
 
@@ -136,11 +138,15 @@ public class NPCService implements Listener {
                             WrapperPlayServerEntityRotation rotation = new WrapperPlayServerEntityRotation(npc.entityId(), newYaw, newPitch, false);
                             PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, head);
                             PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, rotation);
-                        } catch (Throwable ignored) {}
+                        } catch (Throwable t) {
+                            Main.getInstance().getLogger().log(Level.WARNING, "Erro não crítico ao enviar pacotes de rotação de NPC.", t);
+                        }
                     }
                 }
             }, 10L, 1L);
-        } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            Main.getInstance().getLogger().log(Level.SEVERE, "Falha crítica ao iniciar a tarefa de rotação de NPCs.", t);
+        }
     }
 
     private float normalizeYaw(float yaw) {
@@ -172,7 +178,8 @@ public class NPCService implements Listener {
         for (NPCData npc : globalNPCs.values()) {
             try {
                 sendNPCPackets(player, npc);
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                Main.getInstance().getLogger().log(Level.WARNING, "Falha ao enviar pacotes do NPC " + npc.entityId() + " para o jogador " + player.getName(), e);
             }
         }
     }
@@ -183,7 +190,8 @@ public class NPCService implements Listener {
         try {
             WrapperPlayServerDestroyEntities destroy = new WrapperPlayServerDestroyEntities(ids);
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, destroy);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            Main.getInstance().getLogger().log(Level.WARNING, "Falha ao enviar pacote de destruição de NPC para " + player.getName(), e);
         }
     }
 
@@ -196,7 +204,8 @@ public class NPCService implements Listener {
             for (List<UUID> ids : nameHolograms.values()) {
                 holo.removeByUUIDs(ids);
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Main.getInstance().getLogger().log(Level.WARNING, "Erro não crítico ao remover hologramas de nomes de NPCs.", t);
         }
         nameHolograms.clear();
         try {
@@ -205,7 +214,8 @@ public class NPCService implements Listener {
                 Team t = sb.getTeam("npc_hide_" + npc.entityId());
                 if (t != null) t.unregister();
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Main.getInstance().getLogger().log(Level.WARNING, "Erro não crítico ao remover times de scoreboard de NPCs.", t);
         }
     }
 
@@ -242,7 +252,7 @@ public class NPCService implements Listener {
                     spawnNameHologram(npcData);
                 }
             } catch (Exception e) {
-                System.err.println("Erro ao carregar NPC com ID de config " + entry.getId() + ": " + e.getMessage());
+                Main.getInstance().getLogger().log(Level.SEVERE, "Erro ao carregar NPC com ID de config " + entry.getId(), e);
             }
         }
     }
@@ -271,8 +281,7 @@ public class NPCService implements Listener {
 
             return new NPCData(npcUUID, entityId, profile, location, displayName, skinSource);
         } catch (Exception e) {
-            System.err.println("Erro ao criar NPC: " + e.getMessage());
-            e.printStackTrace();
+            Main.getInstance().getLogger().log(Level.SEVERE, "Erro ao criar dados do NPC: " + id, e);
             return null;
         }
     }
@@ -300,15 +309,20 @@ public class NPCService implements Listener {
                         }
                     }
                 }
-            } catch (Throwable ignoredInner) {}
+            } catch (Throwable t) {
+                Main.getInstance().getLogger().log(Level.WARNING, "Erro não crítico ao processar linhas do holograma para NPC " + npc.entityId(), t);
+            }
             if (lines == null || lines.isEmpty()) {
                 return;
             }
 
             var ids = Main.getInstance().getHologramService().spawnTemporary(base, lines, false);
-            try { Main.getInstance().getHologramService().addTagToUUIDs(ids, "controller_npc_name_line"); } catch (Throwable ignored2) {}
+            try { Main.getInstance().getHologramService().addTagToUUIDs(ids, "controller_npc_name_line"); } catch (Throwable t) {
+                Main.getInstance().getLogger().log(Level.WARNING, "Erro ao adicionar tag a UUIDs de holograma de NPC.", t);
+            }
             nameHolograms.put(npc.uuid(), ids);
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Main.getInstance().getLogger().log(Level.SEVERE, "Falha ao criar holograma de nome para NPC " + npc.uuid(), t);
         }
     }
 
@@ -352,7 +366,8 @@ public class NPCService implements Listener {
                 metadata.add(new EntityData(6, EntityDataTypes.ENTITY_POSE, EntityPose.STANDING));
                 WrapperPlayServerEntityMetadata metaPacket = new WrapperPlayServerEntityMetadata(npcData.entityId(), metadata);
                 PacketEvents.getAPI().getPlayerManager().sendPacket(player, metaPacket);
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+                Main.getInstance().getLogger().log(Level.WARNING, "Falha ao enviar metadados de entidade para NPC.", t);
             }
 
             Bukkit.getScheduler().runTaskLater(Main.getPlugin(Main.class), () -> {
@@ -360,11 +375,11 @@ public class NPCService implements Listener {
                     WrapperPlayServerPlayerInfoRemove removePacket = new WrapperPlayServerPlayerInfoRemove(List.of(npcData.uuid()));
                     PacketEvents.getAPI().getPlayerManager().sendPacket(player, removePacket);
                 } catch (Exception e) {
+                    Main.getInstance().getLogger().log(Level.WARNING, "Falha ao remover NPC da lista de jogadores (tablist) para " + player.getName(), e);
                 }
             }, 40L);
         } catch (Exception e) {
-            System.err.println("Erro ao enviar packets do NPC: " + e.getMessage());
-            e.printStackTrace();
+            Main.getInstance().getLogger().log(Level.SEVERE, "Erro ao enviar pacotes do NPC: " + npcData.entityId(), e);
         }
     }
 
@@ -392,7 +407,7 @@ public class NPCService implements Listener {
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, teamCreatePacket);
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, teamAddPlayerPacket);
         } catch (Exception e) {
-            System.err.println("Falha ao enviar pacotes de time para o NPC: " + e.getMessage());
+            Main.getInstance().getLogger().log(Level.SEVERE, "Falha ao enviar pacotes de time para o NPC: " + npcData.entityId(), e);
         }
     }
 
@@ -461,7 +476,7 @@ public class NPCService implements Listener {
                 PacketEvents.getAPI().getPlayerManager().sendPacket(onlinePlayer, destroyPacket);
 
             } catch (Exception e) {
-                System.err.println("Erro ao remover NPC para jogador " + onlinePlayer.getName() + ": " + e.getMessage());
+                Main.getInstance().getLogger().log(Level.WARNING, "Erro ao remover NPC para jogador " + onlinePlayer.getName(), e);
             }
         }
     }
