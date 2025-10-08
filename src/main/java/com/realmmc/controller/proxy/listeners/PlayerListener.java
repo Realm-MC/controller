@@ -9,6 +9,7 @@ import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.PostLoginEvent;
 import com.velocitypowered.api.proxy.Player;
+import org.geysermc.geyser.api.GeyserApi;
 
 import java.net.InetSocketAddress;
 import java.util.UUID;
@@ -29,7 +30,14 @@ public class PlayerListener {
             ip = isa.getAddress() != null ? isa.getAddress().getHostAddress() : null;
         }
         String clientVersion = player.getProtocolVersion() != null ? player.getProtocolVersion().getName() : null;
-        String clientType = "Java";
+
+        String clientType;
+        try {
+            boolean isBedrock = GeyserApi.api().isBedrockPlayer(player.getUniqueId());
+            clientType = isBedrock ? "Bedrock" : "Java";
+        } catch (Exception | NoClassDefFoundError e) {
+            clientType = "Java";
+        }
 
         Proxy.getInstance().getLoginTimestamps().put(uuid, System.currentTimeMillis());
 
@@ -46,7 +54,6 @@ public class PlayerListener {
 
         if (loginTime != null) {
             long sessionDuration = System.currentTimeMillis() - loginTime;
-
             ServiceRegistry.getInstance().getService(StatisticsService.class)
                     .ifPresent(statsService -> statsService.addOnlineTime(uuid, sessionDuration));
         }
