@@ -64,9 +64,4 @@ public class ProfileModule extends AbstractCoreModule {
     public int getPriority() {
         return 50;
     }
-
-    @Override
-    public boolean isEnabled() {
-        return super.isEnabled();
-    }
 }

@@ -1,11 +1,11 @@
 package com.realmmc.controller.shared.stats;
 
+import com.realmmc.controller.proxy.Proxy;
 import com.realmmc.controller.shared.profile.Profile;
-import com.realmmc.controller.shared.storage.mongodb.MongoRepository;
-import org.bson.conversions.Bson;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.util.logging.Logger;
 
 public class StatisticsService {
 
@@ -31,16 +31,22 @@ public class StatisticsService {
     public void addOnlineTime(UUID uuid, long sessionMillis) {
         if (sessionMillis <= 0) return;
 
-        repository.findByUuid(uuid).ifPresent(stats -> {
+        Optional<Statistics> statsOpt = repository.findByUuid(uuid);
+        if (statsOpt.isPresent()) {
+            Statistics stats = statsOpt.get();
             stats.setOnlineTime(stats.getOnlineTime() + sessionMillis);
             repository.upsert(stats);
-        });
+        } else {
+            Logger logger = Proxy.getInstance().getLogger();
+            logger.warning("Tentativa de adicionar tempo online para o UUID " + uuid + ", mas o registo de estatísticas não foi encontrado!");
+        }
     }
 
     public void updateIdentification(Profile profile) {
         Statistics stats = ensureStatistics(profile);
         boolean changed = false;
-        if (!profile.getName().equals(stats.getName())) {
+
+        if (profile.getName() != null && !profile.getName().equals(stats.getName())) {
             stats.setName(profile.getName());
             changed = true;
         }

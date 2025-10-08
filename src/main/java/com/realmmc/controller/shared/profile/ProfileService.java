@@ -2,9 +2,11 @@ package com.realmmc.controller.shared.profile;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.shared.storage.mongodb.MongoSequences;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
+import com.realmmc.controller.shared.stats.StatisticsService;
 import com.realmmc.controller.shared.utils.TimeUtils;
 
 import java.util.Objects;
@@ -16,6 +18,11 @@ public class ProfileService {
 
     private final ProfileRepository repository = new ProfileRepository();
     private final ObjectMapper mapper = new ObjectMapper();
+
+    private StatisticsService getStatsService() {
+        return ServiceRegistry.getInstance().getService(StatisticsService.class)
+                .orElseThrow(() -> new IllegalStateException("StatisticsService não está disponível ou não foi inicializado!"));
+    }
 
     public Optional<Profile> getByUuid(UUID uuid) {
         return repository.findByUuid(uuid);
@@ -47,6 +54,9 @@ public class ProfileService {
                 .updatedAt(now)
                 .build();
         repository.upsert(profile);
+
+        getStatsService().ensureStatistics(profile);
+
         publish("create", profile);
         return profile;
     }
@@ -63,12 +73,10 @@ public class ProfileService {
     }
 
     public void updateName(UUID uuid, String newName) {
-        repository.findByUuid(uuid).ifPresent(p -> {
+        update(uuid, p -> {
             p.setName(newName);
-            p.setUpdatedAt(System.currentTimeMillis());
-            repository.upsert(p);
-            publish("update_name", p);
-        });
+            getStatsService().updateIdentification(p);
+        }, "update_name");
     }
 
     public void recordLogin(UUID uuid, String ip, String clientVersion, String clientType, String username) {
@@ -89,6 +97,7 @@ public class ProfileService {
                     p.getIpHistory().add(ip);
                 }
             }
+            getStatsService().updateIdentification(p);
         }, "record_login");
     }
 
@@ -130,53 +139,19 @@ public class ProfileService {
     }
 
     public Profile ensureProfile(UUID uuid, String displayName, String username, String firstIp, String clientVersion, String clientType) {
-        Optional<Profile> existing = repository.findByUuid(uuid);
-        if (existing.isPresent()) {
-            Profile p = existing.get();
-            if (displayName != null && !displayName.isEmpty() && !displayName.equals(p.getName())) {
-                p.setName(displayName);
-            }
-            if (username != null && !username.isEmpty() && !username.equals(p.getUsername())) {
-                claimUsername(uuid, username);
-                p.setUsername(username);
-            }
-            long now = System.currentTimeMillis();
-            if (p.getCreatedAt() == 0L) p.setCreatedAt(now);
-            p.setUpdatedAt(now);
-            if (p.getFirstLogin() == 0L) p.setFirstLogin(now);
-            if (p.getFirstIp() == null && firstIp != null) p.setFirstIp(firstIp);
-            p.setLastLogin(now);
-            if (firstIp != null) p.setLastIp(firstIp);
-            if (clientVersion != null) p.setLastClientVersion(clientVersion);
-            if (clientType != null) p.setLastClientType(clientType);
-            if (p.getId() == null) p.setId(MongoSequences.getNext("profiles"));
-            repository.upsert(p);
-            publish("ensure", p);
-            return p;
-        } else {
-            long now = System.currentTimeMillis();
-            if (username != null && !username.isEmpty()) {
-                claimUsername(uuid, username);
-            }
-            Profile p = Profile.builder()
-                    .id(MongoSequences.getNext("profiles"))
-                    .uuid(uuid)
-                    .name(displayName)
-                    .username(username)
-                    .firstIp(firstIp)
-                    .lastIp(firstIp)
-                    .firstLogin(now)
-                    .lastLogin(now)
-                    .lastClientVersion(clientVersion)
-                    .lastClientType(clientType)
-                    .createdAt(now)
-                    .updatedAt(now)
-                    .build();
-            if (firstIp != null) p.getIpHistory().add(firstIp);
-            repository.upsert(p);
-            publish("create", p);
-            return p;
+        Profile profile = repository.findByUuid(uuid).orElseGet(() -> create(uuid, displayName));
+
+        getStatsService().ensureStatistics(profile);
+        // ------------------------------------
+
+        recordLogin(uuid, firstIp, clientVersion, clientType, username);
+
+        if (displayName != null && !displayName.equals(profile.getName())) {
+            updateName(uuid, displayName);
+            profile.setName(displayName);
         }
+
+        return profile;
     }
 
     public void setUsername(UUID uuid, String username) {
