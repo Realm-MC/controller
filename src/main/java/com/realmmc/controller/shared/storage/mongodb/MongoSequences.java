@@ -3,11 +3,11 @@ package com.realmmc.controller.shared.storage.mongodb;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
-import com.mongodb.client.model.Updates;
 import org.bson.Document;
 
 public final class MongoSequences {
-    private MongoSequences() {}
+    private MongoSequences() {
+    }
 
     public static int getNext(String key) {
         MongoCollection<Document> counters = MongoManager.db().getCollection("counters");

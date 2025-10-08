@@ -41,14 +41,38 @@ public class ProfileSyncSubscriber {
 
             profiles.getByUuid(id).ifPresent(p -> {
                 boolean changed = false;
-                if (node.hasNonNull("name")) { p.setName(node.get("name").asText()); changed = true; }
-                if (node.hasNonNull("username")) { p.setUsername(node.get("username").asText()); changed = true; }
-                if (node.hasNonNull("lastIp")) { p.setLastIp(node.get("lastIp").asText()); changed = true; }
-                if (node.hasNonNull("lastClientVersion")) { p.setLastClientVersion(node.get("lastClientVersion").asText()); changed = true; }
-                if (node.hasNonNull("lastClientType")) { p.setLastClientType(node.get("lastClientType").asText()); changed = true; }
-                if (node.has("cash")) { p.setCash(node.get("cash").asInt()); changed = true; }
-                if (node.has("cashTopPosition")) { p.setCashTopPosition(node.get("cashTopPosition").isNull() ? null : node.get("cashTopPosition").asInt()); changed = true; }
-                if (node.has("cashTopPositionEnteredAt")) { p.setCashTopPositionEnteredAt(node.get("cashTopPositionEnteredAt").isNull() ? null : node.get("cashTopPositionEnteredAt").asLong()); changed = true; }
+                if (node.hasNonNull("name")) {
+                    p.setName(node.get("name").asText());
+                    changed = true;
+                }
+                if (node.hasNonNull("username")) {
+                    p.setUsername(node.get("username").asText());
+                    changed = true;
+                }
+                if (node.hasNonNull("lastIp")) {
+                    p.setLastIp(node.get("lastIp").asText());
+                    changed = true;
+                }
+                if (node.hasNonNull("lastClientVersion")) {
+                    p.setLastClientVersion(node.get("lastClientVersion").asText());
+                    changed = true;
+                }
+                if (node.hasNonNull("lastClientType")) {
+                    p.setLastClientType(node.get("lastClientType").asText());
+                    changed = true;
+                }
+                if (node.has("cash")) {
+                    p.setCash(node.get("cash").asInt());
+                    changed = true;
+                }
+                if (node.has("cashTopPosition")) {
+                    p.setCashTopPosition(node.get("cashTopPosition").isNull() ? null : node.get("cashTopPosition").asInt());
+                    changed = true;
+                }
+                if (node.has("cashTopPositionEnteredAt")) {
+                    p.setCashTopPositionEnteredAt(node.get("cashTopPositionEnteredAt").isNull() ? null : node.get("cashTopPositionEnteredAt").asLong());
+                    changed = true;
+                }
                 if (changed) {
                     profiles.save(p);
                 }

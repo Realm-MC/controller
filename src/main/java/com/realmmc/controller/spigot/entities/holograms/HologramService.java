@@ -1,15 +1,16 @@
 package com.realmmc.controller.spigot.entities.holograms;
 
-import com.realmmc.controller.spigot.entities.config.HologramConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
+import com.realmmc.controller.spigot.entities.config.HologramConfigLoader;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
-import org.bukkit.Bukkit;
-import org.bukkit.World;
 
 import java.util.*;
 
@@ -21,6 +22,7 @@ public class HologramService {
     public HologramService() {
         this.configLoader = new HologramConfigLoader();
         this.configLoader.load();
+        try { clearAll(); } catch (Throwable ignored) {}
         loadSavedHolograms();
     }
 
@@ -33,7 +35,7 @@ public class HologramService {
 
         if (lines != null && !lines.isEmpty()) {
             double step = 0.25;
-            
+
             for (int i = 0; i < lines.size(); i++) {
                 String line = lines.get(i);
                 double textY = base.getY() + (lines.size() - 1 - i) * step;
@@ -68,6 +70,9 @@ public class HologramService {
         entry.setPitch(base.getPitch());
         entry.setLines(lines);
         entry.setGlow(glow);
+        if (entry.getActions() == null) {
+            entry.setActions(new ArrayList<>());
+        }
 
         configLoader.addEntry(entry);
         configLoader.save();
@@ -79,7 +84,7 @@ public class HologramService {
         List<UUID> entities = spawnedByPlayer.get(player.getUniqueId());
         if (entities != null) {
             for (UUID entityId : entities) {
-                org.bukkit.entity.Entity entity = findEntityByUuid(entityId);
+                Entity entity = findEntityByUuid(entityId);
                 if (entity != null) {
                     entity.remove();
                 }
@@ -96,12 +101,35 @@ public class HologramService {
 
     public void clearAll() {
         for (World world : Bukkit.getWorlds()) {
-            for (org.bukkit.entity.Entity entity : world.getEntities()) {
-                if (entity instanceof TextDisplay) {
+            for (Entity entity : world.getEntities()) {
+                if (entity instanceof TextDisplay &&
+                        (entity.getScoreboardTags().contains("controller_hologram_line") ||
+                         entity.getScoreboardTags().contains("controller_npc_name_line"))) {
                     entity.remove();
                 }
             }
         }
+        try {
+            for (DisplayEntry e : configLoader.getEntries()) {
+                if (e.getType() != DisplayEntry.Type.HOLOGRAM) continue;
+                World w = Bukkit.getWorld(e.getWorld());
+                if (w == null) continue;
+                Location base = new Location(w, e.getX(), e.getY(), e.getZ());
+                double horizRadiusSq = 0.7 * 0.7;
+                double minY = e.getY() - 1.0;
+                int linesCount = (e.getLines() != null && !e.getLines().isEmpty()) ? e.getLines().size() : 1;
+                double maxY = e.getY() + (linesCount * 0.35) + 1.0;
+                for (Entity ent : w.getEntitiesByClass(TextDisplay.class)) {
+                    Location loc = ent.getLocation();
+                    if (loc.getY() < minY || loc.getY() > maxY) continue;
+                    double dx = loc.getX() - base.getX();
+                    double dz = loc.getZ() - base.getZ();
+                    if ((dx * dx + dz * dz) <= horizRadiusSq) {
+                        ent.remove();
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
     }
 
     private void loadSavedHolograms() {
@@ -136,6 +164,9 @@ public class HologramService {
             textDisplay.setLineWidth(200);
             textDisplay.setAlignment(TextDisplay.TextAlignment.CENTER);
             textDisplay.setGlowing(glow);
+            textDisplay.customName(null);
+            textDisplay.setCustomNameVisible(false);
+            textDisplay.addScoreboardTag("controller_hologram_line");
             ids.add(textDisplay.getUniqueId());
         }
         return ids;
@@ -149,15 +180,27 @@ public class HologramService {
         if (ids == null) return;
         for (World world : Bukkit.getWorlds()) {
             for (UUID id : ids) {
-                org.bukkit.entity.Entity e = world.getEntity(id);
+                Entity e = world.getEntity(id);
                 if (e != null) e.remove();
             }
         }
     }
 
-    private org.bukkit.entity.Entity findEntityByUuid(UUID uuid) {
-        for (org.bukkit.World world : org.bukkit.Bukkit.getWorlds()) {
-            for (org.bukkit.entity.Entity entity : world.getEntities()) {
+    public void addTagToUUIDs(Collection<UUID> ids, String tag) {
+        if (ids == null || tag == null) return;
+        for (World world : Bukkit.getWorlds()) {
+            for (UUID id : ids) {
+                Entity e = world.getEntity(id);
+                if (e instanceof TextDisplay) {
+                    e.addScoreboardTag(tag);
+                }
+            }
+        }
+    }
+
+    private Entity findEntityByUuid(UUID uuid) {
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
                 if (entity.getUniqueId().equals(uuid)) {
                     return entity;
                 }

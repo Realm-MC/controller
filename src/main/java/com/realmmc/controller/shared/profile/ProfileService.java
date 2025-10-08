@@ -2,9 +2,9 @@ package com.realmmc.controller.shared.profile;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.realmmc.controller.shared.storage.mongodb.MongoSequences;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
-import com.realmmc.controller.shared.storage.mongodb.MongoSequences;
 import com.realmmc.controller.shared.utils.TimeUtils;
 
 import java.util.Objects;
@@ -222,7 +222,8 @@ public class ProfileService {
             if (profile.getLastClientType() != null) node.put("lastClientType", profile.getLastClientType());
             node.put("cash", profile.getCash());
             if (profile.getCashTopPosition() != null) node.put("cashTopPosition", profile.getCashTopPosition());
-            if (profile.getCashTopPositionEnteredAt() != null) node.put("cashTopPositionEnteredAt", profile.getCashTopPositionEnteredAt());
+            if (profile.getCashTopPositionEnteredAt() != null)
+                node.put("cashTopPositionEnteredAt", profile.getCashTopPositionEnteredAt());
             String json = mapper.writeValueAsString(node);
             RedisPublisher.publish(RedisChannel.PROFILES_SYNC, json);
         } catch (Exception e) {

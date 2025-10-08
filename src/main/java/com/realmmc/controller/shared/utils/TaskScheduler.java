@@ -1,9 +1,7 @@
 package com.realmmc.controller.shared.utils;
 
 import com.velocitypowered.api.proxy.ProxyServer;
-import com.velocitypowered.api.scheduler.ScheduledTask;
 import org.bukkit.plugin.Plugin;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.util.Objects;
 import java.util.concurrent.*;
@@ -15,7 +13,8 @@ public final class TaskScheduler {
     private static ScheduledExecutorService asyncPool;
     private static boolean isSpigot = false;
 
-    private TaskScheduler() {}
+    private TaskScheduler() {
+    }
 
     public static synchronized void init(ProxyServer proxyServer, Object pluginInstance) {
         if (TaskScheduler.proxyServer != null || bukkitPlugin != null) return;

@@ -2,7 +2,6 @@ package com.realmmc.controller.shared.storage.mongodb;
 
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.Filters;
-import org.bson.Document;
 import org.bson.conversions.Bson;
 
 import java.util.Optional;
@@ -35,5 +34,7 @@ public interface MongoRepository<T> {
         collection().find(filter).forEach(consumer);
     }
 
-    static Bson idEquals(Object id) { return Filters.eq("_id", id); }
+    static Bson idEquals(Object id) {
+        return Filters.eq("_id", id);
+    }
 }

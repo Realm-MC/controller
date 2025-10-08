@@ -1,14 +1,14 @@
 package com.realmmc.controller.velocity.extensions;
 
-import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.messaging.MessageKey;
+import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.messaging.RawMessage;
 import com.velocitypowered.api.proxy.Player;
 import net.kyori.adventure.text.Component;
 
 public class PlayerWrapper {
     private final Player player;
-    
+
     private PlayerWrapper(Player player) {
         this.player = player;
     }
@@ -59,11 +59,11 @@ public class PlayerWrapper {
     public String getUsername() {
         return player.getUsername();
     }
-    
+
     public boolean hasPermission(String permission) {
         return player.hasPermission(permission);
     }
-    
+
     public void sendMessage(Component message) {
         player.sendMessage(message);
     }

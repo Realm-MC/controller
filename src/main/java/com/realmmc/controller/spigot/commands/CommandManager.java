@@ -1,7 +1,6 @@
 package com.realmmc.controller.spigot.commands;
 
 import com.realmmc.controller.shared.annotations.Cmd;
-import com.realmmc.controller.spigot.Main;
 import org.bukkit.Bukkit;
 import org.bukkit.command.*;
 import org.bukkit.plugin.Plugin;
@@ -179,7 +178,8 @@ public class CommandManager implements CommandExecutor, TabCompleter {
             if (path.endsWith(".class")) {
                 return path.replace(File.separatorChar, '.').replace(".class", "");
             }
-        } catch (IllegalArgumentException ignored) {}
+        } catch (IllegalArgumentException ignored) {
+        }
         return null;
     }
 
@@ -187,6 +187,7 @@ public class CommandManager implements CommandExecutor, TabCompleter {
         try {
             Class<?> cls = Class.forName(fqcn, false, cl);
             out.add(cls);
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
     }
 }

@@ -18,7 +18,8 @@ public final class MongoManager {
     private static MongoClient client;
     private static MongoDatabase database;
 
-    private MongoManager() {}
+    private MongoManager() {
+    }
 
     public static synchronized void init(MongoConfig config) {
         if (client != null) return;
@@ -34,11 +35,11 @@ public final class MongoManager {
         MongoClientSettings settings = MongoClientSettings.builder()
                 .uuidRepresentation(UuidRepresentation.STANDARD)
                 .codecRegistry(pojoCodecRegistry)
-                .applyConnectionString(new com.mongodb.ConnectionString(config.getConnectionString()))
+                .applyConnectionString(new com.mongodb.ConnectionString(config.connectionString()))
                 .build();
 
         client = MongoClients.create(settings);
-        database = client.getDatabase(config.getDatabase());
+        database = client.getDatabase(config.database());
     }
 
     public static MongoDatabase db() {

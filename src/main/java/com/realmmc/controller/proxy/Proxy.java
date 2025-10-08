@@ -3,11 +3,11 @@ package com.realmmc.controller.proxy;
 import com.realmmc.controller.core.ControllerCore;
 import com.realmmc.controller.core.modules.ModuleManager;
 import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.modules.commands.CommandModule;
 import com.realmmc.controller.modules.database.DatabaseModule;
 import com.realmmc.controller.modules.profile.ProfileModule;
-import com.realmmc.controller.modules.commands.CommandModule;
-import com.realmmc.controller.proxy.commands.CommandManager;
-import com.realmmc.controller.proxy.listeners.ListenersManager;
+import com.realmmc.controller.modules.proxy.ProxyModule;
+import com.realmmc.controller.modules.scheduler.SchedulerModule;
 import com.realmmc.controller.shared.messaging.MessagingSDK;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
@@ -16,8 +16,6 @@ import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
 import lombok.Getter;
-import com.realmmc.controller.modules.scheduler.SchedulerModule;
-import com.realmmc.controller.modules.proxy.ProxyModule;
 
 import javax.inject.Inject;
 import java.io.File;
@@ -46,23 +44,23 @@ public class Proxy extends ControllerCore {
     @Override
     public void initialize() {
         logger.info("Inicializando Controller Core (Proxy)...");
-        
+
         initializeSharedServices();
-        
+
         serviceRegistry = new ServiceRegistry(logger);
         moduleManager = new ModuleManager(logger);
-        
+
         moduleManager.registerModule(new DatabaseModule(logger));
         moduleManager.registerModule(new SchedulerModule(server, this, logger));
         moduleManager.registerModule(new ProfileModule(logger));
         moduleManager.registerModule(new CommandModule(logger));
         moduleManager.registerModule(new ProxyModule(server, this, logger));
-        
+
         moduleManager.enableAllModules();
-        
+
         logger.info("Controller Core (Proxy) inicializado com sucesso!");
     }
-    
+
     @Override
     protected void initializeSharedServices() {
         super.initializeSharedServices();
@@ -71,7 +69,7 @@ public class Proxy extends ControllerCore {
         if (!messagesDir.exists()) {
             messagesDir.mkdirs();
         }
-        
+
         MessagingSDK.getInstance().initializeForVelocity(messagesDir);
         logger.info("MessagingSDK inicializado para Velocity");
     }
@@ -79,11 +77,11 @@ public class Proxy extends ControllerCore {
     @Override
     public void shutdown() {
         logger.info("Finalizando Controller Core (Proxy)...");
-        
+
         moduleManager.disableAllModules();
-        
+
         shutdownSharedServices();
-        
+
         logger.info("Controller Core (Proxy) finalizado!");
     }
 

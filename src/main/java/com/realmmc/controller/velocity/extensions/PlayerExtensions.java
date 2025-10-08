@@ -1,7 +1,7 @@
 package com.realmmc.controller.velocity.extensions;
 
-import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.messaging.MessageKey;
+import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.messaging.RawMessage;
 import com.velocitypowered.api.proxy.Player;
 

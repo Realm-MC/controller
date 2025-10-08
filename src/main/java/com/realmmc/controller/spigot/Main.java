@@ -75,13 +75,16 @@ public class Main extends JavaPlugin {
             displayConfigLoader = new DisplayConfigLoader();
             displayConfigLoader.load();
 
-            displayItemService = new DisplayItemService(displayConfigLoader);
+            displayItemService = new DisplayItemService();
             hologramService = new HologramService();
             npcService = new NPCService();
 
             getServer().getPluginManager().registerEvents(npcService, this);
             for (Player p : Bukkit.getOnlinePlayers()) {
-                try { npcService.resendAllTo(p); } catch (Exception ignored) {}
+                try {
+                    npcService.resendAllTo(p);
+                } catch (Exception ignored) {
+                }
             }
 
             logger.info("Controller Core (Spigot) inicializado com sucesso!");

@@ -2,8 +2,11 @@ package com.realmmc.controller.proxy.listeners;
 
 import com.realmmc.controller.shared.annotations.Listeners;
 import com.velocitypowered.api.proxy.ProxyServer;
+
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,8 +14,6 @@ import java.nio.file.Paths;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.jar.JarFile;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 
 public final class ListenersManager {
 

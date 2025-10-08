@@ -5,7 +5,6 @@ import com.realmmc.controller.spigot.commands.CommandManager;
 import com.realmmc.controller.spigot.listeners.ListenersManager;
 import org.bukkit.plugin.Plugin;
 
-import java.util.List;
 import java.util.logging.Logger;
 
 public class SpigotModule extends AbstractCoreModule {
