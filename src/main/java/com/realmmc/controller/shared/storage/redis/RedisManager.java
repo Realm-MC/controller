@@ -23,11 +23,7 @@ public final class RedisManager {
         pc.setMinIdle(1);
         pc.setMaxWait(Duration.ofSeconds(10));
 
-        if (cfg.password() == null || cfg.password().isEmpty()) {
-            pool = new JedisPool(pc, cfg.host(), cfg.port(), 10000, null, cfg.database(), cfg.ssl());
-        } else {
-            pool = new JedisPool(pc, cfg.host(), cfg.port(), 10000, cfg.password(), cfg.database(), cfg.ssl());
-        }
+        pool = new JedisPool(pc, cfg.host(), cfg.port(), 10000, 0, cfg.password(), cfg.database(), null, cfg.ssl());
     }
 
     public static Jedis getResource() {
