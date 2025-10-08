@@ -95,24 +95,30 @@ public class NPCService implements Listener {
         try {
             Bukkit.getScheduler().runTaskTimer(Main.getInstance(), () -> {
                 if (globalNPCs.isEmpty()) return;
+
                 for (Map.Entry<String, NPCData> kv : globalNPCs.entrySet()) {
-                    String id = kv.getKey();
                     NPCData npc = kv.getValue();
-                    DisplayEntry entry = configLoader.getById(id);
+                    DisplayEntry entry = configLoader.getById(kv.getKey());
+
                     if (entry == null || !Boolean.TRUE.equals(entry.getIsMovible())) continue;
-                    double radius = 6.0;
+
                     Location npcLoc = npc.location();
+                    World npcWorld = npcLoc.getWorld();
+                    if (npcWorld == null) continue;
+
+                    double radius = 8.0;
+                    double radiusSq = radius * radius;
 
                     Map<UUID, float[]> perViewer = npcViewerRot.computeIfAbsent(npc.entityId(), k -> new ConcurrentHashMap<>());
 
-                    for (Player viewer : Bukkit.getOnlinePlayers()) {
+                    for (Player viewer : npcWorld.getPlayers()) {
                         if (!viewer.isValid() || viewer.isDead()) continue;
-                        if (!viewer.getWorld().equals(npcLoc.getWorld())) continue;
 
                         float targetYaw;
                         float targetPitch;
+
                         double dsq = viewer.getLocation().distanceSquared(npcLoc);
-                        if (dsq <= radius * radius) {
+                        if (dsq <= radiusSq) {
                             Location eye = viewer.getEyeLocation();
                             double dx = eye.getX() - npcLoc.getX();
                             double dy = eye.getY() - (npcLoc.getY() + 1.50);
@@ -128,22 +134,26 @@ public class NPCService implements Listener {
                         }
 
                         float[] current = perViewer.computeIfAbsent(viewer.getUniqueId(), u -> new float[]{normalizeYaw(npcLoc.getYaw()), clampPitch(npcLoc.getPitch())});
-                        float newYaw = stepAngle(current[0], targetYaw, 5.0f);
-                        float newPitch = stepAngle(current[1], targetPitch, 5.0f);
-                        current[0] = newYaw;
-                        current[1] = newPitch;
 
-                        try {
-                            WrapperPlayServerEntityHeadLook head = new WrapperPlayServerEntityHeadLook(npc.entityId(), newYaw);
-                            WrapperPlayServerEntityRotation rotation = new WrapperPlayServerEntityRotation(npc.entityId(), newYaw, newPitch, false);
-                            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, head);
-                            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, rotation);
-                        } catch (Throwable t) {
-                            Main.getInstance().getLogger().log(Level.WARNING, "Erro não crítico ao enviar pacotes de rotação de NPC.", t);
+                        float newYaw = stepAngle(current[0], targetYaw, 10.0f);
+                        float newPitch = stepAngle(current[1], targetPitch, 10.0f);
+
+                        if (Math.abs(newYaw - current[0]) > 0.1f || Math.abs(newPitch - current[1]) > 0.1f) {
+                            current[0] = newYaw;
+                            current[1] = newPitch;
+
+                            try {
+                                WrapperPlayServerEntityHeadLook head = new WrapperPlayServerEntityHeadLook(npc.entityId(), newYaw);
+                                WrapperPlayServerEntityRotation rotation = new WrapperPlayServerEntityRotation(npc.entityId(), newYaw, newPitch, false);
+                                PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, head);
+                                PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, rotation);
+                            } catch (Throwable t) {
+                                Main.getInstance().getLogger().log(Level.WARNING, "Erro não crítico ao enviar pacotes de rotação de NPC.", t);
+                            }
                         }
                     }
                 }
-            }, 10L, 1L);
+            }, 10L, 2L);
         } catch (Throwable t) {
             Main.getInstance().getLogger().log(Level.SEVERE, "Falha crítica ao iniciar a tarefa de rotação de NPCs.", t);
         }
@@ -167,7 +177,6 @@ public class NPCService implements Listener {
         if (Math.abs(delta) > maxStep) delta = (delta > 0 ? maxStep : -maxStep);
         return normalizeYaw(current + delta);
     }
-
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
