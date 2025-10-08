@@ -16,6 +16,7 @@ import java.util.*;
 
 public class HologramService {
     private final Map<UUID, List<UUID>> spawnedByPlayer = new HashMap<>();
+    private final Map<String, List<UUID>> globalHolograms = new HashMap<>();
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
     private final HologramConfigLoader configLoader;
 
@@ -60,7 +61,14 @@ public class HologramService {
     }
 
     public void showGlobal(Location base, List<String> lines, boolean glow) {
+        showGlobal(null, base, lines, glow);
+    }
+
+    public void showGlobal(String customId, Location base, List<String> lines, boolean glow) {
         DisplayEntry entry = new DisplayEntry();
+        if (customId != null) {
+            entry.setId(customId);
+        }
         entry.setType(DisplayEntry.Type.HOLOGRAM);
         entry.setWorld(base.getWorld().getName());
         entry.setX(base.getX());
@@ -77,7 +85,10 @@ public class HologramService {
         configLoader.addEntry(entry);
         configLoader.save();
 
-        showWithoutSaving(base, lines, glow);
+        removeGlobalHologram(entry.getId());
+
+        List<UUID> uuids = showWithoutSaving(base, lines, glow);
+        globalHolograms.put(entry.getId(), uuids);
     }
 
     public void clear(Player player) {
@@ -100,36 +111,45 @@ public class HologramService {
     }
 
     public void clearAll() {
-        for (World world : Bukkit.getWorlds()) {
-            for (Entity entity : world.getEntities()) {
-                if (entity instanceof TextDisplay &&
-                        (entity.getScoreboardTags().contains("controller_hologram_line") ||
-                         entity.getScoreboardTags().contains("controller_npc_name_line"))) {
+        for (List<UUID> entities : spawnedByPlayer.values()) {
+            for (UUID entityId : entities) {
+                Entity entity = findEntityByUuid(entityId);
+                if (entity != null) {
+                    entity.remove();
+                }
+            }
+            entities.clear();
+        }
+
+        for (List<UUID> uuids : globalHolograms.values()) {
+            for (UUID uuid : uuids) {
+                Entity entity = findEntityByUuid(uuid);
+                if (entity != null) {
                     entity.remove();
                 }
             }
         }
-        try {
-            for (DisplayEntry e : configLoader.getEntries()) {
-                if (e.getType() != DisplayEntry.Type.HOLOGRAM) continue;
-                World w = Bukkit.getWorld(e.getWorld());
-                if (w == null) continue;
-                Location base = new Location(w, e.getX(), e.getY(), e.getZ());
-                double horizRadiusSq = 0.7 * 0.7;
-                double minY = e.getY() - 1.0;
-                int linesCount = (e.getLines() != null && !e.getLines().isEmpty()) ? e.getLines().size() : 1;
-                double maxY = e.getY() + (linesCount * 0.35) + 1.0;
-                for (Entity ent : w.getEntitiesByClass(TextDisplay.class)) {
-                    Location loc = ent.getLocation();
-                    if (loc.getY() < minY || loc.getY() > maxY) continue;
-                    double dx = loc.getX() - base.getX();
-                    double dz = loc.getZ() - base.getZ();
-                    if ((dx * dx + dz * dz) <= horizRadiusSq) {
-                        ent.remove();
-                    }
+        globalHolograms.clear();
+
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntitiesByClass(TextDisplay.class)) {
+                if (entity.getScoreboardTags().contains("controller_hologram_line")) {
+                    entity.remove();
                 }
             }
-        } catch (Throwable ignored) {}
+        }
+    }
+
+    private void removeGlobalHologram(String id) {
+        List<UUID> uuids = globalHolograms.remove(id);
+        if (uuids != null) {
+            for (UUID uuid : uuids) {
+                Entity entity = findEntityByUuid(uuid);
+                if (entity != null) {
+                    entity.remove();
+                }
+            }
+        }
     }
 
     private void loadSavedHolograms() {
@@ -138,7 +158,11 @@ public class HologramService {
                 World world = Bukkit.getWorld(entry.getWorld());
                 if (world == null) continue;
                 Location base = new Location(world, entry.getX(), entry.getY(), entry.getZ(), entry.getYaw(), entry.getPitch());
-                showWithoutSaving(base, entry.getLines(), Boolean.TRUE.equals(entry.getGlow()));
+
+                removeGlobalHologram(entry.getId());
+
+                List<UUID> uuids = showWithoutSaving(base, entry.getLines(), Boolean.TRUE.equals(entry.getGlow()));
+                globalHolograms.put(entry.getId(), uuids);
             } catch (Exception e) {
                 System.err.println("Erro ao carregar holograma ID " + entry.getId() + ": " + e.getMessage());
             }
@@ -167,6 +191,7 @@ public class HologramService {
             textDisplay.customName(null);
             textDisplay.setCustomNameVisible(false);
             textDisplay.addScoreboardTag("controller_hologram_line");
+            textDisplay.addScoreboardTag("hologram_id_" + UUID.randomUUID().toString().substring(0, 8));
             ids.add(textDisplay.getUniqueId());
         }
         return ids;

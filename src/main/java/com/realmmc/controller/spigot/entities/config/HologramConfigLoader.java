@@ -34,7 +34,7 @@ public class HologramConfigLoader {
 
         ConfigurationSection entriesSection = config.getConfigurationSection("entries");
         if (entriesSection != null) {
-            for (String id : entriesSection.getKeys(false)) { // A chave da seção é o ID
+            for (String id : entriesSection.getKeys(false)) {
                 ConfigurationSection entrySection = entriesSection.getConfigurationSection(id);
                 if (entrySection != null) {
                     DisplayEntry entry = new DisplayEntry();

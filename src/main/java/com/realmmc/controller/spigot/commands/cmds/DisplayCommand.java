@@ -416,6 +416,12 @@ public class DisplayCommand implements CommandInterface {
                 else lines = List.of(joined);
             }
             try {
+                DisplayConfigLoader d = new DisplayConfigLoader();
+                d.load();
+                if (d.getById(id) != null) {
+                    Messages.send(player, "<red>Já existe um display item com o ID '" + id + "'.");
+                    return;
+                }
                 ItemStack stack = new ItemStack(Material.valueOf(material));
                 Main.getInstance().getDisplayItemService().show(
                         player,
@@ -445,22 +451,11 @@ public class DisplayCommand implements CommandInterface {
             try {
                 HologramConfigLoader h = new HologramConfigLoader();
                 h.load();
-                DisplayEntry entry = new DisplayEntry();
-                entry.setId(id);
-                entry.setType(DisplayEntry.Type.HOLOGRAM);
-                entry.setWorld(player.getWorld().getName());
-                entry.setX(player.getLocation().getX());
-                entry.setY(player.getLocation().getY());
-                entry.setZ(player.getLocation().getZ());
-                entry.setYaw(player.getLocation().getYaw());
-                entry.setPitch(player.getLocation().getPitch());
-                entry.setLines(lines);
-                entry.setGlow(false);
-                entry.setBillboard("CENTER");
-                entry.setScale(1.0f);
-                h.addEntry(entry);
-                h.save();
-                Main.getInstance().getHologramService().reload();
+                if (h.getById(id) != null) {
+                    Messages.send(player, "<red>Já existe um holograma com o ID '" + id + "'.");
+                    return;
+                }
+                Main.getInstance().getHologramService().showGlobal(id, player.getLocation(), lines, false);
                 Messages.send(player, "<green>Holograma '" + id + "' criado.");
             } catch (Exception e) {
                 Messages.send(player, "<red>Falha ao criar Holograma: " + e.getMessage());
