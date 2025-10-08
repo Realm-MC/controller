@@ -1,5 +1,6 @@
 package com.realmmc.controller.proxy;
 
+import com.google.inject.Inject;
 import com.realmmc.controller.core.ControllerCore;
 import com.realmmc.controller.core.modules.ModuleManager;
 import com.realmmc.controller.core.services.ServiceRegistry;
@@ -8,7 +9,10 @@ import com.realmmc.controller.modules.database.DatabaseModule;
 import com.realmmc.controller.modules.profile.ProfileModule;
 import com.realmmc.controller.modules.proxy.ProxyModule;
 import com.realmmc.controller.modules.scheduler.SchedulerModule;
+import com.realmmc.controller.modules.stats.StatisticsModule;
 import com.realmmc.controller.shared.messaging.MessagingSDK;
+import com.realmmc.controller.shared.stats.StatisticsService;
+import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
@@ -17,9 +21,11 @@ import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
 import lombok.Getter;
 
-import javax.inject.Inject;
 import java.io.File;
 import java.nio.file.Path;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 @Plugin(id = "controller", name = "Controller", description = "Core controller para RealmMC", version = "1.0.0", authors = {"onyell", "lucas"})
@@ -32,6 +38,9 @@ public class Proxy extends ControllerCore {
     private final Path directory;
     private ModuleManager moduleManager;
     private ServiceRegistry serviceRegistry;
+
+    @Getter
+    private final ConcurrentHashMap<UUID, Long> loginTimestamps = new ConcurrentHashMap<>();
 
     @Inject
     public Proxy(ProxyServer server, Logger logger, @DataDirectory Path directory) {
@@ -53,10 +62,13 @@ public class Proxy extends ControllerCore {
         moduleManager.registerModule(new DatabaseModule(logger));
         moduleManager.registerModule(new SchedulerModule(server, this, logger));
         moduleManager.registerModule(new ProfileModule(logger));
+        moduleManager.registerModule(new StatisticsModule(logger));
         moduleManager.registerModule(new CommandModule(logger));
         moduleManager.registerModule(new ProxyModule(server, this, logger));
 
         moduleManager.enableAllModules();
+
+        startOnlineTimeBackupTask();
 
         logger.info("Controller Core (Proxy) inicializado com sucesso!");
     }
@@ -78,7 +90,21 @@ public class Proxy extends ControllerCore {
     public void shutdown() {
         logger.info("Finalizando Controller Core (Proxy)...");
 
-        moduleManager.disableAllModules();
+        serviceRegistry.getService(StatisticsService.class).ifPresent(statsService -> {
+            logger.info("Salvando tempo online");
+            server.getAllPlayers().forEach(player -> {
+                Long loginTime = loginTimestamps.remove(player.getUniqueId());
+                if (loginTime != null) {
+                    long sessionDuration = System.currentTimeMillis() - loginTime;
+                    statsService.addOnlineTime(player.getUniqueId(), sessionDuration);
+                }
+            });
+            logger.info("Tempo online salvo.");
+        });
+
+        if (moduleManager != null) {
+            moduleManager.disableAllModules();
+        }
 
         shutdownSharedServices();
 
@@ -95,8 +121,27 @@ public class Proxy extends ControllerCore {
         shutdown();
     }
 
-    private String getProp(String key, String def) {
-        String env = System.getenv(key);
-        return env != null ? env : System.getProperty(key, def);
+    private void startOnlineTimeBackupTask() {
+        StatisticsService statisticsService = serviceRegistry.getService(StatisticsService.class)
+                .orElseThrow(() -> new IllegalStateException("StatisticsService não foi encontrado no registo!"));
+
+        TaskScheduler.runAsyncTimer(() -> {
+            long now = System.currentTimeMillis();
+            logger.info("Executando tarefa de salvamento de tempo online");
+
+            if (loginTimestamps.isEmpty()) {
+                logger.info("Nenhum jogador online para salvar o tempo.");
+                return;
+            }
+
+            loginTimestamps.forEach((uuid, loginTime) -> {
+                long sessionDuration = now - loginTime;
+
+                statisticsService.addOnlineTime(uuid, sessionDuration);
+
+                loginTimestamps.put(uuid, now);
+            });
+            logger.info("Tempo online salvo periodicamente para " + loginTimestamps.size() + " jogadores.");
+        }, 5, 5, TimeUnit.MINUTES);
     }
 }
