@@ -1,5 +1,6 @@
 package com.realmmc.controller.spigot.entities.holograms;
 
+import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.config.HologramConfigLoader;
 import net.kyori.adventure.text.Component;
@@ -13,6 +14,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 
 import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class HologramService {
     private final Map<UUID, List<UUID>> spawnedByPlayer = new HashMap<>();
@@ -20,55 +23,29 @@ public class HologramService {
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
     private final HologramConfigLoader configLoader;
 
+    private final Logger logger = Main.getInstance().getLogger();
+
     public HologramService() {
         this.configLoader = new HologramConfigLoader();
         this.configLoader.load();
-        try { clearAll(); } catch (Throwable ignored) {}
+        try {
+            clearAll();
+        } catch (Throwable t) {
+            logger.log(Level.WARNING, "Ocorreu um erro não crítico ao limpar hologramas na inicialização.", t);
+        }
         loadSavedHolograms();
     }
 
-    public void show(Player player, Location location, List<String> lines) {
-        show(player, location, lines, false);
-    }
-
     public void show(Player player, Location base, List<String> lines, boolean glow) {
-        List<UUID> entities = new ArrayList<>();
-
-        if (lines != null && !lines.isEmpty()) {
-            double step = 0.25;
-
-            for (int i = 0; i < lines.size(); i++) {
-                String line = lines.get(i);
-                double textY = base.getY() + (lines.size() - 1 - i) * step;
-                Location textLocation = new Location(base.getWorld(), base.getX(), textY, base.getZ());
-
-                TextDisplay textDisplay = base.getWorld().spawn(textLocation, TextDisplay.class);
-                Component component = miniMessage.deserialize(line);
-                textDisplay.text(component);
-                textDisplay.setBillboard(Display.Billboard.CENTER);
-                textDisplay.setSeeThrough(true);
-                textDisplay.setDefaultBackground(false);
-                textDisplay.setShadowed(false);
-                textDisplay.setLineWidth(200);
-                textDisplay.setAlignment(TextDisplay.TextAlignment.CENTER);
-                textDisplay.setGlowing(glow);
-
-                entities.add(textDisplay.getUniqueId());
-            }
-        }
-
+        List<UUID> entities = showWithoutSaving(base, lines, glow);
         spawnedByPlayer.computeIfAbsent(player.getUniqueId(), k -> new ArrayList<>()).addAll(entities);
-    }
-
-    public void showGlobal(Location base, List<String> lines, boolean glow) {
-        showGlobal(null, base, lines, glow);
     }
 
     public void showGlobal(String customId, Location base, List<String> lines, boolean glow) {
         DisplayEntry entry = new DisplayEntry();
-        if (customId != null) {
-            entry.setId(customId);
-        }
+        String id = (customId != null && !customId.isEmpty()) ? customId : "hologram_" + UUID.randomUUID().toString().substring(0, 8);
+        entry.setId(id);
+
         entry.setType(DisplayEntry.Type.HOLOGRAM);
         entry.setWorld(base.getWorld().getName());
         entry.setX(base.getX());
@@ -86,21 +63,14 @@ public class HologramService {
         configLoader.save();
 
         removeGlobalHologram(entry.getId());
-
         List<UUID> uuids = showWithoutSaving(base, lines, glow);
         globalHolograms.put(entry.getId(), uuids);
     }
 
     public void clear(Player player) {
-        List<UUID> entities = spawnedByPlayer.get(player.getUniqueId());
+        List<UUID> entities = spawnedByPlayer.remove(player.getUniqueId());
         if (entities != null) {
-            for (UUID entityId : entities) {
-                Entity entity = findEntityByUuid(entityId);
-                if (entity != null) {
-                    entity.remove();
-                }
-            }
-            entities.clear();
+            removeByUUIDs(entities);
         }
     }
 
@@ -112,22 +82,12 @@ public class HologramService {
 
     public void clearAll() {
         for (List<UUID> entities : spawnedByPlayer.values()) {
-            for (UUID entityId : entities) {
-                Entity entity = findEntityByUuid(entityId);
-                if (entity != null) {
-                    entity.remove();
-                }
-            }
-            entities.clear();
+            removeByUUIDs(entities);
         }
+        spawnedByPlayer.clear();
 
         for (List<UUID> uuids : globalHolograms.values()) {
-            for (UUID uuid : uuids) {
-                Entity entity = findEntityByUuid(uuid);
-                if (entity != null) {
-                    entity.remove();
-                }
-            }
+            removeByUUIDs(uuids);
         }
         globalHolograms.clear();
 
@@ -143,12 +103,7 @@ public class HologramService {
     private void removeGlobalHologram(String id) {
         List<UUID> uuids = globalHolograms.remove(id);
         if (uuids != null) {
-            for (UUID uuid : uuids) {
-                Entity entity = findEntityByUuid(uuid);
-                if (entity != null) {
-                    entity.remove();
-                }
-            }
+            removeByUUIDs(uuids);
         }
     }
 
@@ -156,7 +111,10 @@ public class HologramService {
         for (DisplayEntry entry : configLoader.getEntries()) {
             try {
                 World world = Bukkit.getWorld(entry.getWorld());
-                if (world == null) continue;
+                if (world == null) {
+                    logger.warning("Mundo '" + entry.getWorld() + "' não encontrado para o holograma ID " + entry.getId());
+                    continue;
+                }
                 Location base = new Location(world, entry.getX(), entry.getY(), entry.getZ(), entry.getYaw(), entry.getPitch());
 
                 removeGlobalHologram(entry.getId());
@@ -164,7 +122,7 @@ public class HologramService {
                 List<UUID> uuids = showWithoutSaving(base, entry.getLines(), Boolean.TRUE.equals(entry.getGlow()));
                 globalHolograms.put(entry.getId(), uuids);
             } catch (Exception e) {
-                System.err.println("Erro ao carregar holograma ID " + entry.getId() + ": " + e.getMessage());
+                logger.log(Level.SEVERE, "Erro ao carregar holograma ID " + entry.getId(), e);
             }
         }
     }
@@ -179,6 +137,9 @@ public class HologramService {
             Location textLocation = new Location(base.getWorld(), base.getX(), textY, base.getZ());
 
             TextDisplay textDisplay = base.getWorld().spawn(textLocation, TextDisplay.class);
+
+            textDisplay.setPersistent(false);
+
             Component component = miniMessage.deserialize(line);
             textDisplay.text(component);
             textDisplay.setBillboard(Display.Billboard.CENTER);
@@ -191,7 +152,6 @@ public class HologramService {
             textDisplay.customName(null);
             textDisplay.setCustomNameVisible(false);
             textDisplay.addScoreboardTag("controller_hologram_line");
-            textDisplay.addScoreboardTag("hologram_id_" + UUID.randomUUID().toString().substring(0, 8));
             ids.add(textDisplay.getUniqueId());
         }
         return ids;
@@ -203,34 +163,25 @@ public class HologramService {
 
     public void removeByUUIDs(Collection<UUID> ids) {
         if (ids == null) return;
-        for (World world : Bukkit.getWorlds()) {
-            for (UUID id : ids) {
-                Entity e = world.getEntity(id);
-                if (e != null) e.remove();
+        for (UUID id : ids) {
+            Entity e = Bukkit.getEntity(id);
+            if (e != null) {
+                e.remove();
             }
         }
     }
 
     public void addTagToUUIDs(Collection<UUID> ids, String tag) {
         if (ids == null || tag == null) return;
-        for (World world : Bukkit.getWorlds()) {
-            for (UUID id : ids) {
-                Entity e = world.getEntity(id);
-                if (e instanceof TextDisplay) {
-                    e.addScoreboardTag(tag);
-                }
+        for (UUID id : ids) {
+            Entity e = Bukkit.getEntity(id);
+            if (e instanceof TextDisplay) {
+                e.addScoreboardTag(tag);
             }
         }
     }
 
     private Entity findEntityByUuid(UUID uuid) {
-        for (World world : Bukkit.getWorlds()) {
-            for (Entity entity : world.getEntities()) {
-                if (entity.getUniqueId().equals(uuid)) {
-                    return entity;
-                }
-            }
-        }
-        return null;
+        return Bukkit.getEntity(uuid);
     }
 }
