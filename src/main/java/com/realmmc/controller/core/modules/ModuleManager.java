@@ -59,7 +59,9 @@ public class ModuleManager {
     }
 
     public void enableAllModules() {
-        modules.keySet().forEach(this::enableModule);
+        modules.values().stream()
+                .sorted(Comparator.comparingInt(CoreModule::getPriority))
+                .forEach(module -> enableModule(module.getName()));
     }
 
     public void disableAllModules() {

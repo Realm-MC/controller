@@ -22,7 +22,6 @@ import java.io.File;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-@Getter
 public class Main extends JavaPlugin {
     @Getter
     private static Main instance;
@@ -33,11 +32,26 @@ public class Main extends JavaPlugin {
 
     private ModuleManager moduleManager;
     private ServiceRegistry serviceRegistry;
-    private final Logger logger = getLogger();
+
+    private Logger logger;
+
+    public DisplayItemService getDisplayItemService() {
+        return displayItemService;
+    }
+
+    public HologramService getHologramService() {
+        return hologramService;
+    }
+
+    public NPCService getNpcService() {
+        return npcService;
+    }
 
     @Override
     public void onLoad() {
         instance = this;
+        this.logger = getLogger();
+
         logger.info("Controller Core (Spigot) carregado.");
     }
 
@@ -56,6 +70,14 @@ public class Main extends JavaPlugin {
             serviceRegistry = new ServiceRegistry(logger);
             moduleManager = new ModuleManager(logger);
 
+            saveDefaultConfigResource("displays.yml");
+            saveDefaultConfigResource("holograms.yml");
+            saveDefaultConfigResource("npcs.yml");
+
+            displayItemService = new DisplayItemService();
+            hologramService = new HologramService();
+            npcService = new NPCService();
+
             moduleManager.registerModule(new DatabaseModule(logger));
             moduleManager.registerModule(new SchedulerModule(this, this, logger));
             moduleManager.registerModule(new ProfileModule(logger));
@@ -65,14 +87,6 @@ public class Main extends JavaPlugin {
             moduleManager.registerModule(new SoundModule(this, logger));
 
             moduleManager.enableAllModules();
-
-            saveDefaultConfigResource("displays.yml");
-            saveDefaultConfigResource("holograms.yml");
-            saveDefaultConfigResource("npcs.yml");
-
-            displayItemService = new DisplayItemService();
-            hologramService = new HologramService();
-            npcService = new NPCService();
 
             getServer().getPluginManager().registerEvents(npcService, this);
             for (Player p : Bukkit.getOnlinePlayers()) {
@@ -97,15 +111,12 @@ public class Main extends JavaPlugin {
 
             if (displayItemService != null) {
                 displayItemService.clearAll();
-                logger.info("Todas as entidades de display de item foram removidas.");
             }
             if (hologramService != null) {
                 hologramService.clearAll();
-                logger.info("Todos os hologramas foram removidos.");
             }
             if (npcService != null) {
                 npcService.despawnAll();
-                logger.info("Todos os NPCs foram removidos.");
             }
 
             if (moduleManager != null) {

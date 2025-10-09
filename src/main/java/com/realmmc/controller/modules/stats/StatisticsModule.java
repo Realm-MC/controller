@@ -48,6 +48,6 @@ public class StatisticsModule extends AbstractCoreModule {
 
     @Override
     public int getPriority() {
-        return 40;
+        return 30;
     }
 }

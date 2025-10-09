@@ -58,7 +58,7 @@ public class DatabaseModule extends AbstractCoreModule {
 
     @Override
     public int getPriority() {
-        return 100;
+        return 10;
     }
 
     @Override

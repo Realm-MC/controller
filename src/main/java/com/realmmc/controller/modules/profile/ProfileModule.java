@@ -62,6 +62,6 @@ public class ProfileModule extends AbstractCoreModule {
 
     @Override
     public int getPriority() {
-        return 50;
+        return 20;
     }
 }

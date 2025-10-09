@@ -1,10 +1,13 @@
 package com.realmmc.controller.spigot.commands.cmds;
 
+import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.shared.annotations.Cmd;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.commands.CommandInterface;
 import com.realmmc.controller.spigot.entities.npcs.NPCService;
+import com.realmmc.controller.spigot.sounds.SoundKeys;
+import com.realmmc.controller.spigot.sounds.SoundService;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -18,11 +21,21 @@ import java.util.List;
 @Cmd(cmd = "npc", aliases = {})
 public class NpcCommand implements CommandInterface {
 
+    private final String permission = "controller.manager";
+    private final NPCService npcService;
+    private final SoundService soundService;
+
+    public NpcCommand() {
+        this.npcService = Main.getInstance().getNpcService();
+        this.soundService = ServiceRegistry.getInstance().getService(SoundService.class)
+                .orElseThrow(() -> new IllegalStateException("SoundService não foi encontrado!"));
+    }
+
     @Override
     public void execute(CommandSender sender, String label, String[] args) {
-        if (!sender.hasPermission("controller.manager")) {
+        if (!sender.hasPermission(permission)) {
             Messages.send(sender, "<red>Apenas o grupo Gerente ou superior pode executar este comando.");
-
+            playSound(sender, SoundKeys.ERROR);
             return;
         }
 
@@ -40,7 +53,7 @@ public class NpcCommand implements CommandInterface {
                 handleSkin(sender, args);
                 break;
             default:
-                Messages.send(sender, "<red>Subcomando desconhecido. Use /npc para ver a ajuda.");
+                showHelp(sender);
                 break;
         }
     }
@@ -48,11 +61,13 @@ public class NpcCommand implements CommandInterface {
     private void handleCriar(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
             Messages.send(sender, "<red>Este comando só pode ser executado por um jogador.");
+            playSound(sender, SoundKeys.ERROR);
             return;
         }
 
         if (args.length < 4) {
-            Messages.send(player, "<red>Uso: /npc criar <id> <skin_url|nick|player> <nome_de_exibicao>");
+            Messages.send(sender, "<red>Utilize: /npc criar <id> <skin> <nome>.");
+            playSound(player, SoundKeys.ERROR);
             return;
         }
 
@@ -60,76 +75,80 @@ public class NpcCommand implements CommandInterface {
         String skinSource = args[2];
         String displayName = String.join(" ", Arrays.copyOfRange(args, 3, args.length));
 
-        try {
-            NPCService npcService = Main.getInstance().getNPCService();
-            if (npcService.getNpcById(id) != null) {
-                Messages.send(player, "<red>Já existe um NPC com o ID '" + id + "'.");
-                return;
-            }
-
-            npcService.spawnGlobal(id, player.getLocation(), displayName, skinSource);
-            Messages.send(player, "<green>NPC '" + id + "' criado com sucesso!");
-        } catch (Exception e) {
-            Messages.send(player, "<red>Ocorreu um erro ao criar o NPC: " + e.getMessage());
-            e.printStackTrace();
+        if (npcService.getNpcById(id) != null) {
+            Messages.send(player, "<red>Já existe um NPC com o ID '" + id + "'.");
+            playSound(player, SoundKeys.ERROR);
+            return;
         }
+
+        npcService.spawnGlobal(id, player.getLocation(), displayName, skinSource);
+        Messages.send(player, "<green>NPC '" + id + "' criado com sucesso na sua localização!");
+        playSound(player, SoundKeys.SUCCESS);
     }
 
     private void handleSkin(CommandSender sender, String[] args) {
         if (args.length < 3) {
-            Messages.send(sender, "<red>Uso: /npc skin <id> <nova_skin_url|nick|player>");
+            Messages.send(sender, "<red>Utilize: /npc skin <id> <nova_skin>.");
+            playSound(sender, SoundKeys.ERROR);
             return;
         }
 
         String id = args[1];
         String newSkinSource = args[2];
 
-        try {
-            NPCService npcService = Main.getInstance().getNPCService();
-            if (npcService.getNpcById(id) == null) {
-                Messages.send(sender, "<red>Nenhum NPC encontrado com o ID '" + id + "'.");
-                return;
-            }
-
-            npcService.updateNpcSkin(id, newSkinSource);
-            Messages.send(sender, "<green>A skin do NPC '" + id + "' foi atualizada com sucesso!");
-        } catch (Exception e) {
-            Messages.send(sender, "<red>Ocorreu um erro ao atualizar a skin: " + e.getMessage());
-            e.printStackTrace();
+        if (npcService.getNpcById(id) == null) {
+            Messages.send(sender, "<red>Nenhum NPC encontrado com o ID '" + id + "'.");
+            playSound(sender, SoundKeys.ERROR);
+            return;
         }
+
+        npcService.updateNpcSkin(id, newSkinSource);
+        Messages.send(sender, "<green>A skin do NPC '" + id + "' foi atualizada com sucesso!");
+        playSound(sender, SoundKeys.SUCCESS);
     }
 
     private void showHelp(CommandSender sender) {
-        Messages.send(sender, "<#FFD700>--- Ajuda do Comando /npc ---");
-        Messages.send(sender, "<#FFFF00>/npc criar <id> <skin> <nome> <#777777>- Cria um NPC.");
-        Messages.send(sender, "<#FFFF00>/npc skin <id> <nova_skin> <#777777>- Altera a skin de um NPC.");
-        Messages.send(sender, "<gray>Para a skin, você pode usar um nick, uma URL de imagem .png ou a palavra 'player'.");
+        Messages.send(sender, " ");
+        Messages.send(sender, "<gold>Comandos disponíveis para NPCs");
+        Messages.send(sender, "<yellow>/npc criar <id> <skin> <nome> <dark_gray>- &7Cria um NPC na sua localização.");
+        Messages.send(sender, "<yellow>/npc skin <id> <nova_skin> <dark_gray>- &7Altera a skin de um NPC existente.");
+        Messages.send(sender, " ");
+        Messages.send(sender, "<gold>OBS.: &7As informações com <> são obrigatórios");
+        Messages.send(sender, " ");
+        playSound(sender, SoundKeys.NOTIFICATION);
     }
 
     @Override
     public List<String> tabComplete(CommandSender sender, String[] args) {
-        if (!sender.hasPermission("controller.npc.admin")) {
+        if (!sender.hasPermission(permission)) {
             return Collections.emptyList();
         }
 
+        final List<String> completions = new ArrayList<>();
+
         if (args.length == 1) {
-            return StringUtil.copyPartialMatches(args[0], List.of("criar", "skin"), new ArrayList<>());
-        }
-
-        if (args.length == 2 && args[0].equalsIgnoreCase("skin")) {
-            NPCService npcService = Main.getInstance().getNPCService();
-            return StringUtil.copyPartialMatches(args[1], npcService.getAllNpcIds(), new ArrayList<>());
-        }
-
-        if ((args[0].equalsIgnoreCase("criar") && args.length == 3) || (args[0].equalsIgnoreCase("skin") && args.length == 3)) {
-            List<String> suggestions = new ArrayList<>();
-            for (Player p : Bukkit.getOnlinePlayers()) {
-                suggestions.add(p.getName());
+            List<String> subCommands = Arrays.asList("criar", "skin");
+            StringUtil.copyPartialMatches(args[0], subCommands, completions);
+        } else if (args.length == 2) {
+            if (args[0].equalsIgnoreCase("skin")) {
+                StringUtil.copyPartialMatches(args[1], npcService.getAllNpcIds(), completions);
             }
-            suggestions.add("player");
-            return StringUtil.copyPartialMatches(args[2], suggestions, new ArrayList<>());
+        } else if (args.length == 3) {
+            if (args[0].equalsIgnoreCase("criar") || args[0].equalsIgnoreCase("skin")) {
+                List<String> suggestions = new ArrayList<>();
+                suggestions.add("player");
+                Bukkit.getOnlinePlayers().forEach(p -> suggestions.add(p.getName()));
+                StringUtil.copyPartialMatches(args[2], suggestions, completions);
+            }
         }
 
-        return Collections.emptyList();
+        Collections.sort(completions);
+        return completions;
+    }
+
+    private void playSound(CommandSender sender, String key) {
+        if (sender instanceof Player) {
+            soundService.playSound((Player) sender, key);
+        }
     }
 }

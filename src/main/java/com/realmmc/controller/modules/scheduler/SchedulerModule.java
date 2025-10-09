@@ -34,7 +34,7 @@ public class SchedulerModule extends AbstractCoreModule {
 
     @Override
     public int getPriority() {
-        return 100;
+        return 5;
     }
 
     @Override
