@@ -4,13 +4,12 @@ import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
+import com.github.retrooper.packetevents.protocol.player.InteractionHand;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity;
 import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.entities.actions.Actions;
 import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
-import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
-import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -19,15 +18,12 @@ import org.bukkit.World;
 import org.bukkit.entity.*;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Transformation;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 public class DisplayItemService {
-    private final Map<UUID, List<UUID>> spawnedByPlayer = new HashMap<>();
-    private final MiniMessage miniMessage = MiniMessage.miniMessage();
     private final DisplayConfigLoader configLoader;
     private final Map<Integer, String> entityIdToEntryId = new ConcurrentHashMap<>();
     private final Map<String, Long> clickDebounce = new ConcurrentHashMap<>();
@@ -47,39 +43,24 @@ public class DisplayItemService {
                             WrapperPlayClientInteractEntity wrapper = new WrapperPlayClientInteractEntity(event);
                             int targetId = wrapper.getEntityId();
                             String entryId = entityIdToEntryId.get(targetId);
-                            if (entryId == null) {
-                                return;
-                            }
-                            Player player = event.getPlayer();
-                            String actionName = String.valueOf(wrapper.getAction());
-                            String handName = String.valueOf(wrapper.getHand());
-                            if (handName != null && handName.equals("OFF_HAND")) {
-                                return;
-                            }
+                            if (entryId == null) return;
+
+                            Player player = (Player) event.getPlayer();
+                            if (wrapper.getHand() != InteractionHand.MAIN_HAND) return;
 
                             long now = System.currentTimeMillis();
                             String key = player.getUniqueId() + ":" + targetId;
-                            Long last = clickDebounce.get(key);
-                            if (last != null && now - last < 300) {
-                                return;
-                            }
+                            if (clickDebounce.getOrDefault(key, 0L) > now - 300) return;
                             clickDebounce.put(key, now);
 
                             DisplayEntry entry = configLoader.getById(entryId);
-                            if (entry == null) {
-                                return;
-                            }
-                            if (entry.getActions() == null || entry.getActions().isEmpty()) {
-                                return;
-                            }
+                            if (entry == null || entry.getActions() == null || entry.getActions().isEmpty()) return;
+
                             Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
-                                World w = player.getWorld();
-                                try {
-                                    World maybe = Bukkit.getWorld(entry.getWorld());
-                                    if (maybe != null) w = maybe;
-                                } catch (Throwable ignored) {}
-                                Location eloc = new Location(w, entry.getX(), entry.getY(), entry.getZ(), entry.getYaw(), entry.getPitch());
-                                Actions.runAll(player, entry, eloc, entry.getActions());
+                                World w = Bukkit.getWorld(entry.getWorld());
+                                if (w == null) w = player.getWorld();
+                                Location eloc = new Location(w, entry.getX(), entry.getY(), entry.getZ());
+                                Actions.runAll(player, entry, eloc);
                             });
                         }
                     }
@@ -91,172 +72,287 @@ public class DisplayItemService {
 
     private void loadSavedDisplays() {
         for (DisplayEntry entry : configLoader.getEntries()) {
-            if (entry.getType() != DisplayEntry.Type.DISPLAY_ITEM) {
-                continue;
-            }
-
+            if (entry.getType() != DisplayEntry.Type.DISPLAY_ITEM) continue;
             try {
                 World world = Bukkit.getWorld(entry.getWorld());
                 if (world == null) continue;
-
-                Location location = new Location(world, entry.getX(), entry.getY(), entry.getZ(),
-                        entry.getYaw(), entry.getPitch());
-
-                ItemStack item = new ItemStack(Material.valueOf(entry.getItem()));
-                Display.Billboard billboard = Display.Billboard.valueOf(entry.getBillboard());
-
-                showWithoutSaving(entry, location, item, entry.getLines(), entry.getGlow(), billboard, entry.getScale());
-
+                Location location = new Location(world, entry.getX(), entry.getY(), entry.getZ(), entry.getYaw(), entry.getPitch());
+                spawnEntitiesForEntry(entry, location);
             } catch (Exception e) {
                 System.err.println("Erro ao carregar display ID " + entry.getId() + ": " + e.getMessage());
             }
         }
     }
 
-    private void showWithoutSaving(DisplayEntry entry, Location base, ItemStack item, List<String> lines, boolean glow,
-                                   Display.Billboard billboard, float scale) {
-        List<UUID> entities = new ArrayList<>();
+    private void spawnEntitiesForEntry(DisplayEntry entry, Location base) {
+        ItemStack item = new ItemStack(Material.valueOf(entry.getItem()));
+        Display.Billboard billboard = Display.Billboard.valueOf(entry.getBillboard());
 
-        Location itemLocation = base.clone().add(0, 1.4, 0);
-
+        Location itemLocation = base.clone();
         ItemDisplay itemDisplay = base.getWorld().spawn(itemLocation, ItemDisplay.class);
-        itemDisplay.setItemStack(item != null ? item : new ItemStack(Material.DIAMOND));
+        itemDisplay.setItemStack(item);
         itemDisplay.setBillboard(billboard);
         itemDisplay.setShadowStrength(0.0f);
         itemDisplay.setBrightness(new Display.Brightness(15, 15));
-        itemDisplay.setGlowing(glow);
-        itemDisplay.customName(null);
-        itemDisplay.setCustomNameVisible(false);
+        itemDisplay.setGlowing(Boolean.TRUE.equals(entry.getGlow()));
+        itemDisplay.setPersistent(false);
         itemDisplay.addScoreboardTag("controller_display_item");
-        try { entityIdToEntryId.put(itemDisplay.getEntityId(), entry.getId()); } catch (Throwable ignored) {}
 
-        Transformation transformation = new Transformation(
-                new Vector3f(0f, 0f, 0f),
-                new Quaternionf(0, 0, 0, 1),
-                new Vector3f(scale, scale, scale),
-                new Quaternionf(0, 0, 0, 1)
-        );
+        Transformation transformation = itemDisplay.getTransformation();
+        transformation.getScale().set(entry.getScale(), entry.getScale(), entry.getScale());
         itemDisplay.setTransformation(transformation);
-        entities.add(itemDisplay.getUniqueId());
 
-        try {
-            ArmorStand hitbox = base.getWorld().spawn(itemLocation.clone().add(0, 0.2, 0), ArmorStand.class);
-            hitbox.setInvisible(true);
-            hitbox.setSmall(false);
-            hitbox.setMarker(false);
-            hitbox.setGravity(false);
-            hitbox.setCollidable(false);
-            hitbox.getEquipment().clear();
-            hitbox.customName(null);
-            hitbox.setCustomNameVisible(false);
-            hitbox.addScoreboardTag("controller_display_hitbox");
-            entities.add(hitbox.getUniqueId());
-            entityIdToEntryId.put(hitbox.getEntityId(), entry.getId());
-        } catch (Throwable ignored) {}
+        entityIdToEntryId.put(itemDisplay.getEntityId(), entry.getId());
 
-        if (lines != null && !lines.isEmpty()) {
-            double baseY = itemLocation.getY() + (scale * 0.5);
-            double step = 0.25;
+        ArmorStand hitbox = base.getWorld().spawn(itemLocation.clone().add(0, entry.getScale() / 2, 0), ArmorStand.class);
+        hitbox.setInvisible(true);
+        hitbox.setMarker(false);
+        hitbox.setGravity(false);
+        hitbox.setCollidable(false);
+        hitbox.setPersistent(false);
+        hitbox.addScoreboardTag("controller_display_hitbox");
+        entityIdToEntryId.put(hitbox.getEntityId(), entry.getId());
 
-            for (int i = 0; i < lines.size(); i++) {
-                String line = lines.get(i);
-                double textY = baseY + (lines.size() - 1 - i) * step;
-                Location textLocation = new Location(base.getWorld(), base.getX(), textY, base.getZ());
-
-                TextDisplay textDisplay = base.getWorld().spawn(textLocation, TextDisplay.class);
-                Component component = miniMessage.deserialize(line);
-                textDisplay.text(component);
+        List<String> lines = entry.getLines();
+        if (lines != null && !lines.isEmpty() && Boolean.TRUE.equals(entry.getHologramVisible())) {
+            double lineY = base.getY() - 0.35;
+            for (String lineText : lines) {
+                TextDisplay textDisplay = base.getWorld().spawn(new Location(base.getWorld(), base.getX(), lineY, base.getZ()), TextDisplay.class);
+                textDisplay.text(MiniMessage.miniMessage().deserialize(lineText));
                 textDisplay.setBillboard(Display.Billboard.CENTER);
                 textDisplay.setSeeThrough(true);
                 textDisplay.setDefaultBackground(false);
-                textDisplay.setShadowed(false);
-                textDisplay.setLineWidth(200);
+                textDisplay.setShadowed(true);
+                textDisplay.setPersistent(false);
                 textDisplay.setAlignment(TextDisplay.TextAlignment.CENTER);
-                textDisplay.setGlowing(glow);
-                textDisplay.customName(null);
-                textDisplay.setCustomNameVisible(false);
-                textDisplay.addScoreboardTag("controller_display_line");
-                try { entityIdToEntryId.put(textDisplay.getEntityId(), entry.getId()); } catch (Throwable ignored) {}
-
-                entities.add(textDisplay.getUniqueId());
+                textDisplay.addScoreboardTag("controller_display_item");
+                lineY -= 0.30;
             }
-
-            try {
-                int segments = Math.max(1, (int) Math.ceil(lines.size() * 0.5));
-                for (int s = 0; s < segments; s++) {
-                    double y = base.getY() + 0.3 + s * 0.6;
-                    ArmorStand hb = base.getWorld().spawn(new Location(base.getWorld(), base.getX(), y, base.getZ()), ArmorStand.class);
-                    hb.setInvisible(true);
-                    hb.setSmall(false);
-                    hb.setMarker(false);
-                    hb.setGravity(false);
-                    hb.setCollidable(false);
-                    hb.getEquipment().clear();
-                    hb.customName(null);
-                    hb.setCustomNameVisible(false);
-                    hb.addScoreboardTag("controller_display_hitbox");
-                    entities.add(hb.getUniqueId());
-                    entityIdToEntryId.put(hb.getEntityId(), entry.getId());
-                }
-            } catch (Throwable ignored) {}
         }
-    }
-
-    public void show(Player player, Location base, ItemStack item, List<String> lines, boolean glow, Display.Billboard billboard, float scale, String id) {
-        DisplayEntry entry = new DisplayEntry();
-        entry.setId(id);
-        entry.setType(DisplayEntry.Type.DISPLAY_ITEM);
-        entry.setWorld(base.getWorld().getName());
-        entry.setX(base.getX());
-        entry.setY(base.getY());
-        entry.setZ(base.getZ());
-        entry.setYaw(base.getYaw());
-        entry.setPitch(base.getPitch());
-        entry.setItem(item != null ? item.getType().name() : Material.DIAMOND.name());
-        if (lines == null || lines.isEmpty()) {
-            lines = List.of("display_item");
-        }
-        entry.setLines(lines);
-        entry.setGlow(glow);
-        entry.setBillboard(billboard.name());
-        entry.setScale(scale);
-        if (entry.getActions() == null) {
-            entry.setActions(new ArrayList<>());
-        }
-
-        configLoader.addEntry(entry);
-        configLoader.save();
-
-        showWithoutSaving(entry, base, item, lines, glow, billboard, scale);
     }
 
     public void reload() {
-        configLoader.load();
         clearAll();
+        configLoader.load();
         loadSavedDisplays();
     }
 
     public void clearAll() {
+        entityIdToEntryId.clear();
         for (World world : Bukkit.getWorlds()) {
             for (Entity entity : world.getEntities()) {
-                if (entity instanceof ItemDisplay && entity.getScoreboardTags().contains("controller_display_item")) {
-                    entity.remove();
-                } else if (entity instanceof TextDisplay && entity.getScoreboardTags().contains("controller_display_line")) {
-                    entity.remove();
-                } else if (entity instanceof ArmorStand && entity.getScoreboardTags().contains("controller_display_hitbox")) {
+                if (entity.getScoreboardTags().contains("controller_display_item") ||
+                        entity.getScoreboardTags().contains("controller_display_hitbox")) {
                     entity.remove();
                 }
             }
         }
     }
 
-    private Entity findEntityByUuid(UUID uuid) {
-        for (World world : Bukkit.getWorlds()) {
-            Entity entity = world.getEntity(uuid);
-            if (entity != null) {
-                return entity;
+    public void createDisplay(String id, Location location, Material material) {
+        DisplayEntry entry = new DisplayEntry();
+        entry.setId(id);
+        entry.setType(DisplayEntry.Type.DISPLAY_ITEM);
+        entry.setWorld(location.getWorld().getName());
+        entry.setX(location.getX());
+        entry.setY(location.getY());
+        entry.setZ(location.getZ());
+        entry.setYaw(location.getYaw());
+        entry.setPitch(location.getPitch());
+        entry.setItem(material.name());
+        entry.setLines(new ArrayList<>());
+        entry.setGlow(false);
+        entry.setBillboard(Display.Billboard.CENTER.name());
+        entry.setScale(1.0f);
+        entry.setActions(new ArrayList<>());
+        entry.setHologramVisible(true);
+
+        configLoader.addEntry(entry);
+        configLoader.save();
+        reload();
+    }
+
+    public void cloneDisplay(String originalId, String newId, Location location) {
+        DisplayEntry originalEntry = configLoader.getById(originalId);
+        if (originalEntry == null) return;
+
+        DisplayEntry newEntry = new DisplayEntry();
+        newEntry.setId(newId);
+        newEntry.setType(originalEntry.getType());
+        newEntry.setItem(originalEntry.getItem());
+        newEntry.setScale(originalEntry.getScale());
+        newEntry.setBillboard(originalEntry.getBillboard());
+        newEntry.setGlow(originalEntry.getGlow());
+        newEntry.setHologramVisible(originalEntry.getHologramVisible());
+        newEntry.setLines(new ArrayList<>(originalEntry.getLines()));
+        newEntry.setActions(new ArrayList<>(originalEntry.getActions()));
+
+        newEntry.setWorld(location.getWorld().getName());
+        newEntry.setX(location.getX());
+        newEntry.setY(location.getY());
+        newEntry.setZ(location.getZ());
+        newEntry.setYaw(location.getYaw());
+        newEntry.setPitch(location.getPitch());
+
+        configLoader.addEntry(newEntry);
+        configLoader.save();
+        reload();
+    }
+
+    public void removeDisplay(String id) {
+        if (configLoader.removeEntry(id)) {
+            reload();
+        }
+    }
+
+    public void teleportDisplay(String id, Location location) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            entry.setWorld(location.getWorld().getName());
+            entry.setX(location.getX());
+            entry.setY(location.getY());
+            entry.setZ(location.getZ());
+            entry.setYaw(location.getYaw());
+            entry.setPitch(location.getPitch());
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            reload();
+        }
+    }
+
+    public void setItem(String id, Material material) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            entry.setItem(material.name());
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            reload();
+        }
+    }
+
+    public void setScale(String id, float scale) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            entry.setScale(scale);
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            reload();
+        }
+    }
+
+    public void setBillboard(String id, String billboardType) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            entry.setBillboard(billboardType);
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            reload();
+        }
+    }
+
+    public boolean toggleGlow(String id) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            boolean newState = !Boolean.TRUE.equals(entry.getGlow());
+            entry.setGlow(newState);
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            reload();
+            return newState;
+        }
+        return false;
+    }
+
+    public boolean toggleLinesVisibility(String id) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            boolean newState = !Boolean.TRUE.equals(entry.getHologramVisible());
+            entry.setHologramVisible(newState);
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            reload();
+            return newState;
+        }
+        return false;
+    }
+
+    public void addLine(String id, String text) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> lines = new ArrayList<>(entry.getLines());
+            lines.add(text);
+            entry.setLines(lines);
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            reload();
+        }
+    }
+
+    public boolean setLine(String id, int lineIndex, String text) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> lines = entry.getLines();
+            if (lineIndex > 0 && lineIndex <= lines.size()) {
+                lines.set(lineIndex - 1, text);
+                entry.setLines(lines);
+                configLoader.updateEntry(entry);
+                configLoader.save();
+                reload();
+                return true;
             }
         }
-        return null;
+        return false;
+    }
+
+    public boolean removeLine(String id, int lineIndex) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> lines = entry.getLines();
+            if (lineIndex > 0 && lineIndex <= lines.size()) {
+                lines.remove(lineIndex - 1);
+                entry.setLines(lines);
+                configLoader.updateEntry(entry);
+                configLoader.save();
+                reload();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void addAction(String id, String action) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> actions = new ArrayList<>(entry.getActions());
+            actions.add(action);
+            entry.setActions(actions);
+            configLoader.updateEntry(entry);
+            configLoader.save();
+        }
+    }
+
+    public boolean removeAction(String id, int actionIndex) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> actions = entry.getActions();
+            if (actionIndex > 0 && actionIndex <= actions.size()) {
+                actions.remove(actionIndex - 1);
+                entry.setActions(actions);
+                configLoader.updateEntry(entry);
+                configLoader.save();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public DisplayEntry getDisplayEntry(String id) {
+        return configLoader.getById(id);
+    }
+
+    public Set<String> getAllDisplayIds() {
+        return configLoader.getEntries().stream()
+                .map(DisplayEntry::getId)
+                .collect(Collectors.toSet());
     }
 }
