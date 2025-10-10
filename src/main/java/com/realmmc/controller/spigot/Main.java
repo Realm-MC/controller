@@ -1,20 +1,15 @@
 package com.realmmc.controller.spigot;
 
+import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.core.modules.ModuleManager;
 import com.realmmc.controller.core.services.ServiceRegistry;
-import com.realmmc.controller.modules.commands.CommandModule;
-import com.realmmc.controller.modules.database.DatabaseModule;
-import com.realmmc.controller.modules.particle.ParticleModule;
-import com.realmmc.controller.modules.profile.ProfileModule;
 import com.realmmc.controller.modules.scheduler.SchedulerModule;
 import com.realmmc.controller.modules.spigot.SpigotModule;
 import com.realmmc.controller.modules.spigot.sounds.SoundModule;
-import com.realmmc.controller.modules.stats.StatisticsModule;
 import com.realmmc.controller.shared.messaging.MessagingSDK;
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
 import com.realmmc.controller.spigot.entities.holograms.HologramService;
 import com.realmmc.controller.spigot.entities.npcs.NPCService;
-import com.realmmc.controller.spigot.entities.particles.ParticleService;
 import lombok.Getter;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -28,27 +23,17 @@ public class Main extends JavaPlugin {
     @Getter
     private static Main instance;
 
+    @Getter
     private DisplayItemService displayItemService;
+    @Getter
     private HologramService hologramService;
+    @Getter
     private NPCService npcService;
-    // O ParticleService agora é gerido pelo ParticleModule
 
     private ModuleManager moduleManager;
     private ServiceRegistry serviceRegistry;
 
     private Logger logger;
-
-    public DisplayItemService getDisplayItemService() {
-        return displayItemService;
-    }
-
-    public HologramService getHologramService() {
-        return hologramService;
-    }
-
-    public NPCService getNpcService() {
-        return npcService;
-    }
 
     @Override
     public void onLoad() {
@@ -81,15 +66,15 @@ public class Main extends JavaPlugin {
             hologramService = new HologramService();
             npcService = new NPCService();
 
+            // 1. Regista automaticamente todos os módulos anotados para a plataforma SPIGOT
+            moduleManager.autoRegisterModules(AutoRegister.Platform.SPIGOT);
+
+            // 2. Regista manualmente apenas os módulos que precisam de parâmetros especiais no construtor
             moduleManager.registerModule(new SchedulerModule(this, this, logger));
-            moduleManager.registerModule(new DatabaseModule(logger));
-            moduleManager.registerModule(new ProfileModule(logger));
-            moduleManager.registerModule(new StatisticsModule(logger));
-            moduleManager.registerModule(new CommandModule(logger));
             moduleManager.registerModule(new SpigotModule(this, logger));
             moduleManager.registerModule(new SoundModule(this, logger));
-            moduleManager.registerModule(new ParticleModule(logger)); // Módulo de partículas registado
 
+            // Ativa todos os módulos (na ordem correta de dependências)
             moduleManager.enableAllModules();
 
             getServer().getPluginManager().registerEvents(npcService, this);

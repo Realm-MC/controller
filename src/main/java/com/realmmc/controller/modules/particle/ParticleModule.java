@@ -1,12 +1,14 @@
 package com.realmmc.controller.modules.particle;
 
 import com.realmmc.controller.core.modules.AbstractCoreModule;
+import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.entities.particles.ParticleService;
 
 import java.util.logging.Logger;
 
+@AutoRegister(platforms = {AutoRegister.Platform.SPIGOT})
 public class ParticleModule extends AbstractCoreModule {
 
     public ParticleModule(Logger logger) {
@@ -30,14 +32,12 @@ public class ParticleModule extends AbstractCoreModule {
 
     @Override
     public int getPriority() {
-        // Carrega depois dos serviços base, mas antes de módulos que possam usá-lo.
         return 45;
     }
 
     @Override
     protected void onEnable() throws Exception {
         logger.info("Inicializando ParticleService...");
-        // Usamos Main.getInstance() para passar a instância do plugin para o serviço
         ParticleService particleService = new ParticleService(Main.getInstance());
         ServiceRegistry.getInstance().registerService(ParticleService.class, particleService);
         logger.info("ParticleService registado com sucesso.");

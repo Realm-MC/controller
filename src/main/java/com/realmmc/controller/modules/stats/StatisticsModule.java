@@ -1,11 +1,13 @@
 package com.realmmc.controller.modules.stats;
 
 import com.realmmc.controller.core.modules.AbstractCoreModule;
+import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.shared.stats.StatisticsService;
 
 import java.util.logging.Logger;
 
+@AutoRegister(platforms = {AutoRegister.Platform.ALL})
 public class StatisticsModule extends AbstractCoreModule {
 
     public StatisticsModule(Logger logger) {

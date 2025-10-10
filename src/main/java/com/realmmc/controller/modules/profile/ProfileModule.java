@@ -1,12 +1,14 @@
 package com.realmmc.controller.modules.profile;
 
 import com.realmmc.controller.core.modules.AbstractCoreModule;
+import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.shared.profile.ProfileService;
 import com.realmmc.controller.shared.profile.ProfileSyncSubscriber;
 
 import java.util.logging.Logger;
 
+@AutoRegister(platforms = {AutoRegister.Platform.ALL})
 public class ProfileModule extends AbstractCoreModule {
     private ProfileSyncSubscriber profileSyncSubscriber;
 
@@ -57,7 +59,7 @@ public class ProfileModule extends AbstractCoreModule {
 
     @Override
     public String[] getDependencies() {
-        return new String[]{"Database"};
+        return new String[]{"Database", "SchedulerModule"};
     }
 
     @Override

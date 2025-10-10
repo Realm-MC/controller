@@ -1,11 +1,14 @@
 package com.realmmc.controller.modules.commands;
 
 import com.realmmc.controller.core.modules.AbstractCoreModule;
+import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.core.services.ServiceRegistry;
 
 import java.util.logging.Logger;
 
+@AutoRegister(platforms = {AutoRegister.Platform.ALL})
 public class CommandModule extends AbstractCoreModule {
+
     private CommandRegistry commandRegistry;
 
     public CommandModule(Logger logger) {
@@ -14,7 +17,7 @@ public class CommandModule extends AbstractCoreModule {
 
     @Override
     public String getName() {
-        return "Command";
+        return "Command"; // Corrigido
     }
 
     @Override
@@ -53,10 +56,5 @@ public class CommandModule extends AbstractCoreModule {
     @Override
     public int getPriority() {
         return 30;
-    }
-
-    @Override
-    public boolean isEnabled() {
-        return super.isEnabled();
     }
 }

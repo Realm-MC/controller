@@ -1,13 +1,14 @@
 package com.realmmc.controller.modules.database;
 
 import com.realmmc.controller.core.modules.AbstractCoreModule;
+import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.shared.storage.mongodb.MongoConfig;
 import com.realmmc.controller.shared.storage.mongodb.MongoManager;
 import com.realmmc.controller.shared.storage.redis.RedisConfig;
 import com.realmmc.controller.shared.storage.redis.RedisManager;
-
 import java.util.logging.Logger;
 
+@AutoRegister(platforms = {AutoRegister.Platform.ALL})
 public class DatabaseModule extends AbstractCoreModule {
 
     public DatabaseModule(Logger logger) {
@@ -59,10 +60,5 @@ public class DatabaseModule extends AbstractCoreModule {
     @Override
     public int getPriority() {
         return 10;
-    }
-
-    @Override
-    public boolean isEnabled() {
-        return super.isEnabled();
     }
 }

@@ -54,7 +54,7 @@ public class ModuleManager {
         enabledModulesInOrder.clear();
     }
 
-    // Métodos privados enableModule e disableModule para evitar a busca no mapa
+    // Métodos privados para consistência
     private void enableModule(CoreModule module) {
         try {
             if (!module.isEnabled()) {
