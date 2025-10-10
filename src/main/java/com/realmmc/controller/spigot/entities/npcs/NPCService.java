@@ -64,7 +64,7 @@ public class NPCService implements Listener {
                             int targetId = wrapper.getEntityId();
                             String entryId = entityIdToEntryId.get(targetId);
                             if (entryId == null) return;
-                            Player player = event.getPlayer();
+                            Player player = (Player) event.getPlayer();
                             String actionName = String.valueOf(wrapper.getAction());
                             if ("ATTACK".equals(actionName)) return;
                             String handName = String.valueOf(wrapper.getHand());
@@ -254,7 +254,7 @@ public class NPCService implements Listener {
                 String id = entry.getId();
                 String displayName = entry.getMessage();
                 String skin = entry.getItem() != null ? entry.getItem() : "default";
-                NPCData npcData = createNPC(id, location, displayName, skin, entry.getTexturesValue(), entry.getTexturesSignature());
+                NPCData npcData = createNPCData(id, location, displayName, skin, entry.getTexturesValue(), entry.getTexturesSignature());
                 if (npcData != null) {
                     globalNPCs.put(id, npcData);
                     entityIdToEntryId.put(npcData.entityId(), id);
@@ -266,7 +266,7 @@ public class NPCService implements Listener {
         }
     }
 
-    private NPCData createNPC(String id, Location location, String displayName, String skinSource, String texturesValue, String texturesSignature) {
+    private NPCData createNPCData(String id, Location location, String displayName, String skinSource, String texturesValue, String texturesSignature) {
         try {
             UUID npcUUID = UUID.randomUUID();
             int entityId = ThreadLocalRandom.current().nextInt(100000, 999999);
@@ -301,25 +301,23 @@ public class NPCService implements Listener {
             if (old != null) {
                 Main.getInstance().getHologramService().removeByUUIDs(old);
             }
+
+            DisplayEntry entry = configLoader.getById(entityIdToEntryId.get(npc.entityId()));
+            if (entry != null && !Boolean.TRUE.equals(entry.getHologramVisible())) {
+                return;
+            }
+
             Location base = npc.location().clone().add(0, 2.0, 0);
 
             List<String> lines = null;
-            try {
-                String entryId = entityIdToEntryId.get(npc.entityId());
-                if (entryId != null) {
-                    DisplayEntry entry = configLoader.getById(entryId);
-                    if (entry != null) {
-                        if (entry.getLines() != null && !entry.getLines().isEmpty()) {
-                            lines = entry.getLines();
-                        } else if (entry.getMessage() != null) {
-                            Component formattedComponent = legacySerializer.deserialize(entry.getMessage());
-                            String mmName = mm.serialize(formattedComponent);
-                            lines = List.of(mmName);
-                        }
-                    }
+            if (entry != null) {
+                if (entry.getLines() != null && !entry.getLines().isEmpty()) {
+                    lines = entry.getLines();
+                } else if (entry.getMessage() != null) {
+                    Component formattedComponent = legacySerializer.deserialize(entry.getMessage());
+                    String mmName = mm.serialize(formattedComponent);
+                    lines = List.of(mmName);
                 }
-            } catch (Throwable t) {
-                Main.getInstance().getLogger().log(Level.WARNING, "Erro não crítico ao processar linhas do holograma para NPC " + npc.entityId(), t);
             }
             if (lines == null || lines.isEmpty()) {
                 return;
@@ -420,7 +418,7 @@ public class NPCService implements Listener {
         }
     }
 
-    public void spawnGlobal(String id, Location location, String displayName, String skinSource) {
+    public void createNpc(String id, Location location, String displayName, String skinSource) {
         DisplayEntry entry = new DisplayEntry();
         entry.setId(id);
         entry.setType(DisplayEntry.Type.NPC);
@@ -432,61 +430,200 @@ public class NPCService implements Listener {
         entry.setPitch(location.getPitch());
         entry.setMessage(displayName);
         entry.setItem(skinSource);
-        if (entry.getLines() == null || entry.getLines().isEmpty()) {
-            entry.setLines(List.of("npc"));
-        }
+        entry.setIsMovible(false);
+        entry.setHologramVisible(true);
+        entry.setLines(displayName != null ? new ArrayList<>(List.of(displayName)) : new ArrayList<>());
+        entry.setActions(new ArrayList<>());
+
         configLoader.addEntry(entry);
         configLoader.save();
         reloadAll();
     }
 
-    public void updateNpcSkin(String id, String newSkinSource) {
-        DisplayEntry entry = configLoader.getById(id);
-        if (entry == null) {
-            throw new IllegalArgumentException("Nenhuma entry encontrada para o ID: " + id);
-        }
-        entry.setItem(newSkinSource);
+    public void cloneNpc(String originalId, String newId, Location location) {
+        DisplayEntry originalEntry = configLoader.getById(originalId);
+        if (originalEntry == null) return;
+
+        DisplayEntry newEntry = new DisplayEntry();
+
+        newEntry.setId(newId);
+        newEntry.setType(originalEntry.getType());
+        newEntry.setMessage(originalEntry.getMessage());
+        newEntry.setItem(originalEntry.getItem());
+        newEntry.setIsMovible(originalEntry.getIsMovible());
+        newEntry.setHologramVisible(originalEntry.getHologramVisible());
+        newEntry.setLines(new ArrayList<>(originalEntry.getLines()));
+        newEntry.setActions(new ArrayList<>(originalEntry.getActions()));
+        newEntry.setTexturesValue(originalEntry.getTexturesValue());
+        newEntry.setTexturesSignature(originalEntry.getTexturesSignature());
+
+        newEntry.setWorld(location.getWorld().getName());
+        newEntry.setX(location.getX());
+        newEntry.setY(location.getY());
+        newEntry.setZ(location.getZ());
+        newEntry.setYaw(location.getYaw());
+        newEntry.setPitch(location.getPitch());
+
+        configLoader.addEntry(newEntry);
         configLoader.save();
         reloadAll();
     }
 
-    public void updateNpcTextures(String id, String texturesValue, String texturesSignature) {
-        DisplayEntry entry = configLoader.getById(id);
-        if (entry == null) {
-            throw new IllegalArgumentException("Nenhuma entry encontrada para o ID: " + id);
+    public void removeNpc(String id) {
+        if (configLoader.removeEntry(id)) {
+            reloadAll();
         }
-        entry.setTexturesValue(texturesValue);
-        entry.setTexturesSignature(texturesSignature);
-        configLoader.save();
-        reloadAll();
+    }
+
+    public void teleportNpc(String id, Location location) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            entry.setWorld(location.getWorld().getName());
+            entry.setX(location.getX());
+            entry.setY(location.getY());
+            entry.setZ(location.getZ());
+            entry.setYaw(location.getYaw());
+            entry.setPitch(location.getPitch());
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            reloadAll();
+        }
+    }
+
+    public void renameNpc(String id, String newName) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            entry.setMessage(newName);
+            List<String> lines = new ArrayList<>(entry.getLines());
+            if (!lines.isEmpty()) {
+                lines.set(0, newName);
+                entry.setLines(lines);
+            } else {
+                lines.add(newName);
+                entry.setLines(lines);
+            }
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            reloadAll();
+        }
+    }
+
+    public boolean toggleNameVisibility(String id) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            boolean newState = !Boolean.TRUE.equals(entry.getHologramVisible());
+            entry.setHologramVisible(newState);
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            reloadAll();
+            return newState;
+        }
+        return false;
+    }
+
+    public void updateNpcSkin(String id, String newSkinSource) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            entry.setItem(newSkinSource);
+            entry.setTexturesValue(null);
+            entry.setTexturesSignature(null);
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            reloadAll();
+        }
+    }
+
+    public boolean toggleLookAtPlayer(String id) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            boolean newState = !Boolean.TRUE.equals(entry.getIsMovible());
+            entry.setIsMovible(newState);
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            return newState;
+        }
+        return false;
+    }
+
+    public void addLine(String id, String text) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> lines = new ArrayList<>(entry.getLines());
+            lines.add(text);
+            entry.setLines(lines);
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            reloadAll();
+        }
+    }
+
+    public boolean setLine(String id, int lineIndex, String text) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> lines = entry.getLines();
+            if (lineIndex > 0 && lineIndex <= lines.size()) {
+                lines.set(lineIndex - 1, text);
+                entry.setLines(lines);
+                configLoader.updateEntry(entry);
+                configLoader.save();
+                reloadAll();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean removeLine(String id, int lineIndex) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> lines = entry.getLines();
+            if (lineIndex > 0 && lineIndex <= lines.size()) {
+                lines.remove(lineIndex - 1);
+                entry.setLines(lines);
+                configLoader.updateEntry(entry);
+                configLoader.save();
+                reloadAll();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void addAction(String id, String action) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> actions = new ArrayList<>(entry.getActions());
+            actions.add(action);
+            entry.setActions(actions);
+            configLoader.updateEntry(entry);
+            configLoader.save();
+        }
+    }
+
+    public boolean removeAction(String id, int actionIndex) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> actions = entry.getActions();
+            if (actionIndex > 0 && actionIndex <= actions.size()) {
+                actions.remove(actionIndex - 1);
+                entry.setActions(actions);
+                configLoader.updateEntry(entry);
+                configLoader.save();
+                return true;
+            }
+        }
+        return false;
     }
 
     public NPCData getNpcById(String id) {
         return globalNPCs.get(id);
     }
 
-    public Set<String> getAllNpcIds() {
-        return globalNPCs.keySet();
+    public DisplayEntry getNpcEntry(String id) {
+        return configLoader.getById(id);
     }
 
-    private void removeNPCFromAllPlayers(NPCData npcData) {
-        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-            try {
-                WrapperPlayServerTeams teamRemovePacket = new WrapperPlayServerTeams(
-                        "npc_hide_" + npcData.entityId(), WrapperPlayServerTeams.TeamMode.REMOVE, Optional.empty(), Collections.emptyList());
-                PacketEvents.getAPI().getPlayerManager().sendPacket(onlinePlayer, teamRemovePacket);
-
-                WrapperPlayServerPlayerInfoRemove removePacket =
-                        new WrapperPlayServerPlayerInfoRemove(Collections.singletonList(npcData.uuid()));
-                PacketEvents.getAPI().getPlayerManager().sendPacket(onlinePlayer, removePacket);
-
-                WrapperPlayServerDestroyEntities destroyPacket =
-                        new WrapperPlayServerDestroyEntities(npcData.entityId());
-                PacketEvents.getAPI().getPlayerManager().sendPacket(onlinePlayer, destroyPacket);
-
-            } catch (Exception e) {
-                Main.getInstance().getLogger().log(Level.WARNING, "Erro ao remover NPC para jogador " + onlinePlayer.getName(), e);
-            }
-        }
+    public Set<String> getAllNpcIds() {
+        return globalNPCs.keySet();
     }
 }

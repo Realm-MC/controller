@@ -31,11 +31,7 @@ public class NPCConfigLoader {
                         "# Exemplos:",
                         "#   actions:",
                         "#     - author={player}; action=openmenu(\"loja_principal\"); delay=1.5s",
-                        "#     - action=message(\"<green>Olá {player}!\"); delay=500ms",
-                        "#     - action=sound(ENTITY_PLAYER_LEVELUP, 1.0, 1.2)",
-                        "#     - menu=\"vip\"; action=broadcast(\"<gold>{player}</gold> abriu {menu}\")",
-                        "#     - action=teleport(100.5, 65, -30, \"world\"); delay=3s",
-                        "#     - action=give(DIAMOND, 5); delay=0"
+                        "#     - action=message(\"<green>Olá {player}!\"); delay=500ms"
                 ));
                 created.options().copyHeader(true);
                 created.save(configFile);
@@ -74,6 +70,7 @@ public class NPCConfigLoader {
                     entry.setActions(entrySection.getStringList("actions"));
                     entry.setLines(entrySection.getStringList("lines"));
                     entry.setIsMovible(entrySection.getBoolean("isMovible", false));
+                    entry.setHologramVisible(entrySection.getBoolean("hologramVisible", true));
 
                     if (entry.getWorld() != null) {
                         entries.put(id, entry);
@@ -87,16 +84,7 @@ public class NPCConfigLoader {
     public void save() {
         config = new YamlConfiguration();
         config.options().header(String.join("\n",
-                "# RealmMC Controller - NPCs",
-                "# Somente sintaxe de actions por labels é suportada.",
-                "# Exemplos:",
-                "#   actions:",
-                "#     - author={player}; action=openmenu(\"loja_principal\"); delay=1.5s",
-                "#     - action=message(\"<green>Olá {player}!\"); delay=500ms",
-                "#     - action=sound(ENTITY_PLAYER_LEVELUP, 1.0, 1.2)",
-                "#     - menu=\"vip\"; action=broadcast(\"<gold>{player}</gold> abriu {menu}\")",
-                "#     - action=teleport(100.5, 65, -30, \"world\"); delay=3s",
-                "#     - action=give(DIAMOND, 5); delay=0"
+                "# RealmMC Controller - NPCs"
         ));
         config.options().copyHeader(true);
 
@@ -112,6 +100,7 @@ public class NPCConfigLoader {
             config.set(path + ".z", entry.getZ());
             config.set(path + ".yaw", entry.getYaw());
             config.set(path + ".pitch", entry.getPitch());
+            config.set(path + ".name", entry.getMessage());
             config.set(path + ".skin", entry.getItem() != null ? entry.getItem() : "default");
             if (entry.getTexturesValue() != null && entry.getTexturesSignature() != null) {
                 config.set(path + ".textures.value", entry.getTexturesValue());
@@ -119,6 +108,9 @@ public class NPCConfigLoader {
             }
             if (entry.getIsMovible() != null) {
                 config.set(path + ".isMovible", entry.getIsMovible());
+            }
+            if (entry.getHologramVisible() != null) {
+                config.set(path + ".hologramVisible", entry.getHologramVisible());
             }
             if (entry.getActions() != null) {
                 config.set(path + ".actions", entry.getActions());
@@ -140,6 +132,10 @@ public class NPCConfigLoader {
             return;
         }
         entries.put(entry.getId(), entry);
+    }
+
+    public void updateEntry(DisplayEntry entry) {
+        addEntry(entry);
     }
 
     public Collection<DisplayEntry> getEntries() {
