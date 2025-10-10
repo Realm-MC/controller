@@ -3,6 +3,7 @@ package com.realmmc.controller.core.modules;
 import lombok.Getter;
 
 import java.util.*;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class ModuleManager {
@@ -36,10 +37,12 @@ public class ModuleManager {
         }
 
         try {
-            module.enable();
-            logger.info("Módulo habilitado: " + name);
+            if (!module.isEnabled()) {
+                module.enable();
+                logger.info("Módulo habilitado: " + name);
+            }
         } catch (Exception e) {
-            logger.severe("Erro ao habilitar módulo " + name + ": " + e.getMessage());
+            logger.log(Level.SEVERE, "Erro ao habilitar módulo " + name, e);
         }
     }
 
@@ -51,22 +54,76 @@ public class ModuleManager {
         }
 
         try {
-            module.disable();
-            logger.info("Módulo desabilitado: " + name);
+            if (module.isEnabled()) {
+                module.disable();
+                logger.info("Módulo desabilitado: " + name);
+            }
         } catch (Exception e) {
-            logger.severe("Erro ao desabilitar módulo " + name + ": " + e.getMessage());
+            logger.log(Level.SEVERE, "Erro ao desabilitar módulo " + name, e);
         }
     }
 
     public void enableAllModules() {
-        modules.values().stream()
-                .sorted(Comparator.comparingInt(CoreModule::getPriority))
-                .forEach(module -> enableModule(module.getName()));
+        try {
+            List<CoreModule> sortedModules = sortModulesByDependency();
+            logger.info("Ordem de carregamento dos módulos: " + sortedModules.stream().map(CoreModule::getName).toList());
+            sortedModules.forEach(module -> enableModule(module.getName()));
+        } catch (Exception e) {
+            logger.severe("Falha ao ordenar módulos por dependência: " + e.getMessage());
+        }
     }
 
     public void disableAllModules() {
-        modules.keySet().forEach(this::disableModule);
+        modules.values().stream()
+                .sorted(Comparator.comparingInt(CoreModule::getPriority).reversed())
+                .forEach(module -> disableModule(module.getName()));
     }
+
+    private List<CoreModule> sortModulesByDependency() throws IllegalStateException {
+        List<CoreModule> sortedList = new ArrayList<>();
+        Set<String> visited = new HashSet<>();
+        Set<String> visiting = new HashSet<>();
+
+        List<CoreModule> initialList = new ArrayList<>(modules.values());
+        initialList.sort(Comparator.comparingInt(CoreModule::getPriority));
+
+        for (CoreModule module : initialList) {
+            if (!visited.contains(module.getName())) {
+                visitModule(module, visited, visiting, sortedList);
+            }
+        }
+
+        return sortedList;
+    }
+
+    private void visitModule(CoreModule module, Set<String> visited, Set<String> visiting, List<CoreModule> sortedList) {
+        String moduleName = module.getName();
+
+        visiting.add(moduleName);
+
+        for (String dependencyName : module.getDependencies()) {
+            CoreModule dependency = modules.get(dependencyName);
+
+            if (dependency == null) {
+                logger.warning("A dependência '" + dependencyName + "' para o módulo '" + moduleName + "' não foi encontrada.");
+                continue;
+            }
+
+            if (visiting.contains(dependencyName)) {
+                throw new IllegalStateException("Dependência circular detetada: " + moduleName + " -> " + dependencyName);
+            }
+
+            if (!visited.contains(dependencyName)) {
+                visitModule(dependency, visited, visiting, sortedList);
+            }
+        }
+
+        visiting.remove(moduleName);
+        visited.add(moduleName);
+
+        sortedList.add(module);
+    }
+
 
     public Optional<CoreModule> getModule(String name) {
         return Optional.ofNullable(modules.get(name));
