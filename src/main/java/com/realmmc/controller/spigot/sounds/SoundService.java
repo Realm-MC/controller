@@ -27,12 +27,11 @@ public class SoundService {
 
     private void loadSoundsFromCode() {
         soundRegistry.clear();
-
-        // Adiciona os sons diretamente ao nosso "catálogo"
         soundRegistry.put(SoundKeys.NOTIFICATION, new SoundInfo(Sound.BLOCK_NOTE_BLOCK_BELL, SoundCategory.MASTER, 1.0f, 2.0f));
-        soundRegistry.put(SoundKeys.ERROR, new SoundInfo(Sound.BLOCK_NOTE_BLOCK_DIDGERIDOO, SoundCategory.MASTER, 1.0f, 0.8f));
         soundRegistry.put(SoundKeys.SUCCESS, new SoundInfo(Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.PLAYERS, 0.8f, 1.5f));
         soundRegistry.put(SoundKeys.MENU_CLICK, new SoundInfo(Sound.UI_BUTTON_CLICK, SoundCategory.MASTER, 0.7f, 1.0f));
+        soundRegistry.put(SoundKeys.ERROR, new SoundInfo(Sound.BLOCK_NOTE_BLOCK_DIDGERIDOO, SoundCategory.MASTER, 1.0f, 0.8f));
+        soundRegistry.put(SoundKeys.USAGE_ERROR, new SoundInfo(Sound.BLOCK_NOTE_BLOCK_BASS, SoundCategory.MASTER, 1.0f, 1.0f));
 
         logger.info(soundRegistry.size() + " sons carregados com sucesso (hardcoded)!");
     }
