@@ -37,7 +37,7 @@ public class SpigotModule extends AbstractCoreModule {
 
     @Override
     public String[] getDependencies() {
-        return new String[]{"SchedulerModule", "CommandModule"};
+        return new String[]{"SchedulerModule", "Command"};
     }
 
     @Override

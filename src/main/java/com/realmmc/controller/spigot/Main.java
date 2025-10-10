@@ -4,6 +4,7 @@ import com.realmmc.controller.core.modules.ModuleManager;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.commands.CommandModule;
 import com.realmmc.controller.modules.database.DatabaseModule;
+import com.realmmc.controller.modules.particle.ParticleModule;
 import com.realmmc.controller.modules.profile.ProfileModule;
 import com.realmmc.controller.modules.scheduler.SchedulerModule;
 import com.realmmc.controller.modules.spigot.SpigotModule;
@@ -13,6 +14,7 @@ import com.realmmc.controller.shared.messaging.MessagingSDK;
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
 import com.realmmc.controller.spigot.entities.holograms.HologramService;
 import com.realmmc.controller.spigot.entities.npcs.NPCService;
+import com.realmmc.controller.spigot.entities.particles.ParticleService;
 import lombok.Getter;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -29,6 +31,7 @@ public class Main extends JavaPlugin {
     private DisplayItemService displayItemService;
     private HologramService hologramService;
     private NPCService npcService;
+    // O ParticleService agora é gerido pelo ParticleModule
 
     private ModuleManager moduleManager;
     private ServiceRegistry serviceRegistry;
@@ -51,7 +54,6 @@ public class Main extends JavaPlugin {
     public void onLoad() {
         instance = this;
         this.logger = getLogger();
-
         logger.info("Controller Core (Spigot) carregado.");
     }
 
@@ -73,18 +75,20 @@ public class Main extends JavaPlugin {
             saveDefaultConfigResource("displays.yml");
             saveDefaultConfigResource("holograms.yml");
             saveDefaultConfigResource("npcs.yml");
+            saveDefaultConfigResource("particles.yml");
 
             displayItemService = new DisplayItemService();
             hologramService = new HologramService();
             npcService = new NPCService();
 
-            moduleManager.registerModule(new DatabaseModule(logger));
             moduleManager.registerModule(new SchedulerModule(this, this, logger));
+            moduleManager.registerModule(new DatabaseModule(logger));
             moduleManager.registerModule(new ProfileModule(logger));
             moduleManager.registerModule(new StatisticsModule(logger));
             moduleManager.registerModule(new CommandModule(logger));
             moduleManager.registerModule(new SpigotModule(this, logger));
             moduleManager.registerModule(new SoundModule(this, logger));
+            moduleManager.registerModule(new ParticleModule(logger)); // Módulo de partículas registado
 
             moduleManager.enableAllModules();
 

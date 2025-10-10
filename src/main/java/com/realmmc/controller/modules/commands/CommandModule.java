@@ -14,7 +14,7 @@ public class CommandModule extends AbstractCoreModule {
 
     @Override
     public String getName() {
-        return "Commands";
+        return "Command";
     }
 
     @Override

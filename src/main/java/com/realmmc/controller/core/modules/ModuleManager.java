@@ -11,6 +11,7 @@ public class ModuleManager {
     private static ModuleManager instance;
 
     private final Map<String, CoreModule> modules = new HashMap<>();
+    private final List<CoreModule> enabledModulesInOrder = new ArrayList<>(); // Guarda a ordem de arranque
     private final Logger logger;
 
     public ModuleManager(Logger logger) {
@@ -24,59 +25,56 @@ public class ModuleManager {
             logger.warning("Módulo " + name + " já está registrado!");
             return;
         }
-
         modules.put(name, module);
         logger.info("Módulo registrado: " + name);
     }
 
-    public void enableModule(String name) {
-        CoreModule module = modules.get(name);
-        if (module == null) {
-            logger.warning("Módulo não encontrado: " + name);
-            return;
-        }
-
-        try {
-            if (!module.isEnabled()) {
-                module.enable();
-                logger.info("Módulo habilitado: " + name);
-            }
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Erro ao habilitar módulo " + name, e);
-        }
-    }
-
-    public void disableModule(String name) {
-        CoreModule module = modules.get(name);
-        if (module == null) {
-            logger.warning("Módulo não encontrado: " + name);
-            return;
-        }
-
-        try {
-            if (module.isEnabled()) {
-                module.disable();
-                logger.info("Módulo desabilitado: " + name);
-            }
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Erro ao desabilitar módulo " + name, e);
-        }
-    }
-
     public void enableAllModules() {
+        enabledModulesInOrder.clear(); // Limpa a lista antes de um novo arranque
         try {
             List<CoreModule> sortedModules = sortModulesByDependency();
             logger.info("Ordem de carregamento dos módulos: " + sortedModules.stream().map(CoreModule::getName).toList());
-            sortedModules.forEach(module -> enableModule(module.getName()));
+
+            for (CoreModule module : sortedModules) {
+                enableModule(module);
+                enabledModulesInOrder.add(module); // Adiciona à lista de módulos ativados
+            }
         } catch (Exception e) {
-            logger.severe("Falha ao ordenar módulos por dependência: " + e.getMessage());
+            logger.severe("Falha ao ordenar e habilitar módulos: " + e.getMessage());
         }
     }
 
     public void disableAllModules() {
-        modules.values().stream()
-                .sorted(Comparator.comparingInt(CoreModule::getPriority).reversed())
-                .forEach(module -> disableModule(module.getName()));
+        // Itera a lista de módulos ativados na ordem inversa para um desligamento seguro
+        ListIterator<CoreModule> iterator = enabledModulesInOrder.listIterator(enabledModulesInOrder.size());
+        while (iterator.hasPrevious()) {
+            CoreModule module = iterator.previous();
+            disableModule(module);
+        }
+        enabledModulesInOrder.clear();
+    }
+
+    // Métodos privados enableModule e disableModule para evitar a busca no mapa
+    private void enableModule(CoreModule module) {
+        try {
+            if (!module.isEnabled()) {
+                module.enable();
+                logger.info("Módulo habilitado: " + module.getName());
+            }
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Erro ao habilitar módulo " + module.getName(), e);
+        }
+    }
+
+    private void disableModule(CoreModule module) {
+        try {
+            if (module.isEnabled()) {
+                module.disable();
+                logger.info("Módulo desabilitado: " + module.getName());
+            }
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Erro ao desabilitar módulo " + module.getName(), e);
+        }
     }
 
     private List<CoreModule> sortModulesByDependency() throws IllegalStateException {
@@ -92,27 +90,22 @@ public class ModuleManager {
                 visitModule(module, visited, visiting, sortedList);
             }
         }
-
         return sortedList;
     }
 
     private void visitModule(CoreModule module, Set<String> visited, Set<String> visiting, List<CoreModule> sortedList) {
         String moduleName = module.getName();
-
         visiting.add(moduleName);
 
         for (String dependencyName : module.getDependencies()) {
             CoreModule dependency = modules.get(dependencyName);
-
             if (dependency == null) {
                 logger.warning("A dependência '" + dependencyName + "' para o módulo '" + moduleName + "' não foi encontrada.");
                 continue;
             }
-
             if (visiting.contains(dependencyName)) {
-                throw new IllegalStateException("Dependência circular detetada: " + moduleName + " -> " + dependencyName);
+                throw new IllegalStateException("Dependência circular detectada: " + moduleName + " -> " + dependencyName);
             }
-
             if (!visited.contains(dependencyName)) {
                 visitModule(dependency, visited, visiting, sortedList);
             }
@@ -120,10 +113,8 @@ public class ModuleManager {
 
         visiting.remove(moduleName);
         visited.add(moduleName);
-
         sortedList.add(module);
     }
-
 
     public Optional<CoreModule> getModule(String name) {
         return Optional.ofNullable(modules.get(name));
