@@ -11,7 +11,7 @@ public class ModuleManager {
     private static ModuleManager instance;
 
     private final Map<String, CoreModule> modules = new HashMap<>();
-    private final List<CoreModule> enabledModulesInOrder = new ArrayList<>(); // Guarda a ordem de arranque
+    private final List<CoreModule> enabledModulesInOrder = new ArrayList<>();
     private final Logger logger;
 
     public ModuleManager(Logger logger) {
@@ -30,14 +30,14 @@ public class ModuleManager {
     }
 
     public void enableAllModules() {
-        enabledModulesInOrder.clear(); // Limpa a lista antes de um novo arranque
+        enabledModulesInOrder.clear();
         try {
             List<CoreModule> sortedModules = sortModulesByDependency();
             logger.info("Ordem de carregamento dos módulos: " + sortedModules.stream().map(CoreModule::getName).toList());
 
             for (CoreModule module : sortedModules) {
                 enableModule(module);
-                enabledModulesInOrder.add(module); // Adiciona à lista de módulos ativados
+                enabledModulesInOrder.add(module);
             }
         } catch (Exception e) {
             logger.severe("Falha ao ordenar e habilitar módulos: " + e.getMessage());
@@ -45,7 +45,6 @@ public class ModuleManager {
     }
 
     public void disableAllModules() {
-        // Itera a lista de módulos ativados na ordem inversa para um desligamento seguro
         ListIterator<CoreModule> iterator = enabledModulesInOrder.listIterator(enabledModulesInOrder.size());
         while (iterator.hasPrevious()) {
             CoreModule module = iterator.previous();
@@ -54,7 +53,6 @@ public class ModuleManager {
         enabledModulesInOrder.clear();
     }
 
-    // Métodos privados para consistência
     private void enableModule(CoreModule module) {
         try {
             if (!module.isEnabled()) {
