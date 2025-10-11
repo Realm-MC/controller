@@ -1,6 +1,5 @@
 package com.realmmc.controller.core.modules;
 
-import com.realmmc.controller.spigot.Main;
 import lombok.Getter;
 
 import java.io.File;
@@ -28,10 +27,10 @@ public class ModuleManager {
 
     public void autoRegisterModules(AutoRegister.Platform platform, Class<?> mainClass) {
         logger.info("A procurar por módulos de registo automático para a plataforma " + platform + "...");
-        String packageName = "com.realmmc.controller.modules";
+        String basePackage = "com.realmmc.controller.modules";
 
         try {
-            Set<Class<?>> classes = getClassesInPackage(packageName, mainClass);
+            Set<Class<?>> classes = getClassesInPackage(basePackage, mainClass, platform);
             for (Class<?> clazz : classes) {
                 if (AbstractCoreModule.class.isAssignableFrom(clazz) && !clazz.isInterface() && clazz.isAnnotationPresent(AutoRegister.class)) {
                     AutoRegister annotation = clazz.getAnnotation(AutoRegister.class);
@@ -42,10 +41,9 @@ public class ModuleManager {
                             Constructor<?> constructor = clazz.getConstructor(Logger.class);
                             CoreModule module = (CoreModule) constructor.newInstance(logger);
                             registerModule(module);
-                        } catch (NoSuchMethodException e) {
-                            logger.warning("O módulo " + clazz.getSimpleName() + " está anotado com @AutoRegister mas não tem um construtor (Logger), não pode ser auto-registado.");
-                        } catch (Exception e) {
-                            logger.log(Level.SEVERE, "Falha ao instanciar o módulo de auto-registo " + clazz.getSimpleName(), e);
+                        } catch (NoSuchMethodException ignored) {
+                        } catch (Throwable e) {
+                            logger.log(Level.SEVERE, "Falha ao instanciar módulo de auto-registo " + clazz.getSimpleName(), e);
                         }
                     }
                 }
@@ -55,7 +53,7 @@ public class ModuleManager {
         }
     }
 
-    private Set<Class<?>> getClassesInPackage(String packageName, Class<?> mainClass) throws Exception {
+    private Set<Class<?>> getClassesInPackage(String packageName, Class<?> mainClass, AutoRegister.Platform currentPlatform) throws Exception {
         Set<Class<?>> classes = new HashSet<>();
         String path = packageName.replace('.', '/');
         ClassLoader classLoader = mainClass.getClassLoader();
@@ -68,12 +66,19 @@ public class ModuleManager {
                 while (entries.hasMoreElements()) {
                     JarEntry entry = entries.nextElement();
                     String name = entry.getName();
-                    if (name.startsWith(path) && name.endsWith(".class")) {
-                        String className = name.replace('/', '.').substring(0, name.length() - 6);
-                        try {
-                            classes.add(Class.forName(className, false, classLoader));
-                        } catch (ClassNotFoundException | NoClassDefFoundError ignored) {
-                        }
+                    if (!name.startsWith(path) || !name.endsWith(".class")) continue;
+
+                    if (currentPlatform == AutoRegister.Platform.PROXY && name.contains("/spigot/")) {
+                        continue;
+                    }
+                    if (currentPlatform == AutoRegister.Platform.SPIGOT && name.contains("/proxy/")) {
+                        continue;
+                    }
+
+                    String className = name.replace('/', '.').substring(0, name.length() - 6);
+                    try {
+                        classes.add(Class.forName(className, false, classLoader));
+                    } catch (Throwable ignored) {
                     }
                 }
             }
@@ -102,7 +107,7 @@ public class ModuleManager {
                 enabledModulesInOrder.add(module);
             }
         } catch (Exception e) {
-            logger.severe("Falha ao ordenar e habilitar módulos: " + e.getMessage());
+            logger.log(Level.SEVERE, "Falha ao ordenar e habilitar módulos", e);
         }
     }
 
@@ -160,7 +165,7 @@ public class ModuleManager {
         for (String dependencyName : module.getDependencies()) {
             CoreModule dependency = modules.get(dependencyName);
             if (dependency == null) {
-                logger.warning("A dependência '" + dependencyName + "' para o módulo '" + moduleName + "' não foi encontrada.");
+                logger.warning("A dependência '" + dependencyName + "' do módulo '" + moduleName + "' não foi encontrada.");
                 continue;
             }
             if (visiting.contains(dependencyName)) {
