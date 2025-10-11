@@ -3,13 +3,12 @@ package com.realmmc.controller.shared.profile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.shared.role.DefaultRole;
+import com.realmmc.controller.shared.stats.StatisticsService;
 import com.realmmc.controller.shared.storage.mongodb.MongoSequences;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
-import com.realmmc.controller.shared.stats.StatisticsService;
-import com.realmmc.controller.shared.utils.TimeUtils;
 
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -44,23 +43,6 @@ public class ProfileService {
         publish("upsert", profile);
     }
 
-    public Profile create(UUID uuid, String name) {
-        long now = System.currentTimeMillis();
-        Profile profile = Profile.builder()
-                .id(MongoSequences.getNext("profiles"))
-                .uuid(uuid)
-                .name(name)
-                .createdAt(now)
-                .updatedAt(now)
-                .build();
-        repository.upsert(profile);
-
-        getStatsService().ensureStatistics(profile);
-
-        publish("create", profile);
-        return profile;
-    }
-
     public void delete(UUID uuid) {
         repository.findByUuid(uuid).ifPresent(p -> {
             repository.deleteByUuid(uuid);
@@ -72,33 +54,91 @@ public class ProfileService {
         return repository.findByUuid(uuid).isPresent();
     }
 
+    public Profile ensureProfile(UUID uuid, String displayName, String username, String firstIp, String clientVersion, String clientType, boolean isPremium) {
+        Profile profile = repository.findByUuid(uuid).orElseGet(() -> {
+            long now = System.currentTimeMillis();
+            claimUsername(uuid, username);
+            claimName(uuid, displayName);
+
+            Profile newProfile = Profile.builder()
+                    .id(MongoSequences.getNext("profiles"))
+                    .uuid(uuid)
+                    .name(displayName)
+                    .username(username)
+                    .firstIp(firstIp)
+                    .lastIp(firstIp)
+                    .firstLogin(now)
+                    .lastLogin(now)
+                    .lastClientVersion(clientVersion)
+                    .lastClientType(clientType)
+                    .roleId(DefaultRole.MEMBER.getId())
+                    .premiumAccount(isPremium)
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build();
+            if (firstIp != null) newProfile.getIpHistory().add(firstIp);
+
+            getStatsService().ensureStatistics(newProfile);
+
+            save(newProfile);
+            return newProfile;
+        });
+
+        boolean needsSave = false;
+        if (displayName != null && !displayName.isEmpty() && !displayName.equals(profile.getName())) {
+            claimName(uuid, displayName);
+            profile.setName(displayName);
+            needsSave = true;
+        }
+        if (username != null && !username.isEmpty() && !username.equals(profile.getUsername())) {
+            claimUsername(uuid, username);
+            profile.setUsername(username);
+            needsSave = true;
+        }
+
+        if (profile.getRoleId() == null) {
+            profile.setRoleId(DefaultRole.MEMBER.getId());
+            needsSave = true;
+        }
+
+        if (profile.isPremiumAccount() != isPremium) {
+            profile.setPremiumAccount(isPremium);
+            needsSave = true;
+        }
+
+        profile.setLastLogin(System.currentTimeMillis());
+        profile.setLastIp(firstIp);
+        profile.setLastClientVersion(clientVersion);
+        profile.setLastClientType(clientType);
+
+        getStatsService().updateIdentification(profile);
+
+        if (needsSave) {
+            save(profile);
+        }
+
+        return profile;
+    }
+
     public void updateName(UUID uuid, String newName) {
+        if (newName == null || newName.isEmpty()) return;
         update(uuid, p -> {
-            p.setName(newName);
-            getStatsService().updateIdentification(p);
+            if (!newName.equals(p.getName())) {
+                claimName(uuid, newName);
+                p.setName(newName);
+                getStatsService().updateIdentification(p);
+            }
         }, "update_name");
     }
 
-    public void recordLogin(UUID uuid, String ip, String clientVersion, String clientType, String username) {
+    public void setUsername(UUID uuid, String username) {
+        if (username == null || username.isEmpty()) return;
         update(uuid, p -> {
-            long now = System.currentTimeMillis();
-            if (p.getFirstLogin() == 0L) p.setFirstLogin(now);
-            if (p.getFirstIp() == null) p.setFirstIp(ip);
-            p.setLastLogin(now);
-            p.setLastIp(ip);
-            if (username != null && !username.isEmpty()) {
+            if (!username.equals(p.getUsername())) {
                 claimUsername(uuid, username);
                 p.setUsername(username);
             }
-            if (clientVersion != null) p.setLastClientVersion(clientVersion);
-            if (clientType != null) p.setLastClientType(clientType);
-            if (ip != null) {
-                if (p.getIpHistory().isEmpty() || !ip.equals(p.getIpHistory().get(p.getIpHistory().size() - 1))) {
-                    p.getIpHistory().add(ip);
-                }
-            }
-            getStatsService().updateIdentification(p);
-        }, "record_login");
+        }, "set_username");
     }
 
     public void incrementCash(UUID uuid, long delta) {
@@ -115,61 +155,40 @@ public class ProfileService {
         update(uuid, p -> p.setCash((int) clamped), "cash_set");
     }
 
-    public void updateCashTopPosition(UUID uuid, Integer position, Long enteredAt) {
-        update(uuid, p -> {
-            p.setCashTopPosition(position);
-            p.setCashTopPositionEnteredAt(enteredAt);
-        }, "cash_top_update");
+    public void setRole(UUID uuid, int roleId) {
+        update(uuid, p -> p.setRoleId(roleId), "set_role");
     }
 
-    public void updateCashTopPositionAuto(UUID uuid, Integer position) {
+    public void addPermission(UUID uuid, String permission) {
+        if (permission == null || permission.isEmpty()) return;
         update(uuid, p -> {
-            if (!Objects.equals(p.getCashTopPosition(), position)) {
-                p.setCashTopPosition(position);
-                p.setCashTopPositionEnteredAt(System.currentTimeMillis());
+            if (!p.getExtraPermissions().contains(permission)) {
+                p.getExtraPermissions().add(permission);
             }
-        }, "cash_top_update");
+        }, "add_permission");
     }
 
-    public Optional<String> getCashTopPositionEnteredAtFormatted(UUID uuid) {
-        return repository.findByUuid(uuid)
-                .flatMap(p -> p.getCashTopPositionEnteredAt() == null
-                        ? Optional.empty()
-                        : Optional.of(TimeUtils.formatDate(p.getCashTopPositionEnteredAt())));
-    }
-
-    public Profile ensureProfile(UUID uuid, String displayName, String username, String firstIp, String clientVersion, String clientType) {
-        Profile profile = repository.findByUuid(uuid).orElseGet(() -> create(uuid, displayName));
-
-        getStatsService().ensureStatistics(profile);
-        // ------------------------------------
-
-        recordLogin(uuid, firstIp, clientVersion, clientType, username);
-
-        if (displayName != null && !displayName.equals(profile.getName())) {
-            updateName(uuid, displayName);
-            profile.setName(displayName);
-        }
-
-        return profile;
-    }
-
-    public void setUsername(UUID uuid, String username) {
-        if (username == null || username.isEmpty()) return;
-        update(uuid, p -> {
-            if (!username.equals(p.getUsername())) {
-                claimUsername(uuid, username);
-                p.setUsername(username);
-            }
-        }, "set_username");
+    public void removePermission(UUID uuid, String permission) {
+        if (permission == null || permission.isEmpty()) return;
+        update(uuid, p -> p.getExtraPermissions().remove(permission), "remove_permission");
     }
 
     private void claimUsername(UUID ownerId, String username) {
+        if (username == null || username.isEmpty()) return;
         repository.findByUsername(username).ifPresent(other -> {
             if (!ownerId.equals(other.getUuid())) {
                 other.setUsername(null);
-                repository.upsert(other);
-                publish("username_unclaimed", other);
+                save(other);
+            }
+        });
+    }
+
+    private void claimName(UUID ownerId, String name) {
+        if (name == null || name.isEmpty()) return;
+        repository.findByName(name).ifPresent(other -> {
+            if (!ownerId.equals(other.getUuid())) {
+                other.setName(null);
+                save(other);
             }
         });
     }
@@ -178,8 +197,7 @@ public class ProfileService {
         repository.findByUuid(uuid).ifPresent(p -> {
             changer.accept(p);
             p.setUpdatedAt(System.currentTimeMillis());
-            repository.upsert(p);
-            publish(action, p);
+            save(p);
         });
     }
 
@@ -187,18 +205,20 @@ public class ProfileService {
         try {
             ObjectNode node = mapper.createObjectNode();
             node.put("action", action);
-            node.put("id", profile.getId());
-            if (profile.getUuid() != null) node.put("uuid", profile.getUuid().toString());
+            node.put("uuid", profile.getUuid().toString());
             node.put("name", profile.getName());
-            node.put("updatedAt", profile.getUpdatedAt());
-            if (profile.getUsername() != null) node.put("username", profile.getUsername());
-            if (profile.getLastIp() != null) node.put("lastIp", profile.getLastIp());
-            if (profile.getLastClientVersion() != null) node.put("lastClientVersion", profile.getLastClientVersion());
-            if (profile.getLastClientType() != null) node.put("lastClientType", profile.getLastClientType());
+            node.put("username", profile.getUsername());
             node.put("cash", profile.getCash());
-            if (profile.getCashTopPosition() != null) node.put("cashTopPosition", profile.getCashTopPosition());
-            if (profile.getCashTopPositionEnteredAt() != null)
-                node.put("cashTopPositionEnteredAt", profile.getCashTopPositionEnteredAt());
+
+            if (profile.getRoleId() != null) {
+                node.put("roleId", profile.getRoleId());
+            }
+            if (profile.getExtraPermissions() != null && !profile.getExtraPermissions().isEmpty()) {
+                var permsArray = mapper.createArrayNode();
+                profile.getExtraPermissions().forEach(permsArray::add);
+                node.set("extraPermissions", permsArray);
+            }
+
             String json = mapper.writeValueAsString(node);
             RedisPublisher.publish(RedisChannel.PROFILES_SYNC, json);
         } catch (Exception e) {

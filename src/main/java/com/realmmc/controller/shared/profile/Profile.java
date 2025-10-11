@@ -32,6 +32,12 @@ public class Profile {
     private int cash = 0;
     private Integer cashTopPosition;
     private Long cashTopPositionEnteredAt;
+    private Integer roleId;
+    @Builder.Default
+    private List<String> extraPermissions = new ArrayList<>();
+    @Builder.Default
+    private boolean premiumAccount = false;
+
     private long createdAt;
     private long updatedAt;
 }

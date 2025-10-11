@@ -2,14 +2,11 @@ package com.realmmc.controller.proxy;
 
 import com.google.inject.Inject;
 import com.realmmc.controller.core.ControllerCore;
+import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.core.modules.ModuleManager;
 import com.realmmc.controller.core.services.ServiceRegistry;
-import com.realmmc.controller.modules.commands.CommandModule;
-import com.realmmc.controller.modules.database.DatabaseModule;
-import com.realmmc.controller.modules.profile.ProfileModule;
 import com.realmmc.controller.modules.proxy.ProxyModule;
 import com.realmmc.controller.modules.scheduler.SchedulerModule;
-import com.realmmc.controller.modules.stats.StatisticsModule;
 import com.realmmc.controller.shared.messaging.MessagingSDK;
 import com.realmmc.controller.shared.stats.StatisticsService;
 import com.realmmc.controller.shared.utils.TaskScheduler;
@@ -42,6 +39,12 @@ public class Proxy extends ControllerCore {
     @Getter
     private final ConcurrentHashMap<UUID, Long> loginTimestamps = new ConcurrentHashMap<>();
 
+    @Getter
+    private final ConcurrentHashMap<String, Boolean> premiumLoginStatus = new ConcurrentHashMap<>();
+    @Getter
+    private final ConcurrentHashMap<String, UUID> offlineUuids = new ConcurrentHashMap<>();
+
+
     @Inject
     public Proxy(ProxyServer server, Logger logger, @DataDirectory Path directory) {
         super(logger);
@@ -53,35 +56,28 @@ public class Proxy extends ControllerCore {
     @Override
     public void initialize() {
         logger.info("Inicializando Controller Core (Proxy)...");
-
         initializeSharedServices();
 
         serviceRegistry = new ServiceRegistry(logger);
         moduleManager = new ModuleManager(logger);
 
-        moduleManager.registerModule(new DatabaseModule(logger));
+        moduleManager.autoRegisterModules(AutoRegister.Platform.PROXY, getClass());
         moduleManager.registerModule(new SchedulerModule(server, this, logger));
-        moduleManager.registerModule(new ProfileModule(logger));
-        moduleManager.registerModule(new StatisticsModule(logger));
-        moduleManager.registerModule(new CommandModule(logger));
         moduleManager.registerModule(new ProxyModule(server, this, logger));
 
         moduleManager.enableAllModules();
 
         startOnlineTimeBackupTask();
-
         logger.info("Controller Core (Proxy) inicializado com sucesso!");
     }
 
     @Override
     protected void initializeSharedServices() {
         super.initializeSharedServices();
-
         File messagesDir = new File(directory.toFile(), "messages");
         if (!messagesDir.exists()) {
             messagesDir.mkdirs();
         }
-
         MessagingSDK.getInstance().initializeForVelocity(messagesDir);
         logger.info("MessagingSDK inicializado para Velocity");
     }
@@ -91,7 +87,7 @@ public class Proxy extends ControllerCore {
         logger.info("Finalizando Controller Core (Proxy)...");
 
         serviceRegistry.getService(StatisticsService.class).ifPresent(statsService -> {
-            logger.info("Salvando tempo online");
+            logger.info("Salvando tempo online...");
             server.getAllPlayers().forEach(player -> {
                 Long loginTime = loginTimestamps.remove(player.getUniqueId());
                 if (loginTime != null) {
@@ -107,7 +103,6 @@ public class Proxy extends ControllerCore {
         }
 
         shutdownSharedServices();
-
         logger.info("Controller Core (Proxy) finalizado!");
     }
 
@@ -127,18 +122,13 @@ public class Proxy extends ControllerCore {
 
         TaskScheduler.runAsyncTimer(() -> {
             long now = System.currentTimeMillis();
-            logger.info("Executando tarefa de salvamento de tempo online");
-
             if (loginTimestamps.isEmpty()) {
-                logger.info("Nenhum jogador online para salvar o tempo.");
                 return;
             }
 
             loginTimestamps.forEach((uuid, loginTime) -> {
                 long sessionDuration = now - loginTime;
-
                 statisticsService.addOnlineTime(uuid, sessionDuration);
-
                 loginTimestamps.put(uuid, now);
             });
             logger.info("Tempo online salvo periodicamente para " + loginTimestamps.size() + " jogadores.");
