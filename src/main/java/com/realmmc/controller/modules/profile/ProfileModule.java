@@ -59,7 +59,7 @@ public class ProfileModule extends AbstractCoreModule {
 
     @Override
     public String[] getDependencies() {
-        return new String[]{"Database", "SchedulerModule"};
+        return new String[]{"Database", "SchedulerModule", "Permission"};
     }
 
     @Override
