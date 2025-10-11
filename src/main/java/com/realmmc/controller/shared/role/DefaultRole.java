@@ -1,49 +1,69 @@
 package com.realmmc.controller.shared.role;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public enum DefaultRole {
-    OWNER(1, "owner", "Owner", "&4&lOWNER &4", List.of("*"), 1000),
-    ADMIN(2, "admin", "Admin", "&c&lADMIN &c", List.of("controller.*", "minecraft.command.*"), 900),
-    MOD(3, "mod", "Moderador", "&5&lMOD &5", List.of("controller.mod.*", "minecraft.command.kick", "minecraft.command.ban"), 800),
-    HELPER(4, "helper", "Ajudante", "&9&lHELPER &9", List.of("controller.helper.*", "minecraft.command.kick"), 700),
-    VIP_PLUS(5, "vip_plus", "VIP+", "&6&lVIP+ &6", List.of("controller.vip.plus"), 600),
-    VIP(6, "vip", "VIP", "&a&lVIP &a", List.of("controller.vip"), 500),
-    MEMBER(7, "member", "Membro", "&7", List.of("controller.member.*"), 0);
+    MASTER("master", "&6Master", "&6[Master] ", "", "&6", RoleType.STAFF, 1000, List.of("*")),
+    MANAGER("manager", "&4Gerente", "&4[Gerente] ", "", "&4", RoleType.STAFF, 900, List.of("controller.admin.*")),
+    ADMINISTRATOR("administrator", "&cAdmin", "&c[Admin] ", "", "&c", RoleType.STAFF, 800, List.of("controller.admin.*")),
+    MODERATOR("moderator", "&2Moderador", "&2[Moderador] ", "", "&2", RoleType.STAFF, 700, List.of("controller.mod.*")),
+    HELPER("helper", "&eAjudante", "&e[Ajudante] ", "", "&e", RoleType.STAFF, 600, List.of("controller.helper.*")),
+    PARTNER("partner", "&cParceiro", "&c[Parceiro] ", "", "&c", RoleType.STAFF, 550, List.of("controller.vip")),
+    BUILDER("builder", "&3Construtor", "&3[Construtor] ", "", "&3", RoleType.STAFF, 500, List.of("controller.builder.*")),
+    STAFF("staff", "&3Equipe", "&3[Equipe] ", "", "&3", RoleType.STAFF, 400, List.of()),
 
-    private final int id;
+    SUPREME("supreme", "&4Supremo", "&4[Supremo] ", "", "&4", RoleType.VIP, 300, List.of("controller.vip.supreme")),
+    LEGENDARY("legendary", "&2Lendário", "&2[Lendário] ", "", "&2", RoleType.VIP, 250, List.of("controller.vip.legendary")),
+    HERO("hero", "&5Herói", "&5[Herói] ", "", "&5", RoleType.VIP, 200, List.of("controller.vip.hero")),
+    CHAMPION("champion", "&3Campeão", "&3[Campeão] ", "", "&3", RoleType.VIP, 150, List.of("controller.vip.champion")),
+
+    DEFAULT("default", "&7Membro", "&7", "", "&7", RoleType.DEFAULT, 0, List.of("controller.member.*"));
+
     private final String name;
     private final String displayName;
     private final String prefix;
-    private final List<String> permissions;
+    private final String suffix;
+    private final String color;
+    private final RoleType type;
     private final int weight;
+    private final List<String> permissions;
 
-    DefaultRole(int id, String name, String displayName, String prefix, List<String> permissions, int weight) {
-        this.id = id;
+    DefaultRole(String name, String displayName, String prefix, String suffix, String color, RoleType type, int weight, List<String> permissions) {
         this.name = name;
         this.displayName = displayName;
         this.prefix = prefix;
-        this.permissions = permissions;
+        this.suffix = suffix;
+        this.color = color;
+        this.type = type;
         this.weight = weight;
+        this.permissions = permissions;
     }
 
-    public int getId() { return id; }
     public String getName() { return name; }
     public String getDisplayName() { return displayName; }
     public String getPrefix() { return prefix; }
-    public List<String> getPermissions() { return permissions; }
+    public String getSuffix() { return suffix; }
+    public String getColor() { return color; }
+    public RoleType getType() { return type; }
     public int getWeight() { return weight; }
+    public List<String> getPermissions() { return permissions; }
+
+    public int getId() {
+        return this.ordinal() + 1;
+    }
 
     public Role toRole() {
         return Role.builder()
-                .id(id)
+                .id(getId())
                 .name(name)
                 .displayName(displayName)
                 .prefix(prefix)
-                .permissions(new ArrayList<>(permissions))
+                .suffix(suffix)
+                .color(color)
+                .type(type)
                 .weight(weight)
+                .permissions(new ArrayList<>(permissions))
                 .createdAt(System.currentTimeMillis())
                 .updatedAt(System.currentTimeMillis())
                 .build();

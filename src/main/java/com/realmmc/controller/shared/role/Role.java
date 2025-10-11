@@ -20,6 +20,10 @@ public class Role {
     private String displayName;
     private String prefix;
     @Builder.Default
+    private String suffix = "";
+    private String color;
+    private RoleType type;
+    @Builder.Default
     private List<String> permissions = new ArrayList<>();
     @Builder.Default
     private List<String> inherits = new ArrayList<>();

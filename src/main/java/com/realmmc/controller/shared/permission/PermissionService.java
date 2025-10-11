@@ -3,6 +3,7 @@ package com.realmmc.controller.shared.permission;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.role.Role;
 import com.realmmc.controller.shared.role.RoleService;
+import com.realmmc.controller.shared.role.RoleType;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -10,7 +11,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PermissionService {
 
     private final RoleService roleService;
-    private final Map<UUID, Set<String>> cachedPermissions = new ConcurrentHashMap<>();
+    private final Map<UUID, Set<String>> permissionsCache = new ConcurrentHashMap<>();
+    private final Map<UUID, Role> primaryRoleCache = new ConcurrentHashMap<>();
 
     public PermissionService(RoleService roleService) {
         this.roleService = roleService;
@@ -20,34 +22,43 @@ public class PermissionService {
         if (profile == null || permission == null || permission.isEmpty()) {
             return false;
         }
-        var allPermissions = getEffectivePermissions(profile);
-        if (allPermissions.contains("*")) {
+        Set<String> effectivePermissions = getEffectivePermissions(profile);
+        if (effectivePermissions.contains("*")) {
             return true;
         }
-        if (allPermissions.contains(permission)) {
-            return true;
-        }
-        if (allPermissions.contains("-" + permission)) {
+        if (effectivePermissions.contains("-" + permission)) {
             return false;
         }
-        return matchesWildcard(permission, allPermissions);
+        if (effectivePermissions.contains(permission)) {
+            return true;
+        }
+        return matchesWildcard(permission, effectivePermissions);
     }
 
     public Set<String> getEffectivePermissions(Profile profile) {
         if (profile == null) return Collections.emptySet();
-        if (cachedPermissions.containsKey(profile.getUuid())) {
-            return cachedPermissions.get(profile.getUuid());
-        }
-
-        var permissions = new HashSet<String>();
-        if (profile.getRoleId() != null) {
-            roleService.getById(profile.getRoleId()).ifPresent(r -> permissions.addAll(resolveRolePermissions(r, new HashSet<>())));
-        }
-        if (profile.getExtraPermissions() != null) {
+        return permissionsCache.computeIfAbsent(profile.getUuid(), uuid -> {
+            Set<String> permissions = new HashSet<>();
+            for (int roleId : profile.getRoleIds()) {
+                roleService.getById(roleId).ifPresent(role -> permissions.addAll(resolveRolePermissions(role, new HashSet<>())));
+            }
             permissions.addAll(profile.getExtraPermissions());
+            return permissions;
+        });
+    }
+
+    public Role getPrimaryRole(Profile profile) {
+        if (profile == null || profile.getRoleIds().isEmpty()) {
+            return null;
         }
-        cachedPermissions.put(profile.getUuid(), permissions);
-        return permissions;
+        return primaryRoleCache.computeIfAbsent(profile.getUuid(), uuid ->
+                profile.getRoleIds().stream()
+                        .map(roleService::getById)
+                        .filter(Optional::isPresent)
+                        .map(Optional::get)
+                        .max(Comparator.comparingInt(Role::getWeight))
+                        .orElse(null)
+        );
     }
 
     private Set<String> resolveRolePermissions(Role role, Set<Integer> visited) {
@@ -55,7 +66,7 @@ public class PermissionService {
             return Collections.emptySet();
         }
         visited.add(role.getId());
-        var permissions = new HashSet<>(role.getPermissions());
+        Set<String> permissions = new HashSet<>(role.getPermissions());
 
         if (role.getInherits() != null) {
             for (var inheritIdStr : role.getInherits()) {
@@ -71,8 +82,7 @@ public class PermissionService {
     private boolean matchesWildcard(String permission, Set<String> allPermissions) {
         for (String p : allPermissions) {
             if (p.endsWith(".*")) {
-                String base = p.substring(0, p.length() - 1);
-                if (permission.startsWith(base)) {
+                if (permission.startsWith(p.substring(0, p.length() - 1))) {
                     return true;
                 }
             }
@@ -81,9 +91,12 @@ public class PermissionService {
     }
 
     public void clearCache(UUID uuid) {
-        cachedPermissions.remove(uuid);
+        permissionsCache.remove(uuid);
+        primaryRoleCache.remove(uuid);
     }
+
     public void clearAllCache() {
-        cachedPermissions.clear();
+        permissionsCache.clear();
+        primaryRoleCache.clear();
     }
 }

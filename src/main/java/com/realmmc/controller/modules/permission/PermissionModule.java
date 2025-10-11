@@ -43,19 +43,26 @@ public class PermissionModule extends AbstractCoreModule {
     @Override
     protected void onEnable() throws Exception {
         logger.info("Inicializando sistema de permissões e cargos...");
+
         RoleService roleService = new RoleService();
         PermissionService permissionService = new PermissionService(roleService);
+
         ServiceRegistry.getInstance().registerService(RoleService.class, roleService);
         ServiceRegistry.getInstance().registerService(PermissionService.class, permissionService);
+
         logger.info("Sistema de permissões e cargos inicializado com sucesso!");
     }
 
     @Override
     protected void onDisable() {
         logger.info("Finalizando sistema de permissões...");
-        ServiceRegistry.getInstance().getService(PermissionService.class).ifPresent(PermissionService::clearAllCache);
+
+        ServiceRegistry.getInstance().getService(PermissionService.class)
+                .ifPresent(PermissionService::clearAllCache);
+
         ServiceRegistry.getInstance().unregisterService(RoleService.class);
         ServiceRegistry.getInstance().unregisterService(PermissionService.class);
+
         logger.info("Sistema de permissões finalizado!");
     }
 }
