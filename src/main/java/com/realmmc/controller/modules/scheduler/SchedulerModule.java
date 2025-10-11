@@ -38,11 +38,6 @@ public class SchedulerModule extends AbstractCoreModule {
     }
 
     @Override
-    public String[] getDependencies() {
-        return new String[]{};
-    }
-
-    @Override
     protected void onEnable() {
         logger.info("Inicializando TaskScheduler...");
         if (server instanceof ProxyServer) {

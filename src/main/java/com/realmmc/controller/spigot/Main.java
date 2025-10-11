@@ -66,15 +66,12 @@ public class Main extends JavaPlugin {
             hologramService = new HologramService();
             npcService = new NPCService();
 
-            // 1. Regista automaticamente todos os módulos anotados para a plataforma SPIGOT
-            moduleManager.autoRegisterModules(AutoRegister.Platform.SPIGOT);
+            moduleManager.autoRegisterModules(AutoRegister.Platform.SPIGOT, getClass());
 
-            // 2. Regista manualmente apenas os módulos que precisam de parâmetros especiais no construtor
             moduleManager.registerModule(new SchedulerModule(this, this, logger));
             moduleManager.registerModule(new SpigotModule(this, logger));
             moduleManager.registerModule(new SoundModule(this, logger));
 
-            // Ativa todos os módulos (na ordem correta de dependências)
             moduleManager.enableAllModules();
 
             getServer().getPluginManager().registerEvents(npcService, this);

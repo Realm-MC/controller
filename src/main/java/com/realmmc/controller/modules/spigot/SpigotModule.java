@@ -50,5 +50,6 @@ public class SpigotModule extends AbstractCoreModule {
     @Override
     protected void onDisable() {
         logger.info("Desregistrando comandos do Spigot...");
+        CommandManager.unregisterAll(plugin);
     }
 }

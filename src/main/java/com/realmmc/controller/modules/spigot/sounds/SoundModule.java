@@ -32,6 +32,11 @@ public class SoundModule extends AbstractCoreModule {
     }
 
     @Override
+    public int getPriority() {
+        return 0;
+    }
+
+    @Override
     protected void onEnable() throws Exception {
         logger.info("Inicializando SoundService...");
         SoundService soundService = new SoundService(plugin);

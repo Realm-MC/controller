@@ -17,7 +17,7 @@ public class CommandModule extends AbstractCoreModule {
 
     @Override
     public String getName() {
-        return "Command"; // Corrigido
+        return "Command";
     }
 
     @Override
@@ -55,6 +55,6 @@ public class CommandModule extends AbstractCoreModule {
 
     @Override
     public int getPriority() {
-        return 30;
+        return 40;
     }
 }
