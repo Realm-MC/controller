@@ -2,9 +2,7 @@ package com.realmmc.controller.proxy.listeners;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.realmmc.controller.shared.storage.redis.RedisManager;
 import com.velocitypowered.api.util.GameProfile;
-import redis.clients.jedis.Jedis;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -18,88 +16,74 @@ import java.util.UUID;
 public class PremiumChecker {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final int TIMEOUT_MS = 2000;
+    private static final int TIMEOUT_MS = 5000;
+    private static final int MAX_RETRIES = 3;
+    private static final int RETRY_DELAY_MS = 300;
     private static final String BASE_UUID = "https://api.mojang.com/users/profiles/minecraft/";
     private static final String BASE_PROFILE = "https://sessionserver.mojang.com/session/minecraft/profile/";
 
-    private static final String CACHE_PREFIX = "controller:premium_cache:";
-    private static final int CACHE_EXPIRATION_SECONDS = 86400; // 24 horas
-    private static final String NON_PREMIUM_MARKER = "{\"is_premium\":false}";
-
     public record PremiumCheckResult(boolean premium, GameProfile profile, String reason) {}
 
-    private record CachedProfile(String uuidJson, String profileJson) {}
-
     private static String requestJsonString(String url) {
-        try {
-            var connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("Accept", "application/json");
-            connection.setConnectTimeout(TIMEOUT_MS);
-            connection.setReadTimeout(TIMEOUT_MS);
+        for (int i = 1; i <= MAX_RETRIES; i++) {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("Accept", "application/json");
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+                connection.setConnectTimeout(TIMEOUT_MS);
+                connection.setReadTimeout(TIMEOUT_MS);
 
-            if (connection.getResponseCode() != 200) {
-                return null;
+                if (connection.getResponseCode() == 200) {
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+                        StringBuilder response = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            response.append(line);
+                        }
+                        return response.toString();
+                    }
+                }
+            } catch (Exception e) {
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
             }
 
-            try (var reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-                return reader.readLine();
+            if (i < MAX_RETRIES) {
+                try {
+                    Thread.sleep(RETRY_DELAY_MS);
+                } catch (InterruptedException ignored) {}
             }
-        } catch (Exception e) {
-            System.err.printf("[PremiumChecker] Falha ao requisitar %s: %s%n", url, e.getMessage());
-            return null;
         }
+        return null;
     }
 
     public static PremiumCheckResult checkPremium(String username) {
-        String cacheKey = CACHE_PREFIX + username.toLowerCase();
-
-        try (Jedis jedis = RedisManager.getResource()) {
-            String cachedData = jedis.get(cacheKey);
-            if (cachedData != null) {
-                if (cachedData.equals(NON_PREMIUM_MARKER)) {
-                    return new PremiumCheckResult(false, null, "not_found_in_cache");
-                }
-                try {
-                    // Cache hit: Sabemos que este jogador É premium, reconstrói o resultado
-                    CachedProfile profile = MAPPER.readValue(cachedData, CachedProfile.class);
-                    JsonNode uuidJson = MAPPER.readTree(profile.uuidJson());
-                    JsonNode profileJson = MAPPER.readTree(profile.profileJson());
-                    return buildResultFromJson(username, uuidJson, profileJson);
-                } catch (Exception e) {
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("[PremiumChecker] Erro ao aceder ao Redis: " + e.getMessage());
-        }
-
         String uuidJsonString = requestJsonString(BASE_UUID + username);
         if (uuidJsonString == null) {
-            try (Jedis jedis = RedisManager.getResource()) {
-                jedis.setex(cacheKey, CACHE_EXPIRATION_SECONDS, NON_PREMIUM_MARKER);
-            } catch (Exception ignored) {}
-            return new PremiumCheckResult(false, null, "uuid_not_found");
+            return new PremiumCheckResult(false, null, "uuid_request_failed");
         }
 
-        String profileJsonString = null;
         try {
             JsonNode uuidJson = MAPPER.readTree(uuidJsonString);
-            String idNoDash = uuidJson.get("id").asText();
-            profileJsonString = requestJsonString(BASE_PROFILE + idNoDash + "?unsigned=false");
-
-            if (profileJsonString != null) {
-                try (Jedis jedis = RedisManager.getResource()) {
-                    CachedProfile toCache = new CachedProfile(uuidJsonString, profileJsonString);
-                    jedis.setex(cacheKey, CACHE_EXPIRATION_SECONDS, MAPPER.writeValueAsString(toCache));
-                } catch (Exception ignored) {}
-
-                return buildResultFromJson(username, uuidJson, MAPPER.readTree(profileJsonString));
+            if (uuidJson == null || !uuidJson.has("id")) {
+                return new PremiumCheckResult(false, null, "invalid_uuid_json");
             }
 
-        } catch (Exception e) {
-        }
+            String idNoDash = uuidJson.get("id").asText();
+            String profileJsonString = requestJsonString(BASE_PROFILE + idNoDash + "?unsigned=false");
 
-        return new PremiumCheckResult(false, null, "profile_fetch_failed");
+            if (profileJsonString != null) {
+                return buildResultFromJson(username, uuidJson, MAPPER.readTree(profileJsonString));
+            } else {
+                return new PremiumCheckResult(false, null, "profile_request_failed");
+            }
+        } catch (Exception e) {
+            return new PremiumCheckResult(false, null, "processing_exception");
+        }
     }
 
     private static PremiumCheckResult buildResultFromJson(String username, JsonNode uuidJson, JsonNode profileJson) {

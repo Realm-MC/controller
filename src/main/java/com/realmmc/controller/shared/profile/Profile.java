@@ -7,7 +7,9 @@ import lombok.NoArgsConstructor;
 import org.bson.codecs.pojo.annotations.BsonId;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Data
@@ -32,12 +34,16 @@ public class Profile {
     private int cash = 0;
     private Integer cashTopPosition;
     private Long cashTopPositionEnteredAt;
-    private Integer roleId;
-    @Builder.Default
-    private List<String> extraPermissions = new ArrayList<>();
     @Builder.Default
     private boolean premiumAccount = false;
-
+    @Builder.Default
+    private List<Integer> roleIds = new ArrayList<>();
+    @Builder.Default
+    private Map<String, Long> roleExpirations = new HashMap<>();
+    @Builder.Default
+    private Map<String, Long> pausedRoleDurations = new HashMap<>();
+    @Builder.Default
+    private List<String> extraPermissions = new ArrayList<>();
     private long createdAt;
     private long updatedAt;
 }

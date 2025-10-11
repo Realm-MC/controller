@@ -3,14 +3,17 @@ package com.realmmc.controller.shared.profile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.shared.permission.PermissionService;
 import com.realmmc.controller.shared.role.DefaultRole;
+import com.realmmc.controller.shared.role.Role;
+import com.realmmc.controller.shared.role.RoleService;
+import com.realmmc.controller.shared.role.RoleType;
 import com.realmmc.controller.shared.stats.StatisticsService;
 import com.realmmc.controller.shared.storage.mongodb.MongoSequences;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
 
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Consumer;
 
 public class ProfileService {
@@ -18,9 +21,14 @@ public class ProfileService {
     private final ProfileRepository repository = new ProfileRepository();
     private final ObjectMapper mapper = new ObjectMapper();
 
-    private StatisticsService getStatsService() {
-        return ServiceRegistry.getInstance().getService(StatisticsService.class)
-                .orElseThrow(() -> new IllegalStateException("StatisticsService não está disponível ou não foi inicializado!"));
+    private Optional<StatisticsService> getStatsService() {
+        return ServiceRegistry.getInstance().getService(StatisticsService.class);
+    }
+    private Optional<RoleService> getRoleService() {
+        return ServiceRegistry.getInstance().getService(RoleService.class);
+    }
+    private Optional<PermissionService> getPermissionService() {
+        return ServiceRegistry.getInstance().getService(PermissionService.class);
     }
 
     public Optional<Profile> getByUuid(UUID uuid) {
@@ -60,25 +68,26 @@ public class ProfileService {
             claimUsername(uuid, username);
             claimName(uuid, displayName);
 
-            Profile newProfile = Profile.builder()
-                    .id(MongoSequences.getNext("profiles"))
-                    .uuid(uuid)
-                    .name(displayName)
-                    .username(username)
-                    .firstIp(firstIp)
-                    .lastIp(firstIp)
-                    .firstLogin(now)
-                    .lastLogin(now)
-                    .lastClientVersion(clientVersion)
-                    .lastClientType(clientType)
-                    .roleId(DefaultRole.MEMBER.getId())
-                    .premiumAccount(isPremium)
-                    .createdAt(now)
-                    .updatedAt(now)
-                    .build();
+            Profile newProfile = new Profile();
+            newProfile.setId(MongoSequences.getNext("profiles"));
+            newProfile.setUuid(uuid);
+            newProfile.setName(displayName);
+            newProfile.setUsername(username);
+            newProfile.setFirstIp(firstIp);
+            newProfile.setLastIp(firstIp);
+            newProfile.setFirstLogin(now);
+            newProfile.setLastLogin(now);
+            newProfile.setLastClientVersion(clientVersion);
+            newProfile.setLastClientType(clientType);
+            newProfile.setCreatedAt(now);
+            newProfile.setUpdatedAt(now);
+
+            newProfile.setPremiumAccount(isPremium);
+            newProfile.getRoleIds().add(DefaultRole.DEFAULT.getId());
+
             if (firstIp != null) newProfile.getIpHistory().add(firstIp);
 
-            getStatsService().ensureStatistics(newProfile);
+            getStatsService().ifPresent(stats -> stats.ensureStatistics(newProfile));
 
             save(newProfile);
             return newProfile;
@@ -96,8 +105,8 @@ public class ProfileService {
             needsSave = true;
         }
 
-        if (profile.getRoleId() == null) {
-            profile.setRoleId(DefaultRole.MEMBER.getId());
+        if (profile.getRoleIds() == null || profile.getRoleIds().isEmpty()) {
+            profile.setRoleIds(new ArrayList<>(List.of(DefaultRole.DEFAULT.getId())));
             needsSave = true;
         }
 
@@ -111,7 +120,11 @@ public class ProfileService {
         profile.setLastClientVersion(clientVersion);
         profile.setLastClientType(clientType);
 
-        getStatsService().updateIdentification(profile);
+        getStatsService().ifPresent(stats -> stats.updateIdentification(profile));
+
+        if (reconcileRoleStates(profile)) {
+            needsSave = true;
+        }
 
         if (needsSave) {
             save(profile);
@@ -126,7 +139,7 @@ public class ProfileService {
             if (!newName.equals(p.getName())) {
                 claimName(uuid, newName);
                 p.setName(newName);
-                getStatsService().updateIdentification(p);
+                getStatsService().ifPresent(stats -> stats.updateIdentification(p));
             }
         }, "update_name");
     }
@@ -155,8 +168,28 @@ public class ProfileService {
         update(uuid, p -> p.setCash((int) clamped), "cash_set");
     }
 
-    public void setRole(UUID uuid, int roleId) {
-        update(uuid, p -> p.setRoleId(roleId), "set_role");
+    public void addRole(UUID uuid, int roleId, long durationMillis) {
+        update(uuid, profile -> {
+            if (!profile.getRoleIds().contains(roleId)) {
+                profile.getRoleIds().add(roleId);
+            }
+            if (durationMillis > 0) {
+                long expirationTime = System.currentTimeMillis() + durationMillis;
+                profile.getRoleExpirations().put(String.valueOf(roleId), expirationTime);
+            } else {
+                profile.getRoleExpirations().remove(String.valueOf(roleId));
+            }
+            reconcileRoleStates(profile);
+        }, "add_role");
+    }
+
+    public void removeRole(UUID uuid, int roleId) {
+        update(uuid, profile -> {
+            profile.getRoleIds().remove(Integer.valueOf(roleId));
+            profile.getRoleExpirations().remove(String.valueOf(roleId));
+            profile.getPausedRoleDurations().remove(String.valueOf(roleId));
+            reconcileRoleStates(profile);
+        }, "remove_role");
     }
 
     public void addPermission(UUID uuid, String permission) {
@@ -171,6 +204,104 @@ public class ProfileService {
     public void removePermission(UUID uuid, String permission) {
         if (permission == null || permission.isEmpty()) return;
         update(uuid, p -> p.getExtraPermissions().remove(permission), "remove_permission");
+    }
+
+    public boolean reconcileRoleStates(Profile profile) {
+        Optional<RoleService> roleServiceOpt = getRoleService();
+        if (roleServiceOpt.isEmpty()) return false;
+        RoleService roleService = roleServiceOpt.get();
+
+        boolean isStaff = profile.getRoleIds().stream()
+                .map(roleService::getById)
+                .filter(Optional::isPresent).map(Optional::get)
+                .anyMatch(role -> role.getType() == RoleType.STAFF);
+
+        long now = System.currentTimeMillis();
+        boolean changed = false;
+
+        if (isStaff) {
+            Iterator<Map.Entry<String, Long>> iterator = profile.getRoleExpirations().entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, Long> entry = iterator.next();
+                int roleId = Integer.parseInt(entry.getKey());
+                Optional<Role> roleOpt = roleService.getById(roleId);
+                if (roleOpt.isPresent() && roleOpt.get().getType() == RoleType.VIP) {
+                    long remainingDuration = entry.getValue() - now;
+                    if (remainingDuration > 0) {
+                        profile.getPausedRoleDurations().put(entry.getKey(), remainingDuration);
+                        iterator.remove();
+                        changed = true;
+                    }
+                }
+            }
+        } else {
+            Iterator<Map.Entry<String, Long>> iterator = profile.getPausedRoleDurations().entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, Long> entry = iterator.next();
+                long newExpirationTime = now + entry.getValue();
+                profile.getRoleExpirations().put(entry.getKey(), newExpirationTime);
+                iterator.remove();
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            getPermissionService().ifPresent(ps -> ps.clearCache(profile.getUuid()));
+        }
+        return changed;
+    }
+
+    public List<Role> getAndRemoveExpiredVipRoles(Profile profile) {
+        long now = System.currentTimeMillis();
+        List<Role> expiredRoles = new ArrayList<>();
+        boolean changed = false;
+        Optional<RoleService> roleServiceOpt = getRoleService();
+        if (roleServiceOpt.isEmpty()) return expiredRoles;
+        RoleService roleService = roleServiceOpt.get();
+
+        Iterator<Integer> iterator = new ArrayList<>(profile.getRoleIds()).iterator();
+        while (iterator.hasNext()) {
+            int roleId = iterator.next();
+            Long expirationTime = profile.getRoleExpirations().get(String.valueOf(roleId));
+
+            if (expirationTime != null && now >= expirationTime) {
+                roleService.getById(roleId).ifPresent(role -> {
+                    if (role.getType() == RoleType.VIP) {
+                        expiredRoles.add(role);
+                    }
+                });
+                profile.getRoleIds().remove(Integer.valueOf(roleId));
+                profile.getRoleExpirations().remove(String.valueOf(roleId));
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            save(profile);
+        }
+        return expiredRoles;
+    }
+
+    public boolean checkAndRemoveExpiredRoles(Profile profile) {
+        long now = System.currentTimeMillis();
+        boolean changed = false;
+
+        Iterator<Integer> iterator = new ArrayList<>(profile.getRoleIds()).iterator();
+        while (iterator.hasNext()) {
+            int roleId = iterator.next();
+            Long expirationTime = profile.getRoleExpirations().get(String.valueOf(roleId));
+
+            if (expirationTime != null && now >= expirationTime) {
+                profile.getRoleIds().remove(Integer.valueOf(roleId));
+                profile.getRoleExpirations().remove(String.valueOf(roleId));
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            save(profile);
+        }
+        return changed;
     }
 
     private void claimUsername(UUID ownerId, String username) {
@@ -203,23 +334,23 @@ public class ProfileService {
 
     private void publish(String action, Profile profile) {
         try {
-            ObjectNode node = mapper.createObjectNode();
+            ObjectNode node = new ObjectMapper().createObjectNode();
             node.put("action", action);
             node.put("uuid", profile.getUuid().toString());
             node.put("name", profile.getName());
             node.put("username", profile.getUsername());
             node.put("cash", profile.getCash());
 
-            if (profile.getRoleId() != null) {
-                node.put("roleId", profile.getRoleId());
+            if (profile.getRoleIds() != null && !profile.getRoleIds().isEmpty()) {
+                var rolesNode = node.putArray("roleIds");
+                profile.getRoleIds().forEach(rolesNode::add);
             }
             if (profile.getExtraPermissions() != null && !profile.getExtraPermissions().isEmpty()) {
-                var permsArray = mapper.createArrayNode();
+                var permsArray = node.putArray("extraPermissions");
                 profile.getExtraPermissions().forEach(permsArray::add);
-                node.set("extraPermissions", permsArray);
             }
 
-            String json = mapper.writeValueAsString(node);
+            String json = node.toString();
             RedisPublisher.publish(RedisChannel.PROFILES_SYNC, json);
         } catch (Exception e) {
             e.printStackTrace();
