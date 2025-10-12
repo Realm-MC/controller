@@ -40,7 +40,11 @@ public class ProfileService {
     }
 
     public Optional<Profile> getByUsername(String username) {
-        return repository.findByUsername(username);
+        return repository.findByUsername(username.toLowerCase());
+    }
+
+    public Optional<Profile> getById(int id) {
+        return repository.findById(id);
     }
 
     public void save(Profile profile) {
@@ -65,14 +69,15 @@ public class ProfileService {
     public Profile ensureProfile(UUID uuid, String displayName, String username, String firstIp, String clientVersion, String clientType, boolean isPremium) {
         Profile profile = repository.findByUuid(uuid).orElseGet(() -> {
             long now = System.currentTimeMillis();
-            claimUsername(uuid, username);
+            String usernameLower = username.toLowerCase();
+            claimUsername(uuid, usernameLower);
             claimName(uuid, displayName);
 
             Profile newProfile = new Profile();
             newProfile.setId(MongoSequences.getNext("profiles"));
             newProfile.setUuid(uuid);
             newProfile.setName(displayName);
-            newProfile.setUsername(username);
+            newProfile.setUsername(usernameLower);
             newProfile.setFirstIp(firstIp);
             newProfile.setLastIp(firstIp);
             newProfile.setFirstLogin(now);
@@ -81,7 +86,6 @@ public class ProfileService {
             newProfile.setLastClientType(clientType);
             newProfile.setCreatedAt(now);
             newProfile.setUpdatedAt(now);
-
             newProfile.setPremiumAccount(isPremium);
             newProfile.getRoleIds().add(DefaultRole.DEFAULT.getId());
 
@@ -99,9 +103,11 @@ public class ProfileService {
             profile.setName(displayName);
             needsSave = true;
         }
-        if (username != null && !username.isEmpty() && !username.equals(profile.getUsername())) {
-            claimUsername(uuid, username);
-            profile.setUsername(username);
+
+        String usernameLower = username.toLowerCase();
+        if (!usernameLower.equals(profile.getUsername())) {
+            claimUsername(uuid, usernameLower);
+            profile.setUsername(usernameLower);
             needsSave = true;
         }
 
@@ -147,9 +153,10 @@ public class ProfileService {
     public void setUsername(UUID uuid, String username) {
         if (username == null || username.isEmpty()) return;
         update(uuid, p -> {
-            if (!username.equals(p.getUsername())) {
-                claimUsername(uuid, username);
-                p.setUsername(username);
+            String usernameLower = username.toLowerCase();
+            if (!usernameLower.equals(p.getUsername())) {
+                claimUsername(uuid, usernameLower);
+                p.setUsername(usernameLower);
             }
         }, "set_username");
     }
@@ -185,11 +192,33 @@ public class ProfileService {
 
     public void removeRole(UUID uuid, int roleId) {
         update(uuid, profile -> {
+            if (roleId == DefaultRole.DEFAULT.getId()) return;
             profile.getRoleIds().remove(Integer.valueOf(roleId));
             profile.getRoleExpirations().remove(String.valueOf(roleId));
             profile.getPausedRoleDurations().remove(String.valueOf(roleId));
             reconcileRoleStates(profile);
         }, "remove_role");
+    }
+
+    public void setRoles(UUID uuid, List<Integer> roleIds) {
+        update(uuid, profile -> {
+            profile.getRoleIds().clear();
+            profile.getRoleExpirations().clear();
+            profile.getPausedRoleDurations().clear();
+            profile.getRoleIds().addAll(roleIds);
+            if (!profile.getRoleIds().contains(DefaultRole.DEFAULT.getId())) {
+                profile.getRoleIds().add(DefaultRole.DEFAULT.getId());
+            }
+            reconcileRoleStates(profile);
+        }, "set_roles");
+    }
+
+    public void clearRoles(UUID uuid) {
+        setRoles(uuid, new ArrayList<>());
+    }
+
+    public List<Profile> getProfilesInRole(int roleId) {
+        return repository.findByRoleId(roleId);
     }
 
     public void addPermission(UUID uuid, String permission) {
