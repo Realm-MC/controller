@@ -8,9 +8,12 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class TimeUtils {
     private static final DateTimeFormatter DEFAULT_TIME_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm");
+    private static final Pattern DURATION_PATTERN = Pattern.compile("(\\d+)([smhd])");
 
     public boolean isNewYear() {
         int month = Calendar.getInstance().get(Calendar.MONTH);
@@ -59,5 +62,23 @@ public class TimeUtils {
         }
 
         return String.join(", ", parts);
+    }
+
+    public static long parseDuration(String durationStr) {
+        Matcher matcher = DURATION_PATTERN.matcher(durationStr.toLowerCase());
+        if (!matcher.matches()) {
+            return -1;
+        }
+
+        long value = Long.parseLong(matcher.group(1));
+        String unit = matcher.group(2);
+
+        return switch (unit) {
+            case "s" -> TimeUnit.SECONDS.toMillis(value);
+            case "m" -> TimeUnit.MINUTES.toMillis(value);
+            case "h" -> TimeUnit.HOURS.toMillis(value);
+            case "d" -> TimeUnit.DAYS.toMillis(value);
+            default -> -1;
+        };
     }
 }

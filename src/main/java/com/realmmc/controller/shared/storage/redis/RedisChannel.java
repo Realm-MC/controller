@@ -3,7 +3,8 @@ package com.realmmc.controller.shared.storage.redis;
 public enum RedisChannel {
     CONTROLLER_BROADCAST("controller:broadcast"),
     PROFILES_SYNC("controller:profiles:sync"),
-    ROLES_SYNC("controller:roles:sync");
+    ROLES_SYNC("controller:roles:sync"),
+    GLOBAL_ANNOUNCEMENT("controller:global_announcement");
 
     private final String name;
 
