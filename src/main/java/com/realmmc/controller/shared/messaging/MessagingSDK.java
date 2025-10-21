@@ -30,6 +30,11 @@ public class MessagingSDK {
         return instance;
     }
 
+    public boolean isInitialized() {
+        return initialized;
+    }
+
+
     public void initializeForSpigot(File messagesDirectory) {
         if (initialized) {
             LOGGER.warning("MessagingSDK already initialized!");
@@ -58,9 +63,6 @@ public class MessagingSDK {
 
     /**
      * Inicializa o SDK com implementações customizadas.
-     *
-     * @param translator O translator a ser usado
-     * @param sender     O sender a ser usado
      */
     public void initialize(MessageTranslator translator, MessageSender sender) {
         if (initialized) {
@@ -77,9 +79,6 @@ public class MessagingSDK {
 
     /**
      * Obtém o translator atual.
-     *
-     * @return O MessageTranslator
-     * @throws IllegalStateException se o SDK não foi inicializado
      */
     public MessageTranslator getTranslator() {
         ensureInitialized();
@@ -88,9 +87,6 @@ public class MessagingSDK {
 
     /**
      * Obtém o sender atual.
-     *
-     * @return O MessageSender
-     * @throws IllegalStateException se o SDK não foi inicializado
      */
     public MessageSender getSender() {
         ensureInitialized();
@@ -99,9 +95,6 @@ public class MessagingSDK {
 
     /**
      * Envia uma mensagem para um destinatário.
-     *
-     * @param recipient O destinatário
-     * @param message   A mensagem
      */
     public void sendMessage(Object recipient, Message message) {
         getSender().sendMessage(recipient, message);
@@ -109,9 +102,6 @@ public class MessagingSDK {
 
     /**
      * Envia uma mensagem simples para um destinatário.
-     *
-     * @param recipient O destinatário
-     * @param key       A chave da mensagem
      */
     public void sendMessage(Object recipient, MessageKey key) {
         getSender().sendMessage(recipient, key);
@@ -119,9 +109,6 @@ public class MessagingSDK {
 
     /**
      * Envia uma mensagem de texto puro para um destinatário.
-     *
-     * @param recipient O destinatário
-     * @param text      O texto
      */
     public void sendRawMessage(Object recipient, String text) {
         getSender().sendRawMessage(recipient, text);
@@ -129,9 +116,6 @@ public class MessagingSDK {
 
     /**
      * Envia uma mensagem de texto direto para um destinatário.
-     *
-     * @param recipient  O destinatário
-     * @param rawMessage A mensagem de texto direto
      */
     public void sendRawMessage(Object recipient, RawMessage rawMessage) {
         String processedText = rawMessage.getText();
@@ -149,9 +133,6 @@ public class MessagingSDK {
 
     /**
      * Traduz uma mensagem.
-     *
-     * @param message A mensagem
-     * @return A mensagem traduzida
      */
     public String translate(Message message) {
         return getTranslator().translate(message);
@@ -159,9 +140,6 @@ public class MessagingSDK {
 
     /**
      * Traduz uma mensagem simples.
-     *
-     * @param key A chave da mensagem
-     * @return A mensagem traduzida
      */
     public String translate(MessageKey key) {
         return getTranslator().translate(key);

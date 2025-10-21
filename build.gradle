@@ -34,6 +34,7 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
     compileOnly("com.github.retrooper:packetevents-spigot:2.9.5")
     compileOnly('org.geysermc.geyser:api:2.8.3-SNAPSHOT')
+    implementation("com.maxmind.geoip2:geoip2:4.0.1")
 }
 
 java {

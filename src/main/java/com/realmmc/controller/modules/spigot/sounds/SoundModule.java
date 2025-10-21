@@ -2,18 +2,17 @@ package com.realmmc.controller.modules.spigot.sounds;
 
 import com.realmmc.controller.core.modules.AbstractCoreModule;
 import com.realmmc.controller.core.services.ServiceRegistry;
-import com.realmmc.controller.spigot.Main;
-import com.realmmc.controller.spigot.sounds.SoundService;
+import com.realmmc.controller.shared.sounds.SoundPlayer;
+import com.realmmc.controller.spigot.sounds.SpigotSoundPlayer;
 
 import java.util.logging.Logger;
 
+
 public class SoundModule extends AbstractCoreModule {
 
-    private final Main plugin;
 
-    public SoundModule(Main plugin, Logger logger) {
+    public SoundModule(Logger logger) {
         super(logger);
-        this.plugin = plugin;
     }
 
     @Override
@@ -28,7 +27,7 @@ public class SoundModule extends AbstractCoreModule {
 
     @Override
     public String getDescription() {
-        return "Framework centralizado para gestão e reprodução de sons.";
+        return "Framework centralizado e multi-plataforma para gestão e reprodução de sons.";
     }
 
     @Override
@@ -38,15 +37,15 @@ public class SoundModule extends AbstractCoreModule {
 
     @Override
     protected void onEnable() throws Exception {
-        logger.info("Inicializando SoundService...");
-        SoundService soundService = new SoundService(plugin);
-        ServiceRegistry.getInstance().registerService(SoundService.class, soundService);
-        logger.info("SoundService registado com sucesso.");
+        logger.info("Inicializando SpigotSoundPlayer...");
+        SoundPlayer spigotSoundPlayer = new SpigotSoundPlayer();
+        ServiceRegistry.getInstance().registerService(SoundPlayer.class, spigotSoundPlayer);
+        logger.info("SpigotSoundPlayer registrado com sucesso como SoundPlayer.");
     }
 
     @Override
     protected void onDisable() throws Exception {
-        ServiceRegistry.getInstance().unregisterService(SoundService.class);
-        logger.info("SoundService desregistado.");
+        ServiceRegistry.getInstance().unregisterService(SoundPlayer.class);
+        logger.info("SoundPlayer (Spigot) desregistrado.");
     }
 }

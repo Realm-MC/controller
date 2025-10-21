@@ -1,7 +1,6 @@
 package com.realmmc.controller.shared.messaging;
 
 import lombok.Getter;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -19,7 +18,6 @@ public class Message {
 
     /**
      * Cria uma nova mensagem com a chave especificada.
-     *
      * @param key A chave da mensagem
      * @return Nova instância de Message
      */
@@ -30,7 +28,6 @@ public class Message {
     /**
      * Cria uma nova mensagem com texto direto (sem tradução).
      * Útil para mensagens dinâmicas ou temporárias.
-     *
      * @param rawText Texto direto da mensagem
      * @return Nova instância de RawMessage
      */
@@ -40,7 +37,6 @@ public class Message {
 
     /**
      * Adiciona um placeholder à mensagem.
-     *
      * @param placeholder Nome do placeholder (sem os símbolos {})
      * @param value       Valor a ser substituído
      * @return Esta instância para method chaining
@@ -52,7 +48,6 @@ public class Message {
 
     /**
      * Adiciona múltiplos placeholders à mensagem.
-     *
      * @param placeholders Map com os placeholders e seus valores
      * @return Esta instância para method chaining
      */
@@ -63,7 +58,6 @@ public class Message {
 
     /**
      * Obtém os placeholders da mensagem.
-     *
      * @return Map com os placeholders
      */
     public Map<String, Object> getPlaceholders() {
@@ -72,7 +66,6 @@ public class Message {
 
     /**
      * Verifica se a mensagem tem placeholders.
-     *
      * @return true se tem placeholders, false caso contrário
      */
     public boolean hasPlaceholders() {

@@ -2,8 +2,8 @@ package com.realmmc.controller.modules.scheduler;
 
 import com.realmmc.controller.core.modules.AbstractCoreModule;
 import com.realmmc.controller.shared.utils.TaskScheduler;
-import com.velocitypowered.api.proxy.ProxyServer;
-import org.bukkit.plugin.Plugin;
+import com.velocitypowered.api.proxy.ProxyServer; // Import Velocity
+import org.bukkit.plugin.Plugin; // Import Spigot
 
 import java.util.logging.Logger;
 
@@ -40,14 +40,29 @@ public class SchedulerModule extends AbstractCoreModule {
     @Override
     protected void onEnable() {
         logger.info("Inicializando TaskScheduler...");
-        if (server instanceof ProxyServer) {
-            TaskScheduler.init((ProxyServer) server, plugin);
-        } else if (server instanceof Plugin) {
-            TaskScheduler.init((Plugin) server);
-        } else {
-            logger.warning("Tipo de servidor não reconhecido para TaskScheduler: " + server.getClass().getName());
+        try {
+            Class<?> proxyServerClass = Class.forName("com.velocitypowered.api.proxy.ProxyServer");
+            if (server != null && proxyServerClass.isInstance(server)) {
+                TaskScheduler.init((ProxyServer) server, plugin);
+                logger.info("TaskScheduler inicializado para Velocity.");
+                return;
+            }
+        } catch (ClassNotFoundException ignored) {
         }
+
+        try {
+            Class<?> spigotPluginClass = Class.forName("org.bukkit.plugin.Plugin");
+            if (plugin != null && spigotPluginClass.isInstance(plugin)) {
+                TaskScheduler.init((Plugin) plugin);
+                logger.info("TaskScheduler inicializado para Spigot.");
+                return;
+            }
+        } catch (ClassNotFoundException ignored) {
+        }
+
+        logger.warning("Tipo de servidor/plugin não reconhecido para TaskScheduler: server=" + (server != null ? server.getClass().getName() : "null") + ", plugin=" + (plugin != null ? plugin.getClass().getName() : "null"));
     }
+
 
     @Override
     protected void onDisable() {

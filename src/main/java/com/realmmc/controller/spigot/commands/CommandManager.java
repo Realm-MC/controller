@@ -1,6 +1,8 @@
 package com.realmmc.controller.spigot.commands;
 
 import com.realmmc.controller.shared.annotations.Cmd;
+import com.realmmc.controller.shared.messaging.MessageKey;
+import com.realmmc.controller.shared.messaging.Messages;
 import org.bukkit.Bukkit;
 import org.bukkit.command.*;
 import org.bukkit.plugin.Plugin;
@@ -39,13 +41,13 @@ public class CommandManager implements CommandExecutor, TabCompleter {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         try {
             if (onlyPlayer && !(sender instanceof org.bukkit.entity.Player)) {
-                sender.sendMessage("§cSomente jogadores podem usar este comando.");
+                Messages.send(sender, MessageKey.ONLY_PLAYERS);
                 return true;
             }
             impl.execute(sender, label, args);
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "[Command] Erro ao executar '" + name + "'", e);
-            sender.sendMessage("§cOcorreu um erro ao executar este comando.");
+            Messages.send(sender, MessageKey.COMMAND_ERROR);
         }
         return true;
     }
@@ -122,25 +124,7 @@ public class CommandManager implements CommandExecutor, TabCompleter {
     }
 
     public static void unregisterAll(Plugin plugin) {
-        List<PluginCommand> list = registered.remove(plugin.getName());
-        if (list == null || list.isEmpty()) return;
-        try {
-            CommandMap map = getCommandMap();
-            Map<String, Command> known = getKnownCommands(map);
-            for (PluginCommand pc : list) {
-                known.entrySet().removeIf(e -> e.getValue() == pc);
-                pc.unregister(map);
-            }
-        } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "[Command] Falha ao desregistrar comandos", e);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Command> getKnownCommands(CommandMap map) throws Exception {
-        Field f = map.getClass().getDeclaredField("knownCommands");
-        f.setAccessible(true);
-        return (Map<String, Command>) f.get(map);
+        plugin.getLogger().info("[Command] Unregistration skipped (no longer necessary).");
     }
 
     private static Set<Class<?>> findClasses(File codeSource, String basePackage, ClassLoader cl) throws IOException {

@@ -1,46 +1,73 @@
 package com.realmmc.controller.shared.profile;
 
+import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.IndexOptions;
+import com.mongodb.client.model.Indexes;
+// NOVO IMPORT para Collation e CollationStrength
+import com.mongodb.client.model.Collation;
+import com.mongodb.client.model.CollationStrength;
 import com.realmmc.controller.shared.storage.mongodb.AbstractMongoRepository;
+import com.realmmc.controller.shared.storage.mongodb.MongoRepository;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 public class ProfileRepository extends AbstractMongoRepository<Profile> {
 
     public ProfileRepository() {
         super(Profile.class, "profiles");
+        ensureIndexes();
     }
 
-    public Optional<Profile> findById(int id) {
-        return findOne(Filters.eq("_id", id));
+    private void ensureIndexes() {
+        MongoCollection<Profile> col = collection();
+        col.createIndex(Indexes.ascending("uuid"), new IndexOptions().unique(true));
+
+        col.createIndex(Indexes.ascending("username"), new IndexOptions()
+                .unique(true)
+                .collation(Collation.builder()
+                        .locale("en")
+                        .collationStrength(CollationStrength.SECONDARY)
+                        .build()));
+
+        col.createIndex(Indexes.descending("lastLogin"));
     }
 
     public Optional<Profile> findByUuid(UUID uuid) {
         return findOne(Filters.eq("uuid", uuid));
     }
 
+    /**
+     * Finds a profile by its numeric ID (_id field).
+     * @param id The numeric ID.
+     * @return Optional containing the profile if found.
+     */
+    public Optional<Profile> findById(int id) {
+        return findOne(MongoRepository.idEquals(id));
+    }
+
+    /**
+     * Finds a profile by its display name (case-sensitive by default in MongoDB).
+     * @param name The display name.
+     * @return Optional containing the profile if found.
+     */
     public Optional<Profile> findByName(String name) {
-        Pattern pattern = Pattern.compile("^" + Pattern.quote(name) + "$", Pattern.CASE_INSENSITIVE);
-        return findOne(Filters.regex("name", pattern));
+        return findOne(Filters.eq("name", name));
     }
 
+    /**
+     * Finds a profile by its username (search should be case-insensitive due to index collation).
+     * @param username The username.
+     * @return Optional containing the profile if found.
+     */
     public Optional<Profile> findByUsername(String username) {
-        Pattern pattern = Pattern.compile("^" + Pattern.quote(username) + "$", Pattern.CASE_INSENSITIVE);
-        return findOne(Filters.regex("username", pattern));
-    }
-
-    public List<Profile> findByRoleId(int roleId) {
-        List<Profile> profiles = new ArrayList<>();
-        collection().find(Filters.eq("roleIds", roleId)).into(profiles);
-        return profiles;
+        return findOne(Filters.eq("username", username));
     }
 
     public void upsert(Profile profile) {
-        replace(Filters.eq("_id", profile.getId()), profile);
+        if (profile.getId() == null) throw new IllegalArgumentException("Profile integer _id cannot be null for upsert");
+        replace(MongoRepository.idEquals(profile.getId()), profile);
     }
 
     public void deleteByUuid(UUID uuid) {

@@ -1,11 +1,12 @@
 package com.realmmc.controller.proxy.commands;
 
 import com.realmmc.controller.proxy.Proxy;
+import com.realmmc.controller.shared.messaging.MessageKey;
+import com.realmmc.controller.shared.messaging.MessagingSDK;
 import com.realmmc.controller.shared.annotations.Cmd;
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.plugin.PluginContainer;
 import com.velocitypowered.api.proxy.Player;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import java.io.File;
 import java.io.IOException;
@@ -22,7 +23,7 @@ public class CommandManager implements SimpleCommand {
     private final CommandInterface cmdImpl;
     private final boolean onlyPlayer;
     private final String[] aliases;
-    private final MiniMessage mm = MiniMessage.miniMessage();
+    private final MessagingSDK sdk = MessagingSDK.getInstance();
 
     private static final Map<String, List<CommandManager>> registeredCommands = new HashMap<>();
 
@@ -43,7 +44,7 @@ public class CommandManager implements SimpleCommand {
         logger.info(String.format("[Command] Executando '%s' %s", name, args.length == 0 ? "" : String.join(" ", args)));
 
         if (onlyPlayer && !(sender instanceof Player)) {
-            sender.sendMessage(mm.deserialize("<red>Somente jogadores podem usar este comando."));
+            sdk.sendMessage(sender, MessageKey.ONLY_PLAYERS);
             logger.warning(String.format("[Command] Tentativa por não-jogador em %s", name));
             return;
         }
@@ -53,7 +54,7 @@ public class CommandManager implements SimpleCommand {
             logger.fine(String.format("[Command] '%s' executado com sucesso", name));
         } catch (Exception e) {
             logger.log(Level.SEVERE, String.format("[Command] Erro ao executar '%s'", name), e);
-            sender.sendMessage(mm.deserialize("<red>Ocorreu um erro ao executar este comando."));
+            sdk.sendMessage(sender, MessageKey.COMMAND_ERROR);
         }
     }
 

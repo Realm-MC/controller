@@ -24,8 +24,8 @@ public class PlayerListener {
     @Subscribe
     public void onPostLogin(PostLoginEvent event) {
         Player player = event.getPlayer();
-        String username = player.getUsername();
-        String usernameLower = username.toLowerCase();
+        String displayName = player.getUsername();
+        String usernameLower = displayName.toLowerCase();
 
         boolean isPremium = Proxy.getInstance().getPremiumLoginStatus().getOrDefault(usernameLower, false);
 
@@ -45,7 +45,16 @@ public class PlayerListener {
         }
 
         Proxy.getInstance().getLoginTimestamps().put(finalUuid, System.currentTimeMillis());
-        profileService.ensureProfile(finalUuid, username, username, ip, clientVersion, clientType, isPremium);
+
+        profileService.ensureProfile(
+                finalUuid,
+                displayName,
+                usernameLower,
+                ip,
+                clientVersion,
+                clientType,
+                isPremium
+        );
 
         Proxy.getInstance().getPremiumLoginStatus().remove(usernameLower);
         Proxy.getInstance().getOfflineUuids().remove(usernameLower);
@@ -56,7 +65,9 @@ public class PlayerListener {
         Player player = event.getPlayer();
         if (player == null) return;
 
-        UUID finalUuid = profileService.getByUsername(player.getUsername())
+        String usernameLower = player.getUsername().toLowerCase();
+
+        UUID finalUuid = profileService.getByUsername(usernameLower)
                 .map(Profile::getUuid)
                 .orElse(player.getUniqueId());
 
@@ -68,7 +79,6 @@ public class PlayerListener {
                     .ifPresent(statsService -> statsService.addOnlineTime(finalUuid, sessionDuration));
         }
 
-        String usernameLower = player.getUsername().toLowerCase();
         Proxy.getInstance().getPremiumLoginStatus().remove(usernameLower);
         Proxy.getInstance().getOfflineUuids().remove(usernameLower);
     }
