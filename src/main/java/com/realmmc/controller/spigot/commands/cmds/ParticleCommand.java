@@ -6,13 +6,12 @@ import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.profile.Profile;
-import com.realmmc.controller.shared.profile.PlayerDisplayService;
 import com.realmmc.controller.shared.profile.ProfileResolver;
+import com.realmmc.controller.shared.sounds.SoundKeys;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.realmmc.controller.spigot.commands.CommandInterface;
 import com.realmmc.controller.spigot.entities.config.ParticleEntry;
 import com.realmmc.controller.spigot.entities.particles.ParticleService;
-import com.realmmc.controller.spigot.sounds.SoundKeys;
 import org.bukkit.Bukkit;
 import org.bukkit.Particle;
 import org.bukkit.command.CommandSender;
@@ -37,7 +36,7 @@ public class ParticleCommand implements CommandInterface {
     @Override
     public void execute(CommandSender sender, String label, String[] args) {
         if (!sender.hasPermission(permission)) {
-            Messages.send(sender, Message.of(MessageKey.COMMON_NO_PERMISSION_GROUP).with("group", "Gerente"));
+            Messages.send(sender, MessageKey.COMMON_NO_PERMISSION_GENERIC);
             playSound(sender, SoundKeys.USAGE_ERROR);
             return;
         }
@@ -65,7 +64,10 @@ public class ParticleCommand implements CommandInterface {
                 Messages.send(sender, MessageKey.PARTICLE_RELOADED);
                 playSound(sender, SoundKeys.SUCCESS);
                 break;
-            default: showHelp(sender); break;
+            default:
+                showHelp(sender);
+                playSound(sender, SoundKeys.USAGE_ERROR);
+                break;
         }
     }
 
@@ -99,13 +101,13 @@ public class ParticleCommand implements CommandInterface {
     }
 
     private void handleCreate(CommandSender sender, String[] args) {
-        if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); return; }
+        if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); playSound(sender, SoundKeys.ERROR); return; }
         if (args.length < 3) { sendUsage(sender, "/particle criar <id> <tipo> [quantidade] [intervalo_ticks]"); return; }
         String id = args[1];
-        if (particleService.getParticleEntry(id) != null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_INVALID_ID).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (particleService.getParticleEntry(id) != null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_INVALID_ID).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         String particleType = args[2].toUpperCase();
         try { Particle.valueOf(particleType); }
-        catch (IllegalArgumentException e) { Messages.send(sender, Message.of(MessageKey.PARTICLE_INVALID_TYPE).with("type", particleType)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        catch (IllegalArgumentException e) { Messages.send(sender, Message.of(MessageKey.PARTICLE_INVALID_TYPE).with("type", particleType)); playSound(sender, SoundKeys.ERROR); return; }
         int amount = args.length > 3 ? Integer.parseInt(args[3]) : 1;
         int interval = args.length > 4 ? Integer.parseInt(args[4]) : 20;
         particleService.createParticle(id, player.getLocation(), particleType, amount, interval);
@@ -116,19 +118,19 @@ public class ParticleCommand implements CommandInterface {
     private void handleRemove(CommandSender sender, String[] args) {
         if (args.length < 2) { sendUsage(sender, "/particle remover <id>"); return; }
         String id = args[1];
-        if (particleService.getParticleEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (particleService.getParticleEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         particleService.removeParticle(id);
         Messages.send(sender, Message.of(MessageKey.PARTICLE_REMOVED).with("id", id));
         playSound(sender, SoundKeys.SUCCESS);
     }
 
     private void handleClone(CommandSender sender, String[] args) {
-        if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); return; }
+        if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); playSound(sender, SoundKeys.ERROR); return; }
         if (args.length < 3) { sendUsage(sender, "/particle clone <id original> <novo id>"); return; }
         String originalId = args[1];
         String newId = args[2];
-        if (particleService.getParticleEntry(originalId) == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", originalId)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
-        if (particleService.getParticleEntry(newId) != null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_INVALID_ID).with("id", newId)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (particleService.getParticleEntry(originalId) == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", originalId)); playSound(sender, SoundKeys.ERROR); return; }
+        if (particleService.getParticleEntry(newId) != null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_INVALID_ID).with("id", newId)); playSound(sender, SoundKeys.ERROR); return; }
         particleService.cloneParticle(originalId, newId, player.getLocation());
         Messages.send(sender, Message.of(MessageKey.PARTICLE_CLONED).with("originalId", originalId).with("newId", newId));
         playSound(sender, SoundKeys.SUCCESS);
@@ -145,7 +147,7 @@ public class ParticleCommand implements CommandInterface {
         if (args.length < 2) { sendUsage(sender, "/particle info <id>"); return; }
         String id = args[1];
         ParticleEntry entry = particleService.getParticleEntry(id);
-        if (entry == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (entry == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         String longDist = Messages.translate(entry.isLongDistance() ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE);
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_HEADER).with("subject", "Efeito " + id));
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "ID").with("value", entry.getId()));
@@ -162,20 +164,20 @@ public class ParticleCommand implements CommandInterface {
     }
 
     private void handleTpHere(CommandSender sender, String[] args) {
-        if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); return; }
+        if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); playSound(sender, SoundKeys.ERROR); return; }
         if (args.length < 2) { sendUsage(sender, "/particle tphere <id>"); return; }
         String id = args[1];
-        if (particleService.getParticleEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (particleService.getParticleEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         particleService.teleportParticle(id, player.getLocation());
         Messages.send(sender, Message.of(MessageKey.PARTICLE_TELEPORTED).with("id", id));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.TELEPORT_WHOOSH);
     }
 
     private void handleSet(CommandSender sender, String[] args) {
         if (args.length < 4) { sendUsage(sender, "/particle set <id> <propriedade> <valor>"); return; }
         String id = args[1];
         ParticleEntry entry = particleService.getParticleEntry(id);
-        if (entry == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (entry == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         String prop = args[2].toLowerCase();
         String value = String.join(" ", Arrays.copyOfRange(args, 3, args.length));
         value = value.trim();
@@ -194,22 +196,22 @@ public class ParticleCommand implements CommandInterface {
                 case "distancia": entry.setLongDistance(Boolean.parseBoolean(value)); break;
                 default:
                     Messages.send(sender, Message.of(MessageKey.PARTICLE_INVALID_PROPERTY).with("properties", "tipo, quantidade, intervalo, velocidade, offset, dados, distancia."));
-                    playSound(sender, SoundKeys.USAGE_ERROR); return;
+                    playSound(sender, SoundKeys.ERROR); return;
             }
         } catch (Exception e) {
             Messages.send(sender, Message.of(MessageKey.PARTICLE_INVALID_VALUE).with("prop", prop));
-            playSound(sender, SoundKeys.USAGE_ERROR); return;
+            playSound(sender, SoundKeys.ERROR); return;
         }
         particleService.updateParticle(entry);
         Messages.send(sender, Message.of(MessageKey.PARTICLE_PROPERTY_SET).with("prop", prop).with("id", id));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
     private void handleAnimate(CommandSender sender, String[] args) {
         if (args.length < 3) { sendUsage(sender, "/particle animate <id> <tipo> [opções...]"); return; }
         String id = args[1];
         ParticleEntry entry = particleService.getParticleEntry(id);
-        if (entry == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (entry == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         String type = args[2].toLowerCase();
         entry.setAnimationType(type);
         Map<String, String> props = new HashMap<>();
@@ -217,30 +219,22 @@ public class ParticleCommand implements CommandInterface {
         entry.setAnimationProperties(props);
         particleService.updateParticle(entry);
         Messages.send(sender, Message.of(MessageKey.PARTICLE_ANIMATION_SET).with("type", type).with("id", id));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
     private void handleStopAnimation(CommandSender sender, String[] args) {
         if (args.length < 2) { sendUsage(sender, "/particle stopanimation <id>"); return; }
         String id = args[1];
-        if (particleService.getParticleEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (particleService.getParticleEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         particleService.stopAnimation(id);
         Messages.send(sender, Message.of(MessageKey.PARTICLE_ANIMATION_STOPPED).with("id", id));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
-
     private void handleTestPlayer(CommandSender sender, String[] args) {
-        if (args.length < 2) {
-            sendUsage(sender, "/particle testplayer <id> [jogador]");
-            return;
-        }
+        if (args.length < 2) { sendUsage(sender, "/particle testplayer <id> [jogador]"); return; }
         String particleId = args[1];
-        if (particleService.getParticleEntry(particleId) == null) {
-            Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", particleId));
-            playSound(sender, SoundKeys.USAGE_ERROR);
-            return;
-        }
+        if (particleService.getParticleEntry(particleId) == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", particleId)); playSound(sender, SoundKeys.ERROR); return; }
 
         Player targetOnline = null;
         String targetNameInput = null;
@@ -255,8 +249,7 @@ public class ParticleCommand implements CommandInterface {
             targetNameInput = sender.getName();
         } else {
             Messages.send(sender, MessageKey.ONLY_PLAYERS);
-            playSound(sender, SoundKeys.USAGE_ERROR);
-            return;
+            playSound(sender, SoundKeys.ERROR); return;
         }
 
         if (targetOnline == null && targetProfileOpt.isPresent()) {
@@ -266,37 +259,24 @@ public class ParticleCommand implements CommandInterface {
         if (targetOnline != null && targetProfileOpt.isPresent()) {
             Profile targetProfile = targetProfileOpt.get();
             if (particleService.spawnForPlayerOnce(targetOnline, particleId)) {
-                Optional<PlayerDisplayService> displayOpt = PlayerDisplayService.getInstance();
-                String nameToShow = displayOpt.map(pds -> pds.getFormattedName(targetProfile))
-                        .orElse(targetProfile.getName());
-
-                Messages.send(sender, Message.of(MessageKey.PARTICLE_TESTED)
-                        .with("id", particleId)
-                        .with("player", nameToShow));
+                String nameToShow = targetProfile.getName();
+                Messages.send(sender, Message.of(MessageKey.PARTICLE_TESTED).with("id", particleId).with("player", nameToShow));
                 playSound(sender, SoundKeys.SUCCESS);
             } else {
                 Messages.send(sender, MessageKey.COMMAND_ERROR);
-                playSound(sender, SoundKeys.USAGE_ERROR);
+                playSound(sender, SoundKeys.ERROR);
             }
-        }
-        else if (targetProfileOpt.isPresent()) {
+        } else if (targetProfileOpt.isPresent()) {
             Profile targetProfile = targetProfileOpt.get();
-            Optional<PlayerDisplayService> displayOpt = PlayerDisplayService.getInstance();
-            String nameToShow = displayOpt.map(pds -> pds.getFormattedName(targetProfile))
-                    .orElse(targetProfile.getName());
-
-            Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NOT_ONLINE)
-                    .with("player", nameToShow));
-            playSound(sender, SoundKeys.USAGE_ERROR);
-        }
-        else {
+            String nameToShow = targetProfile.getName();
+            Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NOT_ONLINE).with("player", nameToShow));
+            playSound(sender, SoundKeys.ERROR);
+        } else {
             String nameUsedForSearch = targetNameInput != null ? targetNameInput : "???";
-            Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NEVER_JOINED)
-                    .with("player", nameUsedForSearch));
-            playSound(sender, SoundKeys.USAGE_ERROR);
+            Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NEVER_JOINED).with("player", nameUsedForSearch));
+            playSound(sender, SoundKeys.ERROR);
         }
     }
-
 
     @Override
     public List<String> tabComplete(CommandSender sender, String[] args) {

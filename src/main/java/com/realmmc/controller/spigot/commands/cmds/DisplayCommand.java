@@ -5,12 +5,12 @@ import com.realmmc.controller.shared.annotations.Cmd;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
+import com.realmmc.controller.shared.sounds.SoundKeys;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.commands.CommandInterface;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
-import com.realmmc.controller.spigot.sounds.SoundKeys;
 import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Display;
@@ -38,7 +38,7 @@ public class DisplayCommand implements CommandInterface {
     @Override
     public void execute(CommandSender sender, String label, String[] args) {
         if (!sender.hasPermission(permission)) {
-            Messages.send(sender, Message.of(MessageKey.COMMON_NO_PERMISSION_GROUP).with("group", "Gerente"));
+            Messages.send(sender, MessageKey.COMMON_NO_PERMISSION_GENERIC);
             playSound(sender, SoundKeys.USAGE_ERROR);
             return;
         }
@@ -73,7 +73,10 @@ public class DisplayCommand implements CommandInterface {
                 Messages.send(sender, MessageKey.DISPLAY_RELOADED);
                 playSound(sender, SoundKeys.SUCCESS);
                 break;
-            default: showHelp(sender); break;
+            default:
+                showHelp(sender);
+                playSound(sender, SoundKeys.USAGE_ERROR);
+                break;
         }
     }
 
@@ -114,25 +117,25 @@ public class DisplayCommand implements CommandInterface {
     }
 
     private void handleCreate(CommandSender sender, String[] args) {
-        if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); return; }
+        if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); playSound(sender, SoundKeys.ERROR); return; }
         if (args.length < 3) { sendUsage(sender, "/display criar <id> <material>"); return; }
         String id = args[1];
-        if (displayService.getDisplayEntry(id) != null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_INVALID_ID).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (displayService.getDisplayEntry(id) != null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_INVALID_ID).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         Material material;
         try { material = Material.valueOf(args[2].toUpperCase()); }
-        catch (IllegalArgumentException e) { Messages.send(sender, Message.of(MessageKey.DISPLAY_INVALID_MATERIAL).with("material", args[2])); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        catch (IllegalArgumentException e) { Messages.send(sender, Message.of(MessageKey.DISPLAY_INVALID_MATERIAL).with("material", args[2])); playSound(sender, SoundKeys.ERROR); return; }
         displayService.createDisplay(id, player.getLocation(), material);
         Messages.send(sender, Message.of(MessageKey.DISPLAY_SPAWNED).with("id", id));
         playSound(sender, SoundKeys.SUCCESS);
     }
 
     private void handleClone(CommandSender sender, String[] args) {
-        if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); return; }
+        if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); playSound(sender, SoundKeys.ERROR); return; }
         if (args.length < 3) { sendUsage(sender, "/display clone <id original> <novo id>"); return; }
         String originalId = args[1];
         String newId = args[2];
-        if (displayService.getDisplayEntry(originalId) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", originalId)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
-        if (displayService.getDisplayEntry(newId) != null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_INVALID_ID).with("id", newId)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (displayService.getDisplayEntry(originalId) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", originalId)); playSound(sender, SoundKeys.ERROR); return; }
+        if (displayService.getDisplayEntry(newId) != null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_INVALID_ID).with("id", newId)); playSound(sender, SoundKeys.ERROR); return; }
         displayService.cloneDisplay(originalId, newId, player.getLocation());
         Messages.send(sender, Message.of(MessageKey.DISPLAY_CLONED).with("originalId", originalId).with("newId", newId));
         playSound(sender, SoundKeys.SUCCESS);
@@ -141,7 +144,7 @@ public class DisplayCommand implements CommandInterface {
     private void handleRemove(CommandSender sender, String[] args) {
         if (args.length < 2) { sendUsage(sender, "/display remover <id>"); return; }
         String id = args[1];
-        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         displayService.removeDisplay(id);
         Messages.send(sender, Message.of(MessageKey.DISPLAY_REMOVED).with("id", id));
         playSound(sender, SoundKeys.SUCCESS);
@@ -158,10 +161,11 @@ public class DisplayCommand implements CommandInterface {
         if (args.length < 2) { sendUsage(sender, "/display info <id>"); return; }
         String id = args[1];
         DisplayEntry entry = displayService.getDisplayEntry(id);
-        if (entry == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (entry == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         String locationStr = String.format("%.2f, %.2f, %.2f em %s", entry.getX(), entry.getY(), entry.getZ(), entry.getWorld());
         String glow = Messages.translate(Boolean.TRUE.equals(entry.getGlow()) ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE);
         String linesVisible = Messages.translate(Boolean.TRUE.equals(entry.getHologramVisible()) ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE);
+
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_HEADER).with("subject", "Display Item " + id));
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "ID").with("value", entry.getId()));
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Item").with("value", entry.getItem()));
@@ -170,132 +174,132 @@ public class DisplayCommand implements CommandInterface {
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Billboard").with("value", entry.getBillboard()));
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Brilho (Glow)").with("value", glow));
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Visibilidade das Linhas").with("value", linesVisible));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", "Linhas de Texto").with("count", entry.getLines().size()));
-        if (entry.getLines().isEmpty()) { Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY); }
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", "Linhas de Texto").with("count", entry.getLines() != null ? entry.getLines().size() : 0));
+        if (entry.getLines() == null || entry.getLines().isEmpty()) { Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY); }
         else { for (int i = 0; i < entry.getLines().size(); i++) { Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_ITEM).with("index", i + 1).with("value", entry.getLines().get(i))); } }
         Messages.send(sender, "<white>");
         playSound(sender, SoundKeys.NOTIFICATION);
     }
 
     private void handleTpHere(CommandSender sender, String[] args) {
-        if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); return; }
+        if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); playSound(sender, SoundKeys.ERROR); return; }
         if (args.length < 2) { sendUsage(sender, "/display tphere <id>"); return; }
         String id = args[1];
-        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         displayService.teleportDisplay(id, player.getLocation());
         Messages.send(sender, Message.of(MessageKey.DISPLAY_TELEPORTED).with("id", id));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.TELEPORT_WHOOSH);
     }
 
     private void handleSetItem(CommandSender sender, String[] args) {
         if (args.length < 3) { sendUsage(sender, "/display setitem <id> <material>"); return; }
         String id = args[1];
-        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         Material material;
         try { material = Material.valueOf(args[2].toUpperCase()); }
-        catch (IllegalArgumentException e) { Messages.send(sender, Message.of(MessageKey.DISPLAY_INVALID_MATERIAL).with("material", args[2])); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        catch (IllegalArgumentException e) { Messages.send(sender, Message.of(MessageKey.DISPLAY_INVALID_MATERIAL).with("material", args[2])); playSound(sender, SoundKeys.ERROR); return; }
         displayService.setItem(id, material);
         Messages.send(sender, Message.of(MessageKey.DISPLAY_ITEM_SET).with("id", id).with("material", material.name()));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
     private void handleSetScale(CommandSender sender, String[] args) {
         if (args.length < 3) { sendUsage(sender, "/display setscale <id> <escala>"); return; }
         String id = args[1];
-        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         float scale;
         try { scale = Float.parseFloat(args[2]); }
-        catch (NumberFormatException e) { Messages.send(sender, Message.of(MessageKey.DISPLAY_INVALID_SCALE).with("scale", args[2])); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        catch (NumberFormatException e) { Messages.send(sender, Message.of(MessageKey.DISPLAY_INVALID_SCALE).with("scale", args[2])); playSound(sender, SoundKeys.ERROR); return; }
         displayService.setScale(id, scale);
         Messages.send(sender, Message.of(MessageKey.DISPLAY_SCALE_SET).with("id", id).with("scale", scale));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
     private void handleSetBillboard(CommandSender sender, String[] args) {
         if (args.length < 3) { sendUsage(sender, "/display setbillboard <id> <tipo>"); return; }
         String id = args[1];
-        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         Display.Billboard billboard;
         try { billboard = Display.Billboard.valueOf(args[2].toUpperCase()); }
-        catch (IllegalArgumentException e) { Messages.send(sender, Message.of(MessageKey.DISPLAY_INVALID_BILLBOARD).with("type", args[2])); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        catch (IllegalArgumentException e) { Messages.send(sender, Message.of(MessageKey.DISPLAY_INVALID_BILLBOARD).with("type", args[2])); playSound(sender, SoundKeys.ERROR); return; }
         displayService.setBillboard(id, billboard.name());
         Messages.send(sender, Message.of(MessageKey.DISPLAY_BILLBOARD_SET).with("id", id).with("billboard", billboard.name()));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
     private void handleToggleGlow(CommandSender sender, String[] args) {
         if (args.length < 2) { sendUsage(sender, "/display toggleglow <id>"); return; }
         String id = args[1];
-        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         boolean newState = displayService.toggleGlow(id);
         String status = Messages.translate(newState ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE);
         Messages.send(sender, Message.of(MessageKey.DISPLAY_GLOW_TOGGLED).with("id", id).with("status", status));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
     private void handleToggleLines(CommandSender sender, String[] args) {
         if (args.length < 2) { sendUsage(sender, "/display togglelines <id>"); return; }
         String id = args[1];
-        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         boolean newState = displayService.toggleLinesVisibility(id);
         String status = Messages.translate(newState ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE);
         Messages.send(sender, Message.of(MessageKey.DISPLAY_LINES_TOGGLED).with("id", id).with("status", status));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
     private void handleAddLine(CommandSender sender, String[] args) {
         if (args.length < 3) { sendUsage(sender, "/display addline <id> <texto>"); return; }
         String id = args[1];
         String text = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
-        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         displayService.addLine(id, text);
         Messages.send(sender, Message.of(MessageKey.DISPLAY_LINE_ADDED).with("id", id));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
     private void handleSetLine(CommandSender sender, String[] args) {
         if (args.length < 4) { sendUsage(sender, "/display setline <id> <linha> <texto>"); return; }
         String id = args[1]; int line;
-        try { line = Integer.parseInt(args[2]); } catch (NumberFormatException e) { Messages.send(sender, MessageKey.DISPLAY_INVALID_LINE); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        try { line = Integer.parseInt(args[2]); } catch (NumberFormatException e) { Messages.send(sender, MessageKey.DISPLAY_INVALID_LINE); playSound(sender, SoundKeys.ERROR); return; }
         String text = String.join(" ", Arrays.copyOfRange(args, 3, args.length));
-        if (!displayService.setLine(id, line, text)) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (!displayService.setLine(id, line, text)) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         Messages.send(sender, Message.of(MessageKey.DISPLAY_LINE_SET).with("id", id).with("line", line));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
     private void handleRemoveLine(CommandSender sender, String[] args) {
         if (args.length < 3) { sendUsage(sender, "/display removeline <id> <linha>"); return; }
         String id = args[1]; int line;
-        try { line = Integer.parseInt(args[2]); } catch (NumberFormatException e) { Messages.send(sender, MessageKey.DISPLAY_INVALID_LINE); playSound(sender, SoundKeys.USAGE_ERROR); return; }
-        if (!displayService.removeLine(id, line)) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        try { line = Integer.parseInt(args[2]); } catch (NumberFormatException e) { Messages.send(sender, MessageKey.DISPLAY_INVALID_LINE); playSound(sender, SoundKeys.ERROR); return; }
+        if (!displayService.removeLine(id, line)) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         Messages.send(sender, Message.of(MessageKey.DISPLAY_LINE_REMOVED).with("id", id).with("line", line));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
     private void handleAddAction(CommandSender sender, String[] args) {
         if (args.length < 3) { sendUsage(sender, "/display addaction <id> <ação>"); return; }
         String id = args[1];
         String action = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
-        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (displayService.getDisplayEntry(id) == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         displayService.addAction(id, action);
         Messages.send(sender, Message.of(MessageKey.DISPLAY_ACTION_ADDED).with("id", id));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
     private void handleRemoveAction(CommandSender sender, String[] args) {
         if (args.length < 3) { sendUsage(sender, "/display removeaction <id> <linha>"); return; }
         String id = args[1]; int line;
-        try { line = Integer.parseInt(args[2]); } catch (NumberFormatException e) { Messages.send(sender, MessageKey.DISPLAY_INVALID_ACTION_LINE); playSound(sender, SoundKeys.USAGE_ERROR); return; }
-        if (!displayService.removeAction(id, line)) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        try { line = Integer.parseInt(args[2]); } catch (NumberFormatException e) { Messages.send(sender, MessageKey.DISPLAY_INVALID_ACTION_LINE); playSound(sender, SoundKeys.ERROR); return; }
+        if (!displayService.removeAction(id, line)) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         Messages.send(sender, Message.of(MessageKey.DISPLAY_ACTION_REMOVED).with("id", id).with("line", line));
-        playSound(sender, SoundKeys.SUCCESS);
+        playSound(sender, SoundKeys.SETTING_UPDATE);
     }
 
     private void handleListActions(CommandSender sender, String[] args) {
         if (args.length < 2) { sendUsage(sender, "/display listactions <id>"); return; }
         String id = args[1];
         DisplayEntry entry = displayService.getDisplayEntry(id);
-        if (entry == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.USAGE_ERROR); return; }
+        if (entry == null) { Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
         List<String> actions = entry.getActions();
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", "Ações de clique para o Display " + id).with("count", actions == null ? 0 : actions.size()));
         if (actions == null || actions.isEmpty()) { Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY); }

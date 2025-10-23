@@ -1,8 +1,11 @@
 package com.realmmc.controller.modules.spigot;
 
 import com.realmmc.controller.core.modules.AbstractCoreModule;
+import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.realmmc.controller.spigot.commands.CommandManager;
 import com.realmmc.controller.spigot.listeners.ListenersManager;
+import com.realmmc.controller.spigot.sounds.SpigotSoundPlayer;
 import org.bukkit.plugin.Plugin;
 
 import java.util.logging.Logger;
@@ -32,7 +35,7 @@ public class SpigotModule extends AbstractCoreModule {
 
     @Override
     public int getPriority() {
-        return 50;
+        return 45;
     }
 
     @Override
@@ -42,13 +45,26 @@ public class SpigotModule extends AbstractCoreModule {
 
     @Override
     protected void onEnable() {
-        logger.info("Registrando comandos e listeners do Spigot...");
+        logger.info("Registrando comandos, listeners e sound player do Spigot...");
+
+        try {
+            SoundPlayer spigotSoundPlayer = new SpigotSoundPlayer();
+            ServiceRegistry.getInstance().registerService(SoundPlayer.class, spigotSoundPlayer);
+            logger.info("SpigotSoundPlayer registrado com sucesso como SoundPlayer.");
+        } catch (Exception e) {
+            logger.severe("Falha ao registrar SpigotSoundPlayer: " + e.getMessage());
+        }
+
         CommandManager.registerAll(plugin);
         ListenersManager.registerAll(plugin);
     }
 
     @Override
     protected void onDisable() {
-        logger.info("Desregistrando comandos do Spigot...");
+        logger.info("Desregistrando comandos e sound player do Spigot...");
+
+        ServiceRegistry.getInstance().unregisterService(SoundPlayer.class);
+        logger.info("SoundPlayer (Spigot) desregistrado.");
+
     }
 }

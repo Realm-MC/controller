@@ -15,7 +15,6 @@ public class SoundRegistry {
     private static final Map<String, SoundInfo> SOUND_MAP = new ConcurrentHashMap<>();
 
     static {
-        // Mapeamento dos sons originais para chaves Minecraft e fontes Adventure
         // Fontes Comuns: MASTER, MUSIC, RECORDS, WEATHER, BLOCK, HOSTILE, NEUTRAL, PLAYER, AMBIENT, VOICE
         // Encontra as chaves aqui: https://minecraft.wiki/w/Sounds.json
         registerSound("NOTIFICATION", new SoundInfo("minecraft:block.note_block.bell", "RECORDS", 1.0f, 2.0f));
@@ -23,7 +22,8 @@ public class SoundRegistry {
         registerSound("SUCCESS", new SoundInfo("minecraft:entity.player.levelup", "PLAYER", 0.8f, 1.5f));
         registerSound("ERROR", new SoundInfo("minecraft:entity.villager.no", "NEUTRAL", 1.0f, 1.0f));
         registerSound("CLICK", new SoundInfo("minecraft:ui.button.click", "MASTER", 0.5f, 1.0f));
-
+        registerSound("SETTING_UPDATE", new SoundInfo("minecraft:block.note_block.pling", "RECORDS", 1.0f, 1.5f)); // Som de "pling" agudo
+        registerSound("TELEPORT_WHOOSH", new SoundInfo("minecraft:entity.enderman.teleport", "PLAYER", 0.8f, 1.0f)); // Som clássico de teleporte
     }
 
     /**

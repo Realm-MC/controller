@@ -36,14 +36,6 @@ public class Profile {
     private Long cashTopPositionEnteredAt;
     @Builder.Default
     private boolean premiumAccount = false;
-    @Builder.Default
-    private List<Integer> roleIds = new ArrayList<>();
-    @Builder.Default
-    private Map<String, Long> roleExpirations = new HashMap<>();
-    @Builder.Default
-    private Map<String, Long> pausedRoleDurations = new HashMap<>();
-    @Builder.Default
-    private List<String> extraPermissions = new ArrayList<>();
     private long createdAt;
     private long updatedAt;
 }

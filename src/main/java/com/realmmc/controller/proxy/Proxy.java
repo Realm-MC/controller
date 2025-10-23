@@ -9,10 +9,6 @@ import com.realmmc.controller.modules.proxy.ProxyModule;
 import com.realmmc.controller.modules.scheduler.SchedulerModule;
 import com.realmmc.controller.shared.geoip.GeoIPService;
 import com.realmmc.controller.shared.messaging.MessagingSDK;
-// NOVO IMPORT para PermissionService
-import com.realmmc.controller.shared.permission.PermissionService;
-// NOVO IMPORT para PlayerDisplayService
-import com.realmmc.controller.shared.profile.PlayerDisplayService;
 import com.realmmc.controller.shared.stats.StatisticsService;
 import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.velocitypowered.api.event.Subscribe;
@@ -22,12 +18,8 @@ import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
 import lombok.Getter;
-
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -78,13 +70,6 @@ public class Proxy extends ControllerCore {
             moduleManager.registerModule(new ProxyModule(server, this, logger));
 
             moduleManager.enableAllModules();
-
-            PermissionService permissionService = serviceRegistry.getService(PermissionService.class)
-                    .orElseThrow(() -> new IllegalStateException("PermissionService não encontrado! PlayerDisplayService não pode ser registrado."));
-            PlayerDisplayService playerDisplayService = new PlayerDisplayService(permissionService);
-            serviceRegistry.registerService(PlayerDisplayService.class, playerDisplayService);
-            logger.info("Serviço registrado: PlayerDisplayService");
-
 
             startOnlineTimeBackupTask();
 
@@ -178,7 +163,6 @@ public class Proxy extends ControllerCore {
             ServiceRegistry currentRegistry = ServiceRegistry.getInstance();
             if (currentRegistry != null) {
                 currentRegistry.unregisterService(GeoIPService.class);
-                currentRegistry.unregisterService(PlayerDisplayService.class);
             }
             MessagingSDK.getInstance().shutdown();
             shutdownSharedServices();

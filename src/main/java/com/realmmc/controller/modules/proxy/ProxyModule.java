@@ -37,7 +37,7 @@ public class ProxyModule extends AbstractCoreModule {
 
     @Override
     public int getPriority() {
-        return 50;
+        return 45;
     }
 
     @Override
@@ -64,7 +64,9 @@ public class ProxyModule extends AbstractCoreModule {
     @Override
     protected void onDisable() {
         logger.info("Desregistrando comandos e sound player do proxy...");
+
         ServiceRegistry.getInstance().unregisterService(SoundPlayer.class);
         logger.info("SoundPlayer (Velocity) desregistrado.");
+
     }
 }

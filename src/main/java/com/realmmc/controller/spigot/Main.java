@@ -3,13 +3,10 @@ package com.realmmc.controller.spigot;
 import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.core.modules.ModuleManager;
 import com.realmmc.controller.core.services.ServiceRegistry;
-import com.realmmc.controller.modules.scheduler.SchedulerModule; // Import necessário
+import com.realmmc.controller.modules.scheduler.SchedulerModule;
 import com.realmmc.controller.modules.spigot.SpigotModule;
-import com.realmmc.controller.modules.spigot.sounds.SoundModule;
 import com.realmmc.controller.shared.geoip.GeoIPService;
 import com.realmmc.controller.shared.messaging.MessagingSDK;
-import com.realmmc.controller.shared.permission.PermissionService; // Necessário para PlayerDisplayService
-import com.realmmc.controller.shared.profile.PlayerDisplayService; // Necessário para registrar
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
 import com.realmmc.controller.spigot.entities.holograms.HologramService;
 import com.realmmc.controller.spigot.entities.npcs.NPCService;
@@ -89,15 +86,8 @@ public class Main extends JavaPlugin {
 
             moduleManager.registerModule(new SchedulerModule(null, this, logger));
             moduleManager.registerModule(new SpigotModule(this, logger));
-            moduleManager.registerModule(new SoundModule(logger));
 
             moduleManager.enableAllModules();
-
-            PermissionService permissionService = serviceRegistry.getService(PermissionService.class)
-                    .orElseThrow(() -> new IllegalStateException("PermissionService não encontrado! PlayerDisplayService não pode ser registrado."));
-            PlayerDisplayService playerDisplayService = new PlayerDisplayService(permissionService);
-            serviceRegistry.registerService(PlayerDisplayService.class, playerDisplayService);
-            logger.info("Serviço registrado: PlayerDisplayService");
 
             getServer().getPluginManager().registerEvents(npcService, this);
             for (Player p : Bukkit.getOnlinePlayers()) {
@@ -140,7 +130,6 @@ public class Main extends JavaPlugin {
             }
             if (serviceRegistry != null) {
                 serviceRegistry.unregisterService(GeoIPService.class);
-                serviceRegistry.unregisterService(PlayerDisplayService.class);
             }
             MessagingSDK.getInstance().shutdown();
 

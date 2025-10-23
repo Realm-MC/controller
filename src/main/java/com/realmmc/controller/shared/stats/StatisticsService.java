@@ -1,6 +1,5 @@
 package com.realmmc.controller.shared.stats;
 
-import com.realmmc.controller.proxy.Proxy;
 import com.realmmc.controller.shared.profile.Profile;
 
 import java.util.Optional;
@@ -10,6 +9,8 @@ import java.util.logging.Logger;
 public class StatisticsService {
 
     private final StatisticsRepository repository = new StatisticsRepository();
+    private static final Logger LOGGER = Logger.getLogger(StatisticsService.class.getName());
+
 
     public Statistics ensureStatistics(Profile profile) {
         return repository.findById(profile.getId()).orElseGet(() -> {
@@ -17,7 +18,6 @@ public class StatisticsService {
                     .id(profile.getId())
                     .uuid(profile.getUuid())
                     .name(profile.getName())
-                    .username(profile.getUsername())
                     .build();
             repository.upsert(newStats);
             return newStats;
@@ -37,8 +37,16 @@ public class StatisticsService {
             stats.setOnlineTime(stats.getOnlineTime() + sessionMillis);
             repository.upsert(stats);
         } else {
-            Logger logger = Proxy.getInstance().getLogger();
-            logger.warning("Tentativa de adicionar tempo online para o UUID " + uuid + ", mas o registo de estatísticas não foi encontrado!");
+            Logger loggerToUse = LOGGER;
+            try {
+                loggerToUse = com.realmmc.controller.proxy.Proxy.getInstance().getLogger();
+            } catch (NoClassDefFoundError | IllegalStateException e) {
+                try {
+                    loggerToUse = com.realmmc.controller.spigot.Main.getInstance().getLogger();
+                } catch (NoClassDefFoundError | IllegalStateException e2) {
+                }
+            }
+            loggerToUse.warning("Tentativa de adicionar tempo online para o UUID " + uuid + ", mas o registo de estatísticas não foi encontrado!");
         }
     }
 
@@ -50,10 +58,7 @@ public class StatisticsService {
             stats.setName(profile.getName());
             changed = true;
         }
-        if (profile.getUsername() != null && !profile.getUsername().equals(stats.getUsername())) {
-            stats.setUsername(profile.getUsername());
-            changed = true;
-        }
+
         if (changed) {
             repository.upsert(stats);
         }

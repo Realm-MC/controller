@@ -23,9 +23,6 @@ public enum MessageKey {
     COMMON_INFO_LIST_ITEM("common.info.list.item"),
     COMMON_INFO_LIST_EMPTY("common.info.list.empty"),
 
-    PROFILE_ROLE_EXPIRING_SOON("profile.role.expiring_soon"),
-    PROFILE_ROLE_JUST_EXPIRED("profile.role.just_expired"),
-
     DISPLAY_SPAWNED("display.spawned"),
     DISPLAY_CLONED("display.cloned"),
     DISPLAY_REMOVED("display.removed"),
@@ -50,6 +47,8 @@ public enum MessageKey {
     DISPLAY_INVALID_BILLBOARD("display.invalid_billboard"),
     DISPLAY_INVALID_LINE("display.invalid_line"),
     DISPLAY_INVALID_ACTION_LINE("display.invalid_action_line"),
+    DISPLAY_ALL_SPAWNED("display.all_spawned"),
+    DISPLAY_NO_ENTRIES("display.no_entries"),
 
     NPC_CREATED("npc.created"),
     NPC_CLONED("npc.cloned"),
@@ -68,6 +67,14 @@ public enum MessageKey {
     NPC_LINE_REMOVED("npc.line_removed"),
     NPC_ACTION_ADDED("npc.action_added"),
     NPC_ACTION_REMOVED("npc.action_removed"),
+    NPC_INFO_SKIN("npc.info.skin"),
+    NPC_INFO_NAME("npc.info.name"),
+    NPC_INFO_LOCATION("npc.info.location"),
+    NPC_INFO_LOOKATPLAYER("npc.info.lookatplayer"),
+    NPC_INFO_NAMEVISIBLE("npc.info.namevisible"),
+    NPC_INFO_LINES("npc.info.lines"),
+    NPC_INFO_ACTIONS("npc.info.actions"),
+
 
     PARTICLE_CREATED("particle.created"),
     PARTICLE_CLONED("particle.cloned"),
@@ -85,6 +92,17 @@ public enum MessageKey {
     PARTICLE_ANIMATION_STOPPED("particle.animation_stopped"),
     PARTICLE_TESTED("particle.tested"),
     PARTICLE_RELOADED("particle.reloaded"),
+    PARTICLE_INFO_TYPE("particle.info.type"),
+    PARTICLE_INFO_ANIMATION("particle.info.animation"),
+    PARTICLE_INFO_AMOUNT("particle.info.amount"),
+    PARTICLE_INFO_INTERVAL("particle.info.interval"),
+    PARTICLE_INFO_SPEED("particle.info.speed"),
+    PARTICLE_INFO_OFFSET("particle.info.offset"),
+    PARTICLE_INFO_DATA("particle.info.data"),
+    PARTICLE_INFO_LONGDISTANCE("particle.info.longdistance"),
+    PARTICLE_INFO_ANIM_NONE("particle.info.anim.none"),
+    PARTICLE_INFO_DATA_NONE("particle.info.data.none"),
+
 
     PROFILE_LOADED("profile.loaded"),
     PROFILE_SAVED("profile.saved"),

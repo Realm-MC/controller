@@ -73,6 +73,7 @@ public class ProfileSyncSubscriber {
                     p.setCashTopPositionEnteredAt(node.get("cashTopPositionEnteredAt").isNull() ? null : node.get("cashTopPositionEnteredAt").asLong());
                     changed = true;
                 }
+
                 if (changed) {
                     profiles.save(p);
                 }

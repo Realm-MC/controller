@@ -1,4 +1,4 @@
-package com.realmmc.controller.shared.stats;
+package com.realmmc.controller.shared.preferences;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -12,16 +12,13 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Statistics {
-
+public class Preferences {
     @BsonId
     private Integer id;
-
     private UUID uuid;
-
     private String name;
 
     @Builder.Default
-    private long onlineTime = 0L;
+    private Language serverLanguage = Language.getDefault();
 
 }
