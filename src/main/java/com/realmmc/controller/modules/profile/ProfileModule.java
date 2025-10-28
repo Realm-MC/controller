@@ -4,13 +4,17 @@ import com.realmmc.controller.core.modules.AbstractCoreModule;
 import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.shared.profile.ProfileService;
-import com.realmmc.controller.shared.profile.ProfileSyncSubscriber;
-
+import com.realmmc.controller.shared.profile.ProfileSyncSubscriber; // Importa o novo listener
+import com.realmmc.controller.shared.storage.redis.RedisChannel;
+import com.realmmc.controller.shared.storage.redis.RedisSubscriber; // Importa o subscriber
+import java.util.logging.Level; // Import Level
 import java.util.logging.Logger;
 
 @AutoRegister(platforms = {AutoRegister.Platform.ALL})
 public class ProfileModule extends AbstractCoreModule {
-    private ProfileSyncSubscriber profileSyncSubscriber;
+
+    private ProfileSyncSubscriber profileSyncSubscriber; // <<< Tipo mudado para o novo listener
+    private RedisSubscriber redisSubscriber; // <<< Referência ao subscriber compartilhado
 
     public ProfileModule(Logger logger) {
         super(logger);
@@ -38,8 +42,28 @@ public class ProfileModule extends AbstractCoreModule {
         ProfileService profileService = new ProfileService();
         ServiceRegistry.getInstance().registerService(ProfileService.class, profileService);
 
-        profileSyncSubscriber = new ProfileSyncSubscriber();
-        profileSyncSubscriber.start();
+        // <<< LÓGICA DE REGISTRO DO SUBSCRIBER ATUALIZADA >>>
+        try {
+            // Obtém o subscriber compartilhado (criado pelo DatabaseModule)
+            this.redisSubscriber = ServiceRegistry.getInstance().requireService(RedisSubscriber.class);
+
+            // Instancia o novo listener (que agora é só um listener)
+            this.profileSyncSubscriber = new ProfileSyncSubscriber();
+
+            // Registra o listener no subscriber compartilhado
+            this.redisSubscriber.registerListener(RedisChannel.PROFILES_SYNC, this.profileSyncSubscriber);
+
+            logger.info("ProfileSyncSubscriber (v2) registrado no RedisSubscriber compartilhado.");
+        } catch (IllegalStateException e) {
+            logger.log(Level.SEVERE, "Falha ao registrar ProfileSyncSubscriber: RedisSubscriber não encontrado!", e);
+            this.redisSubscriber = null;
+            this.profileSyncSubscriber = null;
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Erro inesperado ao registrar ProfileSyncSubscriber!", e);
+            this.redisSubscriber = null;
+            this.profileSyncSubscriber = null;
+        }
+        // <<< FIM ATUALIZAÇÃO >>>
 
         logger.info("Módulo de perfis inicializado com sucesso");
     }
@@ -48,9 +72,18 @@ public class ProfileModule extends AbstractCoreModule {
     protected void onDisable() throws Exception {
         logger.info("Finalizando serviço de perfis...");
 
-        if (profileSyncSubscriber != null) {
-            profileSyncSubscriber.stop();
+        // <<< LÓGICA DE DESREGISTRO ATUALIZADA >>>
+        if (this.profileSyncSubscriber != null && this.redisSubscriber != null) {
+            try {
+                this.redisSubscriber.unregisterListener(RedisChannel.PROFILES_SYNC);
+                logger.info("ProfileSyncSubscriber (v2) desregistrado.");
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Erro ao desregistrar ProfileSyncSubscriber.", e);
+            }
         }
+        this.profileSyncSubscriber = null;
+        this.redisSubscriber = null;
+        // <<< FIM ATUALIZAÇÃO >>>
 
         ServiceRegistry.getInstance().unregisterService(ProfileService.class);
 
@@ -59,11 +92,12 @@ public class ProfileModule extends AbstractCoreModule {
 
     @Override
     public String[] getDependencies() {
+        // Depende do Database (para MongoDB e RedisSubscriber) e Scheduler (para RoleService)
         return new String[]{"Database", "SchedulerModule"};
     }
 
     @Override
     public int getPriority() {
-        return 18;
+        return 18; // Roda depois de Database e Scheduler
     }
 }

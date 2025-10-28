@@ -1,5 +1,6 @@
 package com.realmmc.controller.shared.profile;
 
+import com.realmmc.controller.shared.role.PlayerRole;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -7,9 +8,7 @@ import lombok.NoArgsConstructor;
 import org.bson.codecs.pojo.annotations.BsonId;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Data
@@ -30,6 +29,9 @@ public class Profile {
     private long lastLogin;
     private String lastClientVersion;
     private String lastClientType;
+    @Builder.Default
+    private List<PlayerRole> roles = new ArrayList<>();
+    private String primaryRoleName;
     @Builder.Default
     private int cash = 0;
     private Integer cashTopPosition;
