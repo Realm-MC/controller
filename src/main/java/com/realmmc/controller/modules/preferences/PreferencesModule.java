@@ -5,14 +5,16 @@ import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.shared.preferences.PreferencesService;
 import com.realmmc.controller.shared.preferences.PreferencesSyncSubscriber;
-import com.realmmc.controller.shared.storage.redis.RedisSubscriber;
-
+import com.realmmc.controller.shared.storage.redis.RedisSubscriber; // Importar o Subscriber
+import java.util.logging.Level; // Importar Level
 import java.util.logging.Logger;
 
 @AutoRegister(platforms = {AutoRegister.Platform.ALL})
 public class PreferencesModule extends AbstractCoreModule {
 
     private PreferencesSyncSubscriber syncSubscriber;
+    // <<< CORREÇÃO: Adicionar referência ao subscriber compartilhado >>>
+    private RedisSubscriber redisSubscriber;
 
     public PreferencesModule(Logger logger) {
         super(logger);
@@ -20,7 +22,7 @@ public class PreferencesModule extends AbstractCoreModule {
 
     @Override
     public String getName() {
-        return "Preferences";
+        return "Preferences"; // Nome correto (sem "Module")
     }
 
     @Override
@@ -35,12 +37,13 @@ public class PreferencesModule extends AbstractCoreModule {
 
     @Override
     public String[] getDependencies() {
-        return new String[]{"Profile"};
+        // <<< CORREÇÃO: Adicionar dependência do DatabaseModule (que provê o RedisSubscriber) >>>
+        return new String[]{"Profile", "Database"};
     }
 
     @Override
     public int getPriority() {
-        return 25;
+        return 25; // Prioridade OK (depois de Profile 18 e Database 10)
     }
 
     @Override
@@ -50,15 +53,34 @@ public class PreferencesModule extends AbstractCoreModule {
         ServiceRegistry.getInstance().registerService(PreferencesService.class, preferencesService);
         logger.info("Serviço de preferências inicializado e registrado.");
 
-        syncSubscriber = new PreferencesSyncSubscriber(new RedisSubscriber());
-        syncSubscriber.startListening();
+        // <<< CORREÇÃO: Usar o RedisSubscriber compartilhado >>>
+        try {
+            this.redisSubscriber = ServiceRegistry.getInstance().requireService(RedisSubscriber.class);
+            // Passa o subscriber compartilhado para o construtor do listener
+            syncSubscriber = new PreferencesSyncSubscriber(this.redisSubscriber);
+            syncSubscriber.startListening(); // Registra o listener
+            logger.info("PreferencesSyncSubscriber registrado no subscriber compartilhado.");
+        } catch (IllegalStateException e) {
+            logger.log(Level.SEVERE, "Falha ao registrar PreferencesSyncSubscriber: RedisSubscriber não encontrado!", e);
+            this.redisSubscriber = null;
+            this.syncSubscriber = null;
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Erro inesperado ao registrar PreferencesSyncSubscriber!", e);
+            this.redisSubscriber = null;
+            this.syncSubscriber = null;
+        }
+        // <<< FIM CORREÇÃO >>>
     }
 
     @Override
     protected void onDisable() throws Exception {
         if (syncSubscriber != null) {
-            syncSubscriber.stopListening();
+            syncSubscriber.stopListening(); // Desregistra o listener
         }
+        // Limpa referências
+        this.syncSubscriber = null;
+        this.redisSubscriber = null;
+
         ServiceRegistry.getInstance().unregisterService(PreferencesService.class);
         logger.info("Serviço de preferências finalizado.");
     }
