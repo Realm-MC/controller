@@ -26,7 +26,8 @@ public class FileBasedMessageTranslator implements MessageTranslator {
     public FileBasedMessageTranslator(File messagesDirectory) {
         this.messagesDirectory = messagesDirectory;
         this.messageCache = new ConcurrentHashMap<>();
-        this.defaultLocale = Locale.ENGLISH;
+        // <<< CORREÇÃO PONTO 2: Definir PT_BR como padrão >>>
+        this.defaultLocale = new Locale("pt", "BR");
 
         if (!messagesDirectory.exists()) {
             messagesDirectory.mkdirs();
@@ -37,6 +38,7 @@ public class FileBasedMessageTranslator implements MessageTranslator {
 
     @Override
     public String translate(Message message) {
+        // Usa o defaultLocale (PT_BR) se nenhum for fornecido
         return translate(message, defaultLocale);
     }
 
@@ -57,6 +59,7 @@ public class FileBasedMessageTranslator implements MessageTranslator {
 
     @Override
     public String translate(MessageKey key) {
+        // Usa o defaultLocale (PT_BR) se nenhum for fornecido
         return translate(key, defaultLocale);
     }
 
@@ -84,7 +87,20 @@ public class FileBasedMessageTranslator implements MessageTranslator {
             loadMessageFile(file);
         }
 
-        LOGGER.info("Loaded messages for " + messageCache.size() + " locales");
+        // Garante que o locale padrão (PT_BR) seja definido
+        if (!messageCache.containsKey(this.defaultLocale)) {
+            LOGGER.warning("Locale padrão " + this.defaultLocale + " não encontrado, tentando carregar 'pt_BR' ou 'en' como fallback...");
+            if (messageCache.containsKey(new Locale("pt", "BR"))) {
+                this.defaultLocale = new Locale("pt", "BR");
+            } else if (messageCache.containsKey(Locale.ENGLISH)) {
+                this.defaultLocale = Locale.ENGLISH;
+                LOGGER.warning("Definindo 'en' como default fallback.");
+            } else {
+                LOGGER.severe("Nenhum arquivo de tradução (pt_BR ou en) encontrado!");
+            }
+        }
+
+        LOGGER.info("Loaded messages for " + messageCache.size() + " locales. Default locale set to: " + this.defaultLocale);
     }
 
     @Override
@@ -115,8 +131,17 @@ public class FileBasedMessageTranslator implements MessageTranslator {
             return messages.getProperty(key.getKey());
         }
 
+        // Fallback para o locale padrão (PT_BR) se o locale específico (ex: EN_US) não tiver a chave
         if (!locale.equals(defaultLocale)) {
             messages = messageCache.get(defaultLocale);
+            if (messages != null && messages.containsKey(key.getKey())) {
+                return messages.getProperty(key.getKey());
+            }
+        }
+
+        // Fallback final para Inglês se o padrão (PT_BR) também falhar
+        if (!defaultLocale.equals(Locale.ENGLISH)) {
+            messages = messageCache.get(Locale.ENGLISH);
             if (messages != null && messages.containsKey(key.getKey())) {
                 return messages.getProperty(key.getKey());
             }
@@ -139,7 +164,9 @@ public class FileBasedMessageTranslator implements MessageTranslator {
 
         Properties properties = new Properties();
         try (InputStream input = new FileInputStream(file)) {
-            properties.load(input);
+            // <<< CORREÇÃO: Ler como UTF-8 >>>
+            properties.load(new java.io.InputStreamReader(input, java.nio.charset.StandardCharsets.UTF_8));
+            // <<< FIM CORREÇÃO >>>
             messageCache.put(locale, properties);
             LOGGER.info("Loaded " + properties.size() + " messages for locale: " + locale);
         } catch (IOException e) {
