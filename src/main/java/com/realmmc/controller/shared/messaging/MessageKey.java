@@ -103,7 +103,83 @@ public enum MessageKey {
     PARTICLE_INFO_ANIM_NONE("particle.info.anim.none"),
     PARTICLE_INFO_DATA_NONE("particle.info.data.none"),
 
+    // --- Role Command Specific Keys ---
+    ROLE_INFO_PRIMARY_ACTIVE("role.info.primary_active"),
+    ROLE_INFO_HISTORY_HEADER("role.info.history_header"),
+    ROLE_INFO_STATUS_PAUSED("role.info.status.paused"),
+    ROLE_INFO_STATUS_EXPIRED("role.info.status.expired"),
+    ROLE_INFO_STATUS_PERMANENT("role.info.status.permanent"),
+    ROLE_INFO_STATUS_TEMPORARY("role.info.status.temporary"),
+    ROLE_INFO_STATUS_REMOVED("role.info.status.removed"),
+    ROLE_INFO_STATUS_REMOVED_AT("role.info.status.removed_at"),
+    ROLE_INFO_STATUS_UNKNOWN("role.info.status.unknown"),
 
+    ROLE_GROUP_INFO_HEADER("role.group.info.header"),
+    ROLE_GROUP_INFO_KEY_WEIGHT("role.group.info.key.weight"),
+    ROLE_GROUP_INFO_KEY_PREFIX("role.group.info.key.prefix"),
+    ROLE_GROUP_INFO_KEY_SUFFIX("role.group.info.key.suffix"),
+    ROLE_GROUP_INFO_KEY_PERMISSIONS("role.group.info.key.permissions"),
+    ROLE_GROUP_INFO_KEY_INHERITANCE("role.group.info.key.inheritance"),
+    ROLE_GROUP_INFO_VALUE_NONE("role.group.info.value.none"),
+    ROLE_GROUP_INFO_KEY_TYPE("role.group.info.key.type"),
+
+    ROLE_LIST_HEADER("role.list.header"),
+    ROLE_LIST_ITEM_FORMAT("role.list.item_format"),
+    ROLE_LIST_EMPTY("role.list.empty"),
+    ROLE_LIST_IN_PROGRESS("role.list.in_progress"),
+
+    ROLE_ERROR_GROUP_NOT_FOUND("role.error.group_not_found"),
+    ROLE_ERROR_CANNOT_MODIFY_DEFAULT("role.error.cannot_modify_default"),
+    ROLE_ERROR_INVALID_DURATION("role.error.invalid_duration"),
+    ROLE_ERROR_CANNOT_MANAGE_SUPERIOR("role.error.cannot_manage_superior"),
+    ROLE_ERROR_CANNOT_CLEAR_GROUP("role.error.cannot_clear_group"),
+    ROLE_ERROR_CLEAR_SUPERIOR("role.error.clear_superior"),
+    ROLE_ERROR_CANNOT_CLEAR_SELF("role.error.cannot_clear_self"), // <<< NOVA CHAVE >>>
+
+    ROLE_WARN_ALREADY_HAS_PERMANENT("role.warn.already_has_permanent"),
+    ROLE_WARN_NOT_ACTIVE("role.warn.not_active"),
+    ROLE_WARN_NOT_IN_HISTORY("role.warn.not_in_history"),
+    ROLE_WARN_ALREADY_DEFAULT("role.warn.already_default"),
+    ROLE_WARN_CLEAR_GROUP_NO_ELIGIBLE("role.warn.clear_group.no_eligible"),
+    ROLE_WARN_CLEAR_GROUP_IN_PROGRESS("role.warn.clear_group.in_progress"),
+
+    ROLE_SUCCESS_ADD("role.success.add"),
+    ROLE_SUCCESS_SET("role.success.set"),
+    ROLE_SUCCESS_REMOVE("role.success.remove"),
+    ROLE_SUCCESS_CLEAR_PLAYER("role.success.clear_player"),
+    ROLE_SUCCESS_CLEAR_GROUP("role.success.clear_group"),
+
+    // --- Role Kick Messages ---
+    ROLE_KICK_ADD_SET_VIP("role.kick.add_set_vip"),
+    ROLE_KICK_REMOVED_VIP("role.kick.removed_vip"),
+    ROLE_KICK_EXPIRED_VIP("role.kick.expired_vip"),
+    ROLE_KICK_ADD_SET_STAFF("role.kick.add_set_staff"),
+    ROLE_KICK_REMOVED_STAFF("role.kick.removed_staff"),
+    ROLE_KICK_EXPIRED_STAFF("role.kick.expired_staff"),
+    ROLE_KICK_GENERIC("role.kick.generic"),
+
+    // --- Role Expiration Warnings ---
+    ROLE_WARN_EXPIRING_DAY("role.warn.expiring.day"),
+    ROLE_WARN_EXPIRING_HOUR("role.warn.expiring.hour"),
+    ROLE_WARN_EXPIRING_MINUTES("role.warn.expiring.minutes"),
+
+    // --- Role Expiration Notifications (Login) ---
+    ROLE_NOTIFY_EXPIRED_VIP("role.notify.expired_vip"),
+    ROLE_NOTIFY_EXPIRED_STAFF("role.notify.expired_staff"),
+
+    // --- Role Broadcast (Title) ---
+    ROLE_BROADCAST_TITLE("role.broadcast.title"),
+    ROLE_BROADCAST_SUBTITLE("role.broadcast.subtitle"),
+
+    // <<< CORREÇÃO PONTO 4: Novas chaves para Role Help >>>
+    ROLE_HELP_INFO("role.help.info"),
+    ROLE_HELP_LIST("role.help.list"),
+    ROLE_HELP_ADD("role.help.add"),
+    ROLE_HELP_SET("role.help.set"),
+    ROLE_HELP_REMOVE("role.help.remove"),
+    ROLE_HELP_CLEAR("role.help.clear"),
+
+    // Perfis e Sistema
     PROFILE_LOADED("profile.loaded"),
     PROFILE_SAVED("profile.saved"),
     PROFILE_ERROR("profile.error"),

@@ -10,27 +10,32 @@ import java.net.InetSocketAddress;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
-import org.bukkit.entity.Player;
+import org.bukkit.entity.Player; // Spigot
 
 
 public class Messages {
 
     private static final MessagingSDK SDK = MessagingSDK.getInstance();
     private static final Locale PT_BR = new Locale("pt", "BR");
-    private static final Locale EN_US = Locale.US;
+    // private static final Locale EN_US = Locale.US; // Não mais usado como hardcode
 
+    /**
+     * Determina o idioma inicial de um jogador (na primeira vez que entra).
+     * @param recipient O objeto do jogador (Spigot ou Velocity).
+     * @return Language (PORTUGUESE ou ENGLISH).
+     */
     public static Language determineInitialLanguage(Object recipient) {
         Optional<GeoIPService> geoIPOpt = ServiceRegistry.getInstance().getService(GeoIPService.class);
         InetAddress ipAddress = null;
         Locale clientLocale = null;
         boolean isPlayer = false;
-        UUID playerUuid = null;
+        // UUID playerUuid = null; // Não usado aqui
 
         try {
             if (recipient instanceof Player) {
                 isPlayer = true;
                 Player spigotPlayer = (Player) recipient;
-                playerUuid = spigotPlayer.getUniqueId();
+                // playerUuid = spigotPlayer.getUniqueId();
                 InetSocketAddress address = spigotPlayer.getAddress();
                 if (address != null) {
                     ipAddress = address.getAddress();
@@ -46,7 +51,7 @@ public class Messages {
             if (!isPlayer && recipient instanceof com.velocitypowered.api.proxy.Player) {
                 isPlayer = true;
                 com.velocitypowered.api.proxy.Player velocityPlayer = (com.velocitypowered.api.proxy.Player) recipient;
-                playerUuid = velocityPlayer.getUniqueId();
+                // playerUuid = velocityPlayer.getUniqueId();
                 InetSocketAddress address = velocityPlayer.getRemoteAddress();
                 if (address != null) {
                     ipAddress = address.getAddress();
@@ -56,18 +61,20 @@ public class Messages {
         } catch (NoClassDefFoundError | ClassCastException ignored) { }
 
         if (isPlayer) {
+            // Prioridade 1: GeoIP (se for BR)
             if (geoIPOpt.isPresent() && ipAddress != null) {
                 Optional<String> countryCode = geoIPOpt.get().getCountryCode(ipAddress);
                 if (countryCode.isPresent() && "BR".equalsIgnoreCase(countryCode.get())) {
                     return Language.PORTUGUESE;
                 }
             }
-
+            // Prioridade 2: Locale do Cliente (se for pt)
             if (clientLocale != null && "pt".equalsIgnoreCase(clientLocale.getLanguage())) {
                 return Language.PORTUGUESE;
             }
         }
 
+        // Fallback: Inglês (ou o default do SDK se quiséssemos, mas Inglês é mais seguro)
         return Language.ENGLISH;
     }
 
@@ -82,8 +89,13 @@ public class Messages {
         return null;
     }
 
-
-    private static Locale determineLocale(Object recipient) {
+    /**
+     * Determina o Locale (idioma) correto para um destinatário.
+     * Tenta buscar das preferências, senão cai para a detecção inicial.
+     * @param recipient O destinatário (Spigot Player, Velocity Player, CommandSource).
+     * @return O Locale (ex: pt_BR ou en_US).
+     */
+    public static Locale determineLocale(Object recipient) {
         UUID playerUuid = null;
         boolean isPlayer = false;
 
@@ -101,15 +113,29 @@ public class Messages {
             Optional<PreferencesService> prefsOpt = ServiceRegistry.getInstance().getService(PreferencesService.class);
             if (prefsOpt.isPresent()) {
                 PreferencesService prefsService = prefsOpt.get();
+                // Tenta cache primeiro
                 Optional<Language> cachedLang = prefsService.getCachedLanguage(playerUuid);
                 if (cachedLang.isPresent()) {
                     return cachedLang.get().getLocale();
                 }
+                // Se falhar, busca no DB e cacheia
                 Language dbLang = prefsService.loadAndCacheLanguage(playerUuid);
                 return dbLang.getLocale();
             }
         }
-        return determineInitialLanguage(recipient).getLocale();
+
+        // Fallback para ConsoleSender ou se PreferencesService falhar
+        // Tenta usar o locale padrão do SDK (que definimos como PT_BR)
+        try {
+            if(SDK.isInitialized()) {
+                return SDK.getTranslator().getDefaultLocale();
+            }
+        } catch (Exception e) {
+            // SDK pode não estar pronto
+        }
+
+        // Fallback final (se SDK não estiver pronto ou falhar)
+        return PT_BR;
     }
 
 
@@ -118,48 +144,50 @@ public class Messages {
     }
 
     public static void send(Object recipient, MessageKey key) {
-        send(recipient, Message.of(key));
+        send(recipient, Message.of(key)); // Chama o send(Message)
     }
 
     public static void send(Object recipient, Message message) {
-        Locale targetLocale = determineLocale(recipient);
-        String translatedText = SDK.getTranslator().translate(message, targetLocale);
-        SDK.sendRawMessage(recipient, translatedText);
+        Locale targetLocale = determineLocale(recipient); // Determina o locale do jogador
+        String translatedText = SDK.getTranslator().translate(message, targetLocale); // Traduz para o locale dele
+        SDK.sendRawMessage(recipient, translatedText); // Envia a mensagem traduzida
     }
 
     public static void send(Object recipient, RawMessage rawMessage) {
         SDK.sendRawMessage(recipient, rawMessage);
     }
 
-    public static void success(Object recipient, String text) {
-        send(recipient, "<green>" + text + "</green>");
-    }
+    public static void success(Object recipient, String text) { send(recipient, "<green>" + text + "</green>"); }
+    public static void error(Object recipient, String text) { send(recipient, "<red>" + text + "</red>"); }
+    public static void warning(Object recipient, String text) { send(recipient, "<yellow>" + text + "</yellow>"); }
+    public static void info(Object recipient, String text) { send(recipient, "<blue>" + text + "</blue>"); }
 
-    public static void error(Object recipient, String text) {
-        send(recipient, "<red>" + text + "</red>");
-    }
-
-    public static void warning(Object recipient, String text) {
-        send(recipient, "<yellow>" + text + "</yellow>");
-    }
-
-    public static void info(Object recipient, String text) {
-        send(recipient, "<blue>" + text + "</blue>");
-    }
-
-
+    /**
+     * Traduz usando o locale PADRÃO do SDK (definido como PT_BR).
+     */
     public static String translate(MessageKey key) {
-        return SDK.getTranslator().translate(key, EN_US);
+        // <<< CORREÇÃO PONTO 2: Usa o locale default do SDK >>>
+        return SDK.getTranslator().translate(key);
     }
 
+    /**
+     * Traduz usando o locale PADRÃO do SDK (definido como PT_BR).
+     */
     public static String translate(Message message) {
-        return SDK.getTranslator().translate(message, EN_US);
+        // <<< CORREÇÃO PONTO 2: Usa o locale default do SDK >>>
+        return SDK.getTranslator().translate(message);
     }
 
+    /**
+     * Traduz para um locale específico.
+     */
     public static String translate(MessageKey key, Locale locale) {
         return SDK.getTranslator().translate(key, locale);
     }
 
+    /**
+     * Traduz para um locale específico.
+     */
     public static String translate(Message message, Locale locale) {
         return SDK.getTranslator().translate(message, locale);
     }
