@@ -5,7 +5,9 @@ public enum RedisChannel {
     PROFILES_SYNC("controller:profiles:sync"),
     PREFERENCES_SYNC("controller:preferences:sync"),
     ROLE_SYNC("controller:roles:sync"),
-    ROLE_BROADCAST("controller:roles:broadcast");
+    ROLE_BROADCAST("controller:roles:broadcast"),
+    GLOBAL_PLAYER_COUNT("controller:global:playercount"),
+    GLOBAL_NETWORK_MAX_PLAYERS("controller:global:networkmaxplayers");
 
     private final String name;
 

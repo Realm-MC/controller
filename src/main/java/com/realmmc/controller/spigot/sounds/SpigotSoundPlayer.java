@@ -37,9 +37,29 @@ public class SpigotSoundPlayer implements SoundPlayer {
 
         SoundCategory category;
         try {
-            category = SoundCategory.valueOf(soundInfo.source().toUpperCase());
+            // <<< INÍCIO DA CORREÇÃO (MAPEAMENTO) >>>
+            // Mapeia os nomes do Adventure (usados no SoundRegistry) para os nomes do Bukkit
+            String adventureSource = soundInfo.source().toUpperCase();
+            String bukkitCategoryName;
+
+            switch (adventureSource) {
+                case "RECORD":
+                    bukkitCategoryName = "RECORDS";
+                    break;
+                case "PLAYER":
+                    bukkitCategoryName = "PLAYERS";
+                    break;
+                // Adicione outros mapeamentos se necessário (ex: NEUTRAL, HOSTILE)
+                // Se os nomes forem iguais (ex: MASTER, MUSIC, VOICE), o default funciona
+                default:
+                    bukkitCategoryName = adventureSource;
+                    break;
+            }
+
+            category = SoundCategory.valueOf(bukkitCategoryName);
+            // <<< FIM DA CORREÇÃO >>>
         } catch (IllegalArgumentException e) {
-            LOGGER.warning("Categoria de som inválida '" + soundInfo.source() + "' para Spigot. Usando MASTER como fallback.");
+            LOGGER.warning("Categoria de som '" + soundInfo.source() + "' inválida para Spigot (mesmo após mapeamento). Usando MASTER como fallback.");
             category = SoundCategory.MASTER;
         }
 

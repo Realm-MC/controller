@@ -134,7 +134,7 @@ public enum MessageKey {
     ROLE_ERROR_CANNOT_MANAGE_SUPERIOR("role.error.cannot_manage_superior"),
     ROLE_ERROR_CANNOT_CLEAR_GROUP("role.error.cannot_clear_group"),
     ROLE_ERROR_CLEAR_SUPERIOR("role.error.clear_superior"),
-    ROLE_ERROR_CANNOT_CLEAR_SELF("role.error.cannot_clear_self"), // <<< NOVA CHAVE >>>
+    ROLE_ERROR_CANNOT_CLEAR_SELF("role.error.cannot_clear_self"),
 
     ROLE_WARN_ALREADY_HAS_PERMANENT("role.warn.already_has_permanent"),
     ROLE_WARN_NOT_ACTIVE("role.warn.not_active"),
@@ -171,13 +171,18 @@ public enum MessageKey {
     ROLE_BROADCAST_TITLE("role.broadcast.title"),
     ROLE_BROADCAST_SUBTITLE("role.broadcast.subtitle"),
 
-    // <<< CORREÇÃO PONTO 4: Novas chaves para Role Help >>>
     ROLE_HELP_INFO("role.help.info"),
     ROLE_HELP_LIST("role.help.list"),
     ROLE_HELP_ADD("role.help.add"),
     ROLE_HELP_SET("role.help.set"),
     ROLE_HELP_REMOVE("role.help.remove"),
     ROLE_HELP_CLEAR("role.help.clear"),
+
+    SERVER_JOIN_FAIL_MIN_GROUP("server.join.fail.min_group"),
+    SERVER_JOIN_FAIL_FULL_NO_VIP("server.join.fail.full_no_vip"),
+    SERVER_JOIN_FAIL_FULL_VIP_SLOT("server.join.fail.full_vip_slot"),
+    SERVER_REDIRECT_LOBBY_CLOSED("server.redirect.lobby_closed"),
+    SERVER_JOIN_FAIL_NO_LOBBY("server.join.fail.no_lobby"),
 
     // Perfis e Sistema
     PROFILE_LOADED("profile.loaded"),
@@ -188,7 +193,68 @@ public enum MessageKey {
     SYSTEM_STARTUP("system.startup"),
     SYSTEM_SHUTDOWN("system.shutdown"),
     MODULE_ENABLED("module.enabled"),
-    MODULE_DISABLED("module.disabled");
+    MODULE_DISABLED("module.disabled"),
+
+    AUTH_STILL_CONNECTING("auth.still_connecting"),
+    AUTH_INVALID_PLAYER("auth.invalid_player"),
+
+    KICK_ALREADY_CONNECTED("kick.already_connected"),
+    KICK_PREMIUM_NICKNAME("kick.premium_nickname"),
+    KICK_PROFILE_TIMEOUT("kick.profile_timeout"),
+    KICK_PROFILE_ERROR("kick.profile_error"),
+    KICK_PROFILE_UNEXPECTED("kick.profile_unexpected"),
+    KICK_GENERIC_PROFILE_ERROR("kick.generic_profile_error"),
+
+    ROLE_WARN_CLEAR_GROUP_FAIL_COUNT("role.warn.clear_group.fail_count"),
+
+    PARTICLE_INVALID_ANIM_OPTION("particle.invalid_animation_option"),
+
+    // SCONFIG
+    SCONFIG_NOT_FOUND("sconfig.not_found"),
+    SCONFIG_ALREADY_EXISTS("sconfig.already_exists"),
+    SCONFIG_RELOADED("sconfig.reloaded"),
+    SCONFIG_CREATED("sconfig.created"),
+    SCONFIG_DELETED("sconfig.deleted"),
+    SCONFIG_INVALID_NUMBER("sconfig.invalid_number"),
+    SCONFIG_INVALID_TYPE("sconfig.invalid_type"),
+    SCONFIG_PROP_UPDATED("sconfig.prop_updated"),
+    SCONFIG_INFO_HEADER("sconfig.info.header"),
+    SCONFIG_INFO_KEY_DISPLAYNAME("sconfig.info.key.displayname"),
+    SCONFIG_INFO_KEY_TYPE("sconfig.info.key.type"),
+    SCONFIG_INFO_KEY_STATUS("sconfig.info.key.status"),
+    SCONFIG_INFO_KEY_ADDRESS("sconfig.info.key.address"),
+    SCONFIG_INFO_KEY_PTEROID("sconfig.info.key.pteroid"),
+    SCONFIG_INFO_KEY_PLAYERS("sconfig.info.key.players"),
+    SCONFIG_INFO_KEY_MAXVIP("sconfig.info.key.maxvip"),
+    SCONFIG_INFO_KEY_MINGROUP("sconfig.info.key.mingroup"),
+    SCONFIG_LIST_HEADER("sconfig.list.header"),
+    SCONFIG_LIST_LINE("sconfig.list.line"),
+    SCONFIG_LIST_EMPTY("sconfig.list.empty"),
+
+    // <<< NOVAS CHAVES HOVER >>>
+    SCONFIG_LIST_LINE_HOVER_HEADER("sconfig.list.line.hover.header"),
+    SCONFIG_LIST_LINE_HOVER_DETAILS("sconfig.list.line.hover.details"),
+    SCONFIG_LIST_LINE_HOVER_ACTION_ONLINE("sconfig.list.line.hover.action.online"),
+    SCONFIG_LIST_LINE_HOVER_ACTION_OFFLINE("sconfig.list.line.hover.action.offline"),
+    SCONFIG_INFO_STATUS_ONLINE("sconfig.info.status.online"),
+    SCONFIG_INFO_STATUS_OFFLINE("sconfig.info.status.offline"),
+    SCONFIG_INFO_STATUS_STARTING("sconfig.info.status.starting"),
+    SCONFIG_INFO_STATUS_STOPPING("sconfig.info.status.stopping"),
+    SCONFIG_LIST_LINE_HOVER_ACTION_STARTING("sconfig.list.line.hover.action.starting"),
+
+    SCONFIG_HELP_CREATE("sconfig.help.create"),
+    SCONFIG_HELP_DELETE("sconfig.help.delete"),
+    SCONFIG_HELP_LIST("sconfig.help.list"),
+    SCONFIG_HELP_INFO("sconfig.help.info"),
+    SCONFIG_HELP_RELOAD("sconfig.help.reload"),
+    SCONFIG_HELP_SETDISPLAYNAME("sconfig.help.setdisplayname"),
+    SCONFIG_HELP_IP("sconfig.help.ip"),
+    SCONFIG_HELP_PORT("sconfig.help.port"),
+    SCONFIG_HELP_PTEROID("sconfig.help.pteroid"),
+    SCONFIG_HELP_MAXPLAYER("sconfig.help.maxplayer"),
+    SCONFIG_HELP_MAXPLAYERVIP("sconfig.help.maxplayervip"),
+    SCONFIG_HELP_MINGROUP("sconfig.help.mingroup"),
+    SCONFIG_HELP_TYPE("sconfig.help.type");
 
     private final String key;
 

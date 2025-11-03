@@ -113,7 +113,7 @@ public class Main extends JavaPlugin {
             // --- Inicialização de Serviços de Entidades (Spigot) ---
             displayItemService = new DisplayItemService();
             hologramService = new HologramService();
-            npcService = new NPCService();
+            npcService = new NPCService(); // O construtor NÃO chama mais o loadSavedNPCs()
 
             // <<< REGISTRO DOS SERVIÇOS DE ENTIDADES >>>
             serviceRegistry.registerService(DisplayItemService.class, displayItemService);
@@ -129,7 +129,7 @@ public class Main extends JavaPlugin {
 
             // Registro manual de módulos específicos da plataforma
             moduleManager.registerModule(new SchedulerModule(null, this, logger)); // Passa 'this' (Plugin)
-            moduleManager.registerModule(new SpigotModule(this, logger));          // Passa 'this' (Plugin)
+            moduleManager.registerModule(new SpigotModule(this, logger));
 
             // Habilita todos os módulos registrados
             moduleManager.enableAllModules();
@@ -137,6 +137,8 @@ public class Main extends JavaPlugin {
             // --- Registros Finais ---
             getServer().getPluginManager().registerEvents(npcService, this);
             logger.info("NPCService registrado como Listener do Bukkit.");
+
+            // A chamada npcService.loadSavedNPCs() foi movida para SpigotModule.onEnable()
 
             // Reenvia NPCs para jogadores já online (em caso de /reload)
             for (Player p : Bukkit.getOnlinePlayers()) {

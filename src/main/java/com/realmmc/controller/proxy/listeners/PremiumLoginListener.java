@@ -2,6 +2,11 @@ package com.realmmc.controller.proxy.listeners;
 
 import com.realmmc.controller.proxy.Proxy;
 import com.realmmc.controller.shared.annotations.Listeners;
+// <<< CORREÇÃO: Imports de Mensagens >>>
+import com.realmmc.controller.shared.messaging.Message;
+import com.realmmc.controller.shared.messaging.MessageKey;
+import com.realmmc.controller.shared.messaging.Messages;
+// <<< FIM CORREÇÃO >>>
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.PreLoginEvent;
 import com.velocitypowered.api.proxy.Player;
@@ -9,7 +14,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
-import java.util.Optional; // NOVO IMPORT
+import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Logger;
 
@@ -19,10 +24,6 @@ public class PremiumLoginListener {
     private static final Logger LOGGER = Logger.getLogger("PremiumLoginListener");
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
 
-    private static final Component ALREADY_CONNECTED_KICK = MINI_MESSAGE.deserialize(
-            "<red><b>REALM MC</b></red><newline><white></white><newline><red>Já existe um usuário conectado no servidor com este nickname!</red>"
-    );
-
     @Subscribe
     public void onPreLogin(PreLoginEvent event) {
         String username = event.getUsername();
@@ -30,7 +31,10 @@ public class PremiumLoginListener {
 
         Optional<Player> existingPlayer = Proxy.getInstance().getServer().getPlayer(username);
         if (existingPlayer.isPresent()) {
-            event.setResult(PreLoginEvent.PreLoginComponentResult.denied(ALREADY_CONNECTED_KICK));
+            // <<< CORREÇÃO: Usar tradução >>>
+            String translatedKick = Messages.translate(MessageKey.KICK_ALREADY_CONNECTED);
+            event.setResult(PreLoginEvent.PreLoginComponentResult.denied(MINI_MESSAGE.deserialize(translatedKick)));
+            // <<< FIM CORREÇÃO >>>
             LOGGER.warning(String.format("[Premium] '%s' foi bloqueado por tentar entrar duplicado.", username));
             return;
         }
@@ -49,12 +53,10 @@ public class PremiumLoginListener {
                     event.setResult(PreLoginEvent.PreLoginComponentResult.forceOnlineMode());
                     LOGGER.info(String.format("[Premium] '%s' autenticado com sucesso como premium.", username));
                 } else {
-                    String kickMessageString = """
-                        <red><b>REALM MC</b></red><newline>
-                        <white></white><newline>
-                        <red>O usuário '<nickname>' pertence a uma conta de Minecraft Original, por favor utilize um launcher com login da Microsoft ou Mojang.</red>
-                        """;
-                    Component kickMessage = MINI_MESSAGE.deserialize(kickMessageString, Placeholder.unparsed("nickname", username));
+                    // <<< CORREÇÃO: Usar tradução >>>
+                    String translatedKick = Messages.translate(Message.of(MessageKey.KICK_PREMIUM_NICKNAME).with("nickname", username));
+                    Component kickMessage = MINI_MESSAGE.deserialize(translatedKick);
+                    // <<< FIM CORREÇÃO >>>
 
                     event.setResult(PreLoginEvent.PreLoginComponentResult.denied(kickMessage));
                     LOGGER.warning(String.format("[Premium] '%s' foi bloqueado por tentar usar um nick premium num launcher não-original.", username));

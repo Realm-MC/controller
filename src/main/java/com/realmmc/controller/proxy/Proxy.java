@@ -46,7 +46,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-@Plugin(id = "controller", name = "Controller", description = "Core controller para RealmMC (v2)", version = "1.0.0", authors = {"onyell", "lucas"})
+@Plugin(id = "controller", name = "Controller", description = "Core controller para RealmMC (v2)", version = "1.0.0", authors = {"xxxlc"})
 public class Proxy extends ControllerCore { // Herda de ControllerCore
 
     @Getter

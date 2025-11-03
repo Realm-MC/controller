@@ -1,14 +1,19 @@
 package com.realmmc.controller.proxy.commands.cmds;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+// Imports do Velocity
+import com.velocitypowered.api.command.CommandSource;
+import com.velocitypowered.api.proxy.ConsoleCommandSource;
+import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.proxy.ProxyServer;
+
+// Imports do Controller
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.PlayerSessionData;
 import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.proxy.Proxy;
 import com.realmmc.controller.proxy.commands.CommandInterface;
 import com.realmmc.controller.shared.annotations.Cmd;
+import com.realmmc.controller.shared.auth.AuthenticationGuard;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
@@ -22,15 +27,10 @@ import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
 import com.realmmc.controller.shared.utils.NicknameFormatter;
+import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.realmmc.controller.shared.utils.TimeUtils;
 
-// Velocity Imports
-import com.velocitypowered.api.command.CommandSource;
-import com.velocitypowered.api.proxy.ConsoleCommandSource;
-import com.velocitypowered.api.proxy.Player;
-import com.velocitypowered.api.proxy.ProxyServer;
-
-// Java Util Imports
+// Imports Java
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -42,22 +42,33 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
+// <<< CORREÇÃO (BUG 1): Adicionar imports do Jackson >>>
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+// Imports org.json (REMOVIDOS - Bug 1)
+// import org.json.JSONException;
+// import org.json.JSONObject;
+
+
 @Cmd(cmd = "role", aliases = {"group", "rank"}, onlyPlayer = false)
 public class RoleCommand implements CommandInterface {
 
     private final String requiredPermission = "controller.manager";
-    private final String requiredGroupName = "Manager";
+    private final String requiredGroupName = "Gerente";
     private final RoleService roleService;
     private final ProfileService profileService;
-    private final SoundPlayer soundPlayer;
+    private final Optional<SoundPlayer> soundPlayerOpt;
     private final Logger logger;
     private final ProxyServer proxyServer;
+
+    // <<< CORREÇÃO (BUG 1): Adicionar ObjectMapper >>>
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public RoleCommand() {
         this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
         this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
-        this.soundPlayer = ServiceRegistry.getInstance().getService(SoundPlayer.class).orElse(null);
+        this.soundPlayerOpt = ServiceRegistry.getInstance().getService(SoundPlayer.class);
         this.proxyServer = ServiceRegistry.getInstance().requireService(ProxyServer.class);
         this.logger = Proxy.getInstance().getLogger();
     }
@@ -66,7 +77,7 @@ public class RoleCommand implements CommandInterface {
     public void execute(CommandSource sender, String label, String[] args) {
         if (!sender.hasPermission(requiredPermission)) {
             Messages.send(sender, Message.of(MessageKey.COMMON_NO_PERMISSION_GROUP).with("group", requiredGroupName));
-            playSound(sender, SoundKeys.USAGE_ERROR); // Ponto 1
+            playSound(sender, SoundKeys.USAGE_ERROR);
             return;
         }
 
@@ -123,7 +134,6 @@ public class RoleCommand implements CommandInterface {
     private void displayPlayerInfo(CommandSource sender, String targetInput) {
         final CommandSource finalSender = sender;
         final String finalTargetInput = targetInput;
-        // <<< CORREÇÃO PONTO 2: Obter o locale do sender >>>
         final Locale senderLocale = Messages.determineLocale(finalSender);
 
         resolveProfileAsync(finalTargetInput).thenAcceptAsync(targetProfileOpt -> {
@@ -135,25 +145,27 @@ public class RoleCommand implements CommandInterface {
             final Profile targetProfile = targetProfileOpt.get();
             final UUID targetUuid = targetProfile.getUuid();
 
+            PlayerSessionData sessionData;
             try {
-                roleService.loadPlayerDataAsync(targetUuid).join();
+                sessionData = roleService.loadPlayerDataAsync(targetUuid).join();
             } catch (Exception e) {
                 handleCommandError(finalSender, "obter dados sessão jogador (sync /info)", e);
                 return;
             }
 
-            PlayerSessionData sessionData = roleService.getSessionDataFromCache(targetUuid)
-                    .orElseGet(() -> {
-                        logger.severe("[RoleCommand INFO] SessionData ainda nulo após load.join() para " + targetUuid + ". Usando dados default.");
-                        return roleService.getDefaultSessionData(targetUuid);
-                    });
+            if (sessionData == null) {
+                sessionData = roleService.getSessionDataFromCache(targetUuid)
+                        .orElseGet(() -> {
+                            logger.log(Level.SEVERE, "[RoleCommand INFO] SessionData ainda nulo após load.join() para {0}. Usando dados default.", targetUuid);
+                            return roleService.getDefaultSessionData(targetUuid);
+                        });
+            }
 
 
             String formattedNick = NicknameFormatter.getFullFormattedNick(targetUuid);
             Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_HEADER).with("subject", "Roles de " + formattedNick));
 
             Role primary = sessionData.getPrimaryRole();
-            // <<< CORREÇÃO PONTO 2 & 4: Traduz a chave e usa o formato common.info.line >>>
             String primaryKey = Messages.translate(MessageKey.ROLE_INFO_PRIMARY_ACTIVE, senderLocale);
             String primaryValue = primary.getDisplayName() + " (" + primary.getName() + ")";
             Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LINE)
@@ -164,7 +176,6 @@ public class RoleCommand implements CommandInterface {
             Profile latestProfileForInfo = profileService.getByUuid(targetUuid).orElse(targetProfile);
             List<PlayerRole> rolesToShow = latestProfileForInfo.getRoles() != null ? latestProfileForInfo.getRoles() : Collections.emptyList();
 
-            // <<< CORREÇÃO PONTO 2 & 4: Traduz a chave e usa o formato common.info.list.header >>>
             String historyHeader = Messages.translate(MessageKey.ROLE_INFO_HISTORY_HEADER, senderLocale);
             Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER)
                     .with("key", historyHeader)
@@ -197,10 +208,8 @@ public class RoleCommand implements CommandInterface {
                         else { statusKey = MessageKey.ROLE_INFO_STATUS_REMOVED; } break;
                         default: statusKey = MessageKey.ROLE_INFO_STATUS_UNKNOWN; break;
                     }
-                    // <<< CORREÇÃO PONTO 2: Traduz o status usando o locale do sender >>>
                     statusString = Messages.translate(Message.of(statusKey).with(statusPlaceholders), senderLocale);
                     String value = displayName + " " + statusString;
-                    // <<< CORREÇÃO PONTO 5: Formata o índice >>>
                     Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LIST_ITEM)
                             .with("index", "<dark_gray>" + (index++) + "</dark_gray>")
                             .with("value", value));
@@ -208,39 +217,35 @@ public class RoleCommand implements CommandInterface {
             }
             Messages.send(finalSender, "<white>");
             playSound(finalSender, SoundKeys.NOTIFICATION);
-        }).exceptionally(ex -> handleCommandError(finalSender, "obter info jogador", ex));
+        }).exceptionally(ex -> handleCommandError(sender, "obter info jogador", ex));
     }
 
     private void displayGroupInfo(CommandSource sender, Role role) {
-        final CommandSource finalSender = sender;
-        final Role finalRole = role;
-        // <<< CORREÇÃO PONTO 2: Obter o locale do sender >>>
-        final Locale senderLocale = Messages.determineLocale(finalSender);
+        final Locale senderLocale = Messages.determineLocale(sender);
 
-        Messages.send(finalSender, Message.of(MessageKey.ROLE_GROUP_INFO_HEADER).with("group_name", finalRole.getDisplayName()));
+        Messages.send(sender, Message.of(MessageKey.ROLE_GROUP_INFO_HEADER).with("group_name", role.getDisplayName()));
 
-        // <<< CORREÇÃO PONTO 2 & 4: Usa common.info.line e traduz chaves >>>
-        Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_WEIGHT, senderLocale)).with("value", finalRole.getWeight()));
-        Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_PREFIX, senderLocale)).with("value", finalRole.getPrefix() != null && !finalRole.getPrefix().isEmpty() ? finalRole.getPrefix() : Messages.translate(MessageKey.ROLE_GROUP_INFO_VALUE_NONE, senderLocale)));
-        Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_SUFFIX, senderLocale)).with("value", finalRole.getSuffix() != null && !finalRole.getSuffix().isEmpty() ? finalRole.getSuffix() : Messages.translate(MessageKey.ROLE_GROUP_INFO_VALUE_NONE, senderLocale)));
-        Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_TYPE, senderLocale)).with("value", finalRole.getType() != null ? finalRole.getType().name() : "N/A"));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_WEIGHT, senderLocale)).with("value", role.getWeight()));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_PREFIX, senderLocale)).with("value", role.getPrefix() != null && !role.getPrefix().isEmpty() ? role.getPrefix() : Messages.translate(MessageKey.ROLE_GROUP_INFO_VALUE_NONE, senderLocale)));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_SUFFIX, senderLocale)).with("value", role.getSuffix() != null && !role.getSuffix().isEmpty() ? role.getSuffix() : Messages.translate(MessageKey.ROLE_GROUP_INFO_VALUE_NONE, senderLocale)));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_TYPE, senderLocale)).with("value", role.getType() != null ? role.getType().name() : "N/A"));
 
-        List<String> permissions = finalRole.getPermissions() != null ? finalRole.getPermissions() : Collections.emptyList();
-        Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_PERMISSIONS, senderLocale)).with("count", permissions.size()));
-        if (permissions.isEmpty()) { Messages.send(finalSender, MessageKey.COMMON_INFO_LIST_EMPTY); }
+        List<String> permissions = role.getPermissions() != null ? role.getPermissions() : Collections.emptyList();
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_PERMISSIONS, senderLocale)).with("count", permissions.size()));
+        if (permissions.isEmpty()) { Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY); }
         else {
-            permissions.stream().sorted().limit(20).forEach(perm -> Messages.send(finalSender, new RawMessage("<white>  - <gray>{permission}").placeholder("permission", perm)));
-            if (permissions.size() > 20) { Messages.send(finalSender, new RawMessage("<white>  ... e <gray>{count}</gray> mais.").placeholder("count", permissions.size() - 20)); }
+            permissions.stream().sorted().limit(20).forEach(perm -> Messages.send(sender, new RawMessage("<white>  - <gray>{permission}").placeholder("permission", perm)));
+            if (permissions.size() > 20) { Messages.send(sender, new RawMessage("<white>  ... e <gray>{count}</gray> mais.").placeholder("count", permissions.size() - 20)); }
         }
 
-        List<String> inheritance = finalRole.getInheritance() != null ? finalRole.getInheritance() : Collections.emptyList();
-        Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_INHERITANCE, senderLocale)).with("count", inheritance.size()));
-        if (inheritance.isEmpty()) { Messages.send(finalSender, MessageKey.COMMON_INFO_LIST_EMPTY); }
+        List<String> inheritance = role.getInheritance() != null ? role.getInheritance() : Collections.emptyList();
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_INHERITANCE, senderLocale)).with("count", inheritance.size()));
+        if (inheritance.isEmpty()) { Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY); }
         else {
-            inheritance.stream().sorted().forEach(inheritedId -> { String inheritedDisplay = roleService.getRole(inheritedId).map(Role::getDisplayName).orElse(inheritedId + " (não encontrado)"); Messages.send(finalSender, new RawMessage("<white>  - <gray>{group}").placeholder("group", inheritedDisplay)); });
+            inheritance.stream().sorted().forEach(inheritedId -> { String inheritedDisplay = roleService.getRole(inheritedId).map(Role::getDisplayName).orElse(inheritedId + " (não encontrado)"); Messages.send(sender, new RawMessage("<white>  - <gray>{group}").placeholder("group", inheritedDisplay)); });
         }
 
-        Messages.send(finalSender, "<white>");
+        Messages.send(sender, "<white>");
         playSound(sender, SoundKeys.NOTIFICATION);
     }
 
@@ -269,7 +274,7 @@ public class RoleCommand implements CommandInterface {
         if (roleOpt.isEmpty()) { Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_GROUP_NOT_FOUND).with("group", roleNameInput)); playSound(finalSender, SoundKeys.USAGE_ERROR); return; }
         final Role targetRole = roleOpt.get();
 
-        if (targetRole.getName().equalsIgnoreCase("default") && (finalType == RoleModificationType.REMOVE || finalType == RoleModificationType.SET)) { Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_CANNOT_MODIFY_DEFAULT).with("group_display", targetRole.getDisplayName())); playSound(finalSender, SoundKeys.USAGE_ERROR); return; }
+        if (targetRole.getName().equalsIgnoreCase("default") && (finalType == RoleModificationType.REMOVE || finalType == RoleModificationType.SET)) { Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_CANNOT_MODIFY_DEFAULT)); playSound(finalSender, SoundKeys.USAGE_ERROR); return; }
 
         final Long expiresAt;
         if (finalType != RoleModificationType.REMOVE && durationStr != null) { long d = TimeUtils.parseDuration(durationStr); if (d <= 0) { Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_INVALID_DURATION).with("duration", durationStr)); playSound(finalSender, SoundKeys.USAGE_ERROR); return; } expiresAt = System.currentTimeMillis() + d; }
@@ -309,7 +314,7 @@ public class RoleCommand implements CommandInterface {
                     final AtomicBoolean changed = new AtomicBoolean(false);
                     final AtomicReference<MessageKey> successMessageKey = new AtomicReference<>(null);
                     final AtomicBoolean vipAffected = new AtomicBoolean(targetRole.getType() == RoleType.VIP);
-                    String finalPrimaryRoleName = "default";
+                    final String finalPrimaryRoleName;
 
                     synchronized (targetUuid.toString().intern()) {
                         final Profile latestProfile = profileService.getByUuid(targetUuid).orElseThrow(() -> new IllegalStateException("Perfil desapareceu DENTRO do lock!"));
@@ -321,7 +326,7 @@ public class RoleCommand implements CommandInterface {
                                 addOrUpdateRole(currentRoles, targetRole.getName(), expiresAt, changed, true);
                                 ensureDefaultActiveIfNeeded(currentRoles, targetRole.getName());
                                 successMessageKey.set(MessageKey.ROLE_SUCCESS_SET);
-                                logger.fine("[RoleCommand SET] ...");
+                                logger.log(Level.FINE, "[RoleCommand {0}] Tentando definir role {1} para {2}", new Object[]{finalType, roleNameInput, targetUuid});
                                 break;
                             case ADD:
                                 boolean alreadyHasActivePermanent = currentRoles.stream().anyMatch(pr -> pr != null && pr.getRoleName().equalsIgnoreCase(roleNameInput) && pr.getStatus() == PlayerRole.Status.ACTIVE && pr.isPermanent());
@@ -329,15 +334,16 @@ public class RoleCommand implements CommandInterface {
                                 addOrUpdateRole(currentRoles, targetRole.getName(), expiresAt, changed, false);
                                 ensureDefaultActiveIfNeeded(currentRoles, targetRole.getName());
                                 successMessageKey.set(MessageKey.ROLE_SUCCESS_ADD);
-                                logger.fine("[RoleCommand ADD] ...");
+                                logger.log(Level.FINE, "[RoleCommand {0}] Tentando adicionar role {1} para {2}", new Object[]{finalType, roleNameInput, targetUuid});
                                 break;
                             case REMOVE:
                                 Optional<PlayerRole> activeRoleToRemove = currentRoles.stream().filter(pr -> pr != null && pr.getRoleName().equalsIgnoreCase(roleNameInput) && pr.getStatus() == PlayerRole.Status.ACTIVE).findFirst();
                                 if (activeRoleToRemove.isPresent()) { PlayerRole ex = activeRoleToRemove.get(); ex.setStatus(PlayerRole.Status.REMOVED); ex.setRemovedAt(System.currentTimeMillis()); ex.setPaused(false); ex.setPausedTimeRemaining(null); changed.set(true); successMessageKey.set(MessageKey.ROLE_SUCCESS_REMOVE); roleService.getRole(ex.getRoleName()).ifPresent(r -> { if(r.getType() == RoleType.VIP) vipAffected.set(true); }); ensureDefaultActiveIfNeeded(currentRoles, "dummy"); }
                                 else { Messages.send(finalSender, Message.of(MessageKey.ROLE_WARN_NOT_ACTIVE).with("player", targetOriginalName).with("group_display", targetRole.getDisplayName()).with("group_name", targetRole.getName())); playSound(finalSender, SoundKeys.NOTIFICATION); return; }
+                                logger.log(Level.FINE, "[RoleCommand {0}] Tentando remover role {1} de {2}", new Object[]{finalType, roleNameInput, targetUuid});
                                 break;
-                            default: throw new IllegalStateException("...");
-                        } // Fim switch
+                            default: throw new IllegalStateException("Tipo de modificação desconhecido");
+                        }
 
                         if (changed.get()) {
                             try { roleService.updatePauseState(targetUuid, currentRoles); } catch (Exception e) { logger.log(Level.WARNING, "Erro updatePauseState", e); }
@@ -346,42 +352,59 @@ public class RoleCommand implements CommandInterface {
                             Role calculatedPrimaryRole = calculatePrimaryRole(currentRoles);
                             if (calculatedPrimaryRole != null) {
                                 finalPrimaryRoleName = calculatedPrimaryRole.getName();
-                                if (!Objects.equals(latestProfile.getPrimaryRoleName(), finalPrimaryRoleName)) { latestProfile.setPrimaryRoleName(finalPrimaryRoleName); logger.fine("[RoleCommand " + finalType + "] PrimaryRoleName definido como '" + finalPrimaryRoleName + "' no perfil antes de salvar."); }
-                                else { logger.finest("[RoleCommand " + finalType + "] PrimaryRoleName ('" + finalPrimaryRoleName + "') não precisou ser atualizado no perfil."); }
-                            } else { logger.severe("[RoleCommand " + finalType + "] ERRO CRÍTICO: Não foi possível calcular o grupo primário para " + targetUuid + " antes de salvar!"); latestProfile.setPrimaryRoleName("default"); finalPrimaryRoleName = "default"; }
+                                if (!Objects.equals(latestProfile.getPrimaryRoleName(), finalPrimaryRoleName)) {
+                                    latestProfile.setPrimaryRoleName(finalPrimaryRoleName);
+                                    logger.log(Level.FINE, "[RoleCommand {0}] PrimaryRoleName definido como ''{1}'' no perfil antes de salvar.", new Object[]{finalType, finalPrimaryRoleName});
+                                } else {
+                                    logger.log(Level.FINEST, "[RoleCommand {0}] PrimaryRoleName (''{1}'') não precisou ser atualizado no perfil.", new Object[]{finalType, finalPrimaryRoleName});
+                                }
+                            } else {
+                                logger.log(Level.SEVERE, "[RoleCommand {0}] ERRO CRÍTICO: Não foi possível calcular o grupo primário para {1} antes de salvar!", new Object[]{finalType, targetUuid});
+                                latestProfile.setPrimaryRoleName("default");
+                                finalPrimaryRoleName = "default";
+                            }
 
                             try {
                                 profileService.save(latestProfile);
-                                logger.info("[RoleCommand " + finalType + "] Perfil salvo com sucesso para " + targetUuid + ". PrimaryRoleName salvo: " + latestProfile.getPrimaryRoleName());
+                                logger.log(Level.INFO, "[RoleCommand {0}] Perfil salvo com sucesso para {1}. PrimaryRoleName salvo: {2}", new Object[]{finalType, targetUuid, latestProfile.getPrimaryRoleName()});
                             } catch (Exception e) {
-                                logger.log(Level.SEVERE, "[RoleCmd " + finalType + "] FALHA AO SALVAR PERFIL para " + targetUuid, e);
+                                logger.log(Level.SEVERE, "[RoleCmd {0}] FALHA AO SALVAR PERFIL para {1}");
                                 handleCommandError(finalSender, "salvar perfil", e);
                                 return;
                             }
 
                             roleService.publishSync(targetUuid);
-                            logger.info("[RoleCommand " + finalType + "] ROLE_SYNC publicado para " + targetUuid);
+                            logger.log(Level.INFO, "[RoleCommand {0}] ROLE_SYNC publicado para {1}", new Object[]{finalType, targetUuid});
 
                             String durationMsg;
-                            Locale senderLocale = Messages.determineLocale(finalSender); // <<< CORREÇÃO PONTO 2
+                            Locale senderLocale = Messages.determineLocale(finalSender);
                             if (finalType != RoleModificationType.REMOVE) { String durKey = (expiresAt == null) ? Messages.translate(MessageKey.ROLE_INFO_STATUS_PERMANENT, senderLocale) : Messages.translate(Message.of(MessageKey.ROLE_INFO_STATUS_TEMPORARY).with("remaining_time", TimeUtils.formatDuration(expiresAt - System.currentTimeMillis())), senderLocale); durationMsg = durKey.replaceAll("<[^>]*>", ""); } else { durationMsg = ""; }
 
                             if (successMessageKey.get() != null) { Messages.send(finalSender, Message.of(successMessageKey.get()).with("group_display", targetRole.getDisplayName()).with("group_name", targetRole.getName()).with("player", targetOriginalName).with("duration_msg", durationMsg)); }
                             playSound(finalSender, SoundKeys.SUCCESS);
 
                             boolean isTargetOnline = proxyServer.getPlayer(targetUuid).isPresent();
-                            if (!finalHidden && (finalType == RoleModificationType.ADD || finalType == RoleModificationType.SET)) { publishRoleBroadcast(targetUuid, targetOriginalName, targetRole); }
-                            if (isTargetOnline) { RoleKickHandler.KickReason reason = (finalType == RoleModificationType.ADD || finalType == RoleModificationType.SET) ? RoleKickHandler.KickReason.ADD_SET : RoleKickHandler.KickReason.REMOVED; RoleKickHandler.scheduleKick(targetUuid, targetRole.getType(), reason, targetRole.getDisplayName()); }
+                            if (!finalHidden && (finalType == RoleModificationType.ADD || finalType == RoleModificationType.SET)) {
+                                publishRoleBroadcast(targetUuid, targetOriginalName, targetRole);
+                            }
+
+                            if (isTargetOnline && AuthenticationGuard.isAuthenticated(targetUuid)) {
+                                RoleKickHandler.KickReason reason = (finalType == RoleModificationType.ADD || finalType == RoleModificationType.SET) ? RoleKickHandler.KickReason.ADD_SET : RoleKickHandler.KickReason.REMOVED;
+                                RoleKickHandler.scheduleKick(targetUuid, targetRole.getType(), reason, targetRole.getDisplayName());
+                                logger.log(Level.FINE, "[RoleCommand {0}] Kick agendado para {1} (estado ONLINE).", new Object[]{finalType, targetUuid});
+                            } else if (isTargetOnline) {
+                                logger.log(Level.FINE, "[RoleCommand {0}] Kick para {1} pulado, jogador está no estado CONNECTING.", new Object[]{finalType, targetUuid});
+                            }
 
                         } else {
-                            logger.fine("[RoleCommand " + finalType + "] Nenhuma mudança detectada para " + targetUuid + " e role " + roleNameInput + ". Nenhuma ação tomada.");
+                            logger.log(Level.FINE, "[RoleCommand {0}] Nenhuma mudança detectada para {1} e role {2}. Nenhuma ação tomada.", new Object[]{finalType, targetUuid, roleNameInput});
                         }
                     } // Fim sync block
                 } catch (Exception e) {
                     handleCommandError(finalSender, "processar " + finalType, e);
                 }
             }, roleService.getAsyncExecutor());
-        }).exceptionally(ex -> handleCommandError(finalSender, "resolver perfil", ex));
+        }).exceptionally(ex -> handleCommandError(sender, "resolver perfil", ex));
     }
 
     private void addOrUpdateRole(List<PlayerRole> currentRoles, String roleName, Long expiresAt, AtomicBoolean changed, boolean isSet) {
@@ -401,38 +424,146 @@ public class RoleCommand implements CommandInterface {
         return currentRoles.stream().filter(pr -> pr != null && pr.isActive()).map(pr -> roleService.getRole(pr.getRoleName())).filter(Optional::isPresent).map(Optional::get).max(Comparator.comparingInt(Role::getWeight)).orElse(roleService.getRole("default").orElse(null));
     }
 
+    // <<< CORREÇÃO (BUG 1): Usar Jackson (ObjectMapper) >>>
     private void publishRoleBroadcast(UUID playerUuid, String playerName, Role newRole) {
-        try { ObjectNode node = objectMapper.createObjectNode(); node.put("playerUuid", playerUuid.toString()); node.put("playerName", playerName); node.put("playerColor", newRole.getColor()); node.put("groupDisplay", newRole.getDisplayName()); String jsonMessage = objectMapper.writeValueAsString(node); RedisPublisher.publish(RedisChannel.ROLE_BROADCAST, jsonMessage); logger.fine("Mensagem ROLE_BROADCAST publicada para " + playerName); }
-        catch (JsonProcessingException e) { logger.log(Level.SEVERE, "Falha ao serializar mensagem ROLE_BROADCAST para " + playerName, e); } catch (Exception e) { logger.log(Level.WARNING, "Falha ao publicar mensagem ROLE_BROADCAST para " + playerName, e); }
+        try {
+            // Usar ObjectNode (Jackson) em vez de JSONObject (org.json)
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("playerUuid", playerUuid.toString());
+            node.put("playerName", playerName);
+            node.put("playerColor", newRole.getColor());
+            node.put("groupDisplay", newRole.getDisplayName());
+
+            String jsonMessage = node.toString(); // Converte o ObjectNode para String
+            RedisPublisher.publish(RedisChannel.ROLE_BROADCAST, jsonMessage);
+
+            logger.log(Level.FINE, "Mensagem ROLE_BROADCAST publicada para {0}", playerName);
+        } catch (Exception e) { // Captura Exception genérica
+            logger.log(Level.SEVERE, "Falha ao serializar/publicar mensagem ROLE_BROADCAST para " + playerName, e);
+        }
     }
+    // <<< FIM CORREÇÃO (BUG 1) >>>
 
     private void handleClear(CommandSource sender, String[] args, String label) {
         if (args.length < 2) { sendUsage(sender, label, "clear <jogador | grupo>"); return; }
         final String targetInput = args[1];
         final CommandSource finalSender = sender;
-        final RoleService finalRoleService = roleService;
-        final ProfileService finalProfileService = profileService;
-        final Logger finalLogger = logger;
 
         final Optional<Role> senderRoleOpt = getSenderPrimaryRole(finalSender);
         final boolean hasBypass = checkBypass(finalSender, senderRoleOpt);
         final int senderWeight = senderRoleOpt.map(Role::getWeight).orElse(hasBypass ? Integer.MAX_VALUE : 0);
 
-        Optional<Role> roleOpt = finalRoleService.getRole(targetInput);
-        if (roleOpt.isPresent()) {
-            // --- Limpar por Grupo ---
-            // <<< CORREÇÃO PONTO 3: Desativar /role clear group >>>
-            Messages.error(finalSender, "O comando /role clear <grupo> está temporariamente desativado.");
-            playSound(finalSender, SoundKeys.USAGE_ERROR);
-            return;
-            // <<< FIM CORREÇÃO >>>
-        } else {
-            // Passa os dados de bypass e peso do sender para o método
-            clearRolesByPlayer(finalSender, targetInput, label, senderRoleOpt, hasBypass, senderWeight);
-        }
+        // Despacha para async
+        TaskScheduler.runAsync(() -> {
+            Optional<Role> roleOpt = roleService.getRole(targetInput);
+
+            // <<< CORREÇÃO (BUG 3): Lógica implementada para limpar grupo >>>
+            if (roleOpt.isPresent()) {
+                final Role targetRole = roleOpt.get();
+                final String targetRoleName = targetRole.getName();
+                final String targetRoleDisplay = targetRole.getDisplayName();
+
+                // 1. Verificar se é o grupo default
+                if (targetRoleName.equalsIgnoreCase("default")) {
+                    Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_CANNOT_CLEAR_GROUP).with("group_name", targetRoleName));
+                    playSound(finalSender, SoundKeys.USAGE_ERROR);
+                    return;
+                }
+
+                // 2. Verificar se o sender pode gerir este grupo (mesmo para limpar)
+                if (!hasBypass && targetRole.getWeight() >= senderWeight) {
+                    Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_CANNOT_MANAGE_SUPERIOR).with("target_group", targetRoleDisplay));
+                    playSound(finalSender, SoundKeys.USAGE_ERROR);
+                    return;
+                }
+
+                // 3. Enviar mensagem de progresso
+                Messages.send(finalSender, Message.of(MessageKey.ROLE_WARN_CLEAR_GROUP_IN_PROGRESS).with("group_display", targetRoleDisplay));
+
+                // 4. Buscar perfis (assíncrono por natureza)
+                List<Profile> profilesToClear = profileService.findByActiveRoleName(targetRoleName);
+
+                if (profilesToClear.isEmpty()) {
+                    Messages.send(finalSender, Message.of(MessageKey.ROLE_WARN_CLEAR_GROUP_NO_ELIGIBLE).with("group_display", targetRoleDisplay));
+                    playSound(finalSender, SoundKeys.NOTIFICATION);
+                    return;
+                }
+
+                final AtomicInteger successCount = new AtomicInteger(0);
+                final AtomicInteger failCount = new AtomicInteger(0);
+
+                // 5. Iterar e limpar (ainda na thread async)
+                for (Profile profile : profilesToClear) {
+                    final UUID targetUuid = profile.getUuid();
+                    try {
+                        // 5a. Verificar permissão para CADA jogador
+                        PlayerSessionData targetData = roleService.loadPlayerDataAsync(targetUuid).join(); // .join() é seguro aqui
+                        int targetWeight = targetData.getPrimaryRole().getWeight();
+
+                        if (!hasBypass && targetWeight >= senderWeight && !(sender instanceof ConsoleCommandSource)) {
+                            logger.finer("[RoleClearG] Pulando " + profile.getName() + " (peso superior)");
+                            failCount.incrementAndGet();
+                            continue;
+                        }
+
+                        // 5b. Executar a limpeza (lógica de clearRolesByPlayer)
+                        synchronized (targetUuid.toString().intern()) {
+                            final Profile latestProfile = profileService.getByUuid(targetUuid).orElse(null);
+                            if (latestProfile == null) continue;
+
+                            List<PlayerRole> currentRoles = latestProfile.getRoles();
+                            if (currentRoles == null) continue;
+
+                            Optional<PlayerRole> roleToRemove = currentRoles.stream()
+                                    .filter(pr -> pr != null && pr.getRoleName().equalsIgnoreCase(targetRoleName) && pr.getStatus() == PlayerRole.Status.ACTIVE)
+                                    .findFirst();
+
+                            if (roleToRemove.isPresent()) {
+                                PlayerRole pr = roleToRemove.get();
+                                pr.setStatus(PlayerRole.Status.REMOVED);
+                                pr.setRemovedAt(System.currentTimeMillis());
+                                pr.setPaused(false);
+                                pr.setPausedTimeRemaining(null);
+
+                                ensureDefaultActiveIfNeeded(currentRoles, "dummy");
+                                Role newPrimary = calculatePrimaryRole(currentRoles);
+                                latestProfile.setPrimaryRoleName(newPrimary.getName());
+                                try { roleService.updatePauseState(targetUuid, currentRoles); } catch (Exception e) { logger.log(Level.WARNING, "Erro updatePauseState durante clearRolesByGroup", e); }
+                                latestProfile.setRoles(currentRoles);
+
+                                profileService.save(latestProfile);
+                                roleService.publishSync(targetUuid);
+                                successCount.incrementAndGet();
+
+                                // Agendar kick
+                                boolean isTargetOnline = proxyServer.getPlayer(targetUuid).isPresent();
+                                if (isTargetOnline && AuthenticationGuard.isAuthenticated(targetUuid)) {
+                                    RoleKickHandler.scheduleKick(targetUuid, targetRole.getType(), RoleKickHandler.KickReason.REMOVED, targetRole.getDisplayName());
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        logger.log(Level.WARNING, "[RoleClearG] Falha ao limpar role para " + targetUuid, e);
+                        failCount.incrementAndGet();
+                    }
+                } // Fim do loop
+
+                // 6. Enviar resultado
+                Messages.send(finalSender, Message.of(MessageKey.ROLE_SUCCESS_CLEAR_GROUP).with("count", successCount.get()).with("group_name", targetRoleName));
+                if (failCount.get() > 0) {
+                    Messages.send(finalSender, "<yellow>" + failCount.get() + " jogadores não puderam ser modificados (permissão insuficiente).</yellow>");
+                }
+                playSound(finalSender, SoundKeys.SUCCESS);
+                // <<< FIM DA CORREÇÃO (BUG 3) >>>
+            } else {
+                // Lógica existente para limpar por jogador (continua igual)
+                clearRolesByPlayer(finalSender, targetInput, label, senderRoleOpt, hasBypass, senderWeight);
+            }
+        });
     }
 
     private void clearRolesByPlayer(CommandSource sender, String targetInput, String label, Optional<Role> senderRoleOpt, boolean hasBypass, int senderWeight) {
+        // Já está rodando async
         final CommandSource finalSender = sender;
         final String finalTargetInput = targetInput;
 
@@ -455,32 +586,48 @@ public class RoleCommand implements CommandInterface {
 
                 try { final AtomicBoolean changed = new AtomicBoolean(false); final AtomicBoolean vipRemoved = new AtomicBoolean(false); final AtomicReference<Role> lastRemovedRole = new AtomicReference<>(null);
                     synchronized (targetUuid.toString().intern()) {
-                        final Profile latestProfile = profileService.getByUuid(targetUuid).orElseThrow(()->new IllegalStateException("Perfil sumiu")); List<PlayerRole> currentRoles = latestProfile.getRoles(); if (currentRoles == null) currentRoles = new ArrayList<>();
+                        final Profile latestProfile = profileService.getByUuid(targetUuid).orElseThrow(()->new IllegalStateException("Perfil sumiu durante clearRolesByPlayer"));
+                        List<PlayerRole> currentRoles = latestProfile.getRoles(); if (currentRoles == null) currentRoles = new ArrayList<>();
                         for (PlayerRole pr : currentRoles) { if (pr != null && !"default".equalsIgnoreCase(pr.getRoleName()) && pr.getStatus() == PlayerRole.Status.ACTIVE) { pr.setStatus(PlayerRole.Status.REMOVED); pr.setRemovedAt(System.currentTimeMillis()); pr.setPaused(false); pr.setPausedTimeRemaining(null); changed.set(true); roleService.getRole(pr.getRoleName()).ifPresent(r -> { lastRemovedRole.set(r); if(r.getType() == RoleType.VIP) vipRemoved.set(true); }); } }
                         ensureDefaultActiveIfNeeded(currentRoles, "dummy");
                         if (!changed.get()) { boolean defaultReactivated = currentRoles.stream().anyMatch(pr -> pr != null && "default".equalsIgnoreCase(pr.getRoleName()) && pr.getStatus() == PlayerRole.Status.ACTIVE); if (!defaultReactivated) { Messages.send(finalSender, Message.of(MessageKey.ROLE_WARN_ALREADY_DEFAULT).with("player", targetOriginalName)); playSound(finalSender, SoundKeys.NOTIFICATION); return; } }
 
                         Role calculatedPrimaryRole = calculatePrimaryRole(currentRoles);
                         if (calculatedPrimaryRole != null) { String newPrimaryName = calculatedPrimaryRole.getName(); if (!Objects.equals(latestProfile.getPrimaryRoleName(), newPrimaryName)) { latestProfile.setPrimaryRoleName(newPrimaryName); } } else { latestProfile.setPrimaryRoleName("default"); }
-                        try { roleService.updatePauseState(targetUuid, currentRoles); } catch (Exception e) { /* log */ }
+                        try { roleService.updatePauseState(targetUuid, currentRoles); } catch (Exception e) { logger.log(Level.WARNING, "Erro updatePauseState durante clearRolesByPlayer", e); }
                         latestProfile.setRoles(currentRoles);
-                        try { profileService.save(latestProfile); } catch (Exception e) { logger.log(Level.SEVERE, "[RoleClearP] FALHA SAVE", e); handleCommandError(finalSender, "salvar clear", e); return; }
+                        try { profileService.save(latestProfile); }
+                        catch (Exception e) { logger.log(Level.SEVERE, "[RoleClearP] FALHA AO SALVAR perfil após clear", e); handleCommandError(finalSender, "salvar clear", e); return; }
                         roleService.publishSync(targetUuid);
+                        logger.log(Level.INFO, "[RoleClearP] ROLE_SYNC publicado para {0}", targetUuid);
                         Messages.send(finalSender, Message.of(MessageKey.ROLE_SUCCESS_CLEAR_PLAYER).with("player", targetOriginalName)); playSound(finalSender, SoundKeys.SUCCESS);
-                        if (proxyServer.getPlayer(targetUuid).isPresent()) { RoleType typeForKick = vipRemoved.get() ? RoleType.VIP : (lastRemovedRole.get() != null ? lastRemovedRole.get().getType() : RoleType.DEFAULT); String displayForKick = lastRemovedRole.get() != null ? lastRemovedRole.get().getDisplayName() : "grupo"; RoleKickHandler.scheduleKick(targetUuid, typeForKick, RoleKickHandler.KickReason.REMOVED, displayForKick); } }
+
+                        boolean isTargetOnline = proxyServer.getPlayer(targetUuid).isPresent();
+                        if (isTargetOnline && AuthenticationGuard.isAuthenticated(targetUuid)) {
+                            RoleType typeForKick = vipRemoved.get() ? RoleType.VIP : (lastRemovedRole.get() != null ? lastRemovedRole.get().getType() : RoleType.DEFAULT);
+                            String displayForKick = lastRemovedRole.get() != null ? lastRemovedRole.get().getDisplayName() : "grupo";
+                            RoleKickHandler.scheduleKick(targetUuid, typeForKick, RoleKickHandler.KickReason.REMOVED, displayForKick);
+                            logger.log(Level.FINE, "[RoleClearP] Kick agendado para {0} (estado ONLINE).", targetUuid);
+                        } else if (isTargetOnline) {
+                            logger.log(Level.FINE, "[RoleClearP] Kick para {0} pulado, jogador está no estado CONNECTING.", targetUuid);
+                        }
+                    }
                 } catch (Exception e) { handleCommandError(finalSender, "processar clear player", e); }
-            }).exceptionally(ex -> handleCommandError(finalSender, "obter dados alvo clear player", ex));
-        }).exceptionally(ex -> handleCommandError(finalSender, "resolver perfil clear player", ex));
+            }, roleService.getAsyncExecutor());
+        }).exceptionally(ex -> handleCommandError(sender, "resolver perfil clear player", ex));
     }
 
 
     private void handleList(CommandSource sender, String[] args, String label) {
         if (args.length < 2) { sendUsage(sender, label, "list <grupo>"); return; }
-        final String groupNameInput = args[1].toLowerCase(); final CommandSource finalSender = sender;
+        final String groupNameInput = args[1].toLowerCase();
+        final CommandSource finalSender = sender;
         final Locale senderLocale = Messages.determineLocale(sender);
-        Optional<Role> roleOpt = roleService.getRole(groupNameInput); if (roleOpt.isEmpty()) { Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_GROUP_NOT_FOUND).with("group", groupNameInput)); playSound(finalSender, SoundKeys.USAGE_ERROR); return; }
+        Optional<Role> roleOpt = roleService.getRole(groupNameInput);
+        if (roleOpt.isEmpty()) { Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_GROUP_NOT_FOUND).with("group", groupNameInput)); playSound(finalSender, SoundKeys.USAGE_ERROR); return; }
         final Role targetRole = roleOpt.get(); final String targetRoleDisplayName = targetRole.getDisplayName();
         Messages.send(finalSender, Message.of(MessageKey.ROLE_LIST_IN_PROGRESS).with("group_display", targetRoleDisplayName)); playSound(finalSender, SoundKeys.NOTIFICATION);
+
         CompletableFuture.supplyAsync(() -> profileService.findByActiveRoleName(targetRole.getName()), roleService.getAsyncExecutor())
                 .thenAcceptAsync(profilesWithRole -> {
                     Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", "Jogadores Ativos no Grupo " + targetRoleDisplayName).with("count", profilesWithRole.size()));
@@ -491,15 +638,14 @@ public class RoleCommand implements CommandInterface {
                                 .with("value", profile.getName() + " " + statusString));
                     } }
                     Messages.send(finalSender, "<white>"); playSound(finalSender, SoundKeys.NOTIFICATION);
-                }).exceptionally(ex -> handleCommandError(finalSender, "listar grupo " + targetRoleDisplayName, ex));
+                }, roleService.getAsyncExecutor())
+                .exceptionally(ex -> handleCommandError(sender, "listar grupo " + targetRoleDisplayName, ex));
     }
 
-    // --- Métodos Auxiliares ---
-    private void showHelp(CommandSource sender, String label) {
-        final CommandSource finalSender = sender;
-        final String finalLabel = label;
-        final Locale senderLocale = Messages.determineLocale(finalSender);
+    // --- Métodos Auxiliares (Síncronos, chamados pela thread principal ou callbacks) ---
 
+    private void showHelp(CommandSource sender, String label) {
+        final Locale senderLocale = Messages.determineLocale(sender);
         List<Map.Entry<String, MessageKey>> commands = List.of(
                 Map.entry("/{label} info <jogador|grupo>", MessageKey.ROLE_HELP_INFO),
                 Map.entry("/{label} list <grupo>", MessageKey.ROLE_HELP_LIST),
@@ -509,20 +655,17 @@ public class RoleCommand implements CommandInterface {
                 Map.entry("/{label} clear <jogador|grupo>", MessageKey.ROLE_HELP_CLEAR)
         );
         boolean hasOptional = commands.stream().anyMatch(e -> e.getKey().contains("["));
-
-        Messages.send(finalSender, Message.of(MessageKey.COMMON_HELP_HEADER).with("system", "Roles"));
-
+        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_HEADER).with("system", "Roles"));
         commands.forEach(entry -> {
-            String usage = entry.getKey().replace("{label}", finalLabel);
-            String description = Messages.translate(entry.getValue(), senderLocale); // Traduz usando o locale
-            Messages.send(finalSender, Message.of(MessageKey.COMMON_HELP_LINE)
+            String usage = entry.getKey().replace("{label}", label);
+            String description = Messages.translate(entry.getValue(), senderLocale);
+            Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE)
                     .with("usage", usage)
                     .with("description", description)
             );
         });
-
-        if (hasOptional) { Messages.send(finalSender, MessageKey.COMMON_HELP_FOOTER_FULL); }
-        else { Messages.send(finalSender, MessageKey.COMMON_HELP_FOOTER_REQUIRED); }
+        if (hasOptional) { Messages.send(sender, MessageKey.COMMON_HELP_FOOTER_FULL); }
+        else { Messages.send(sender, MessageKey.COMMON_HELP_FOOTER_REQUIRED); }
         playSound(sender, SoundKeys.NOTIFICATION);
     }
 
@@ -532,12 +675,14 @@ public class RoleCommand implements CommandInterface {
     }
 
     private void playSound(CommandSource sender, String key) {
-        if (sender instanceof Player player && soundPlayer != null) {
-            try {
-                soundPlayer.playSound(player, key);
-            } catch (Exception e) {
-                logger.log(Level.WARNING, "Erro ao tocar som '" + key + "' para " + player.getUsername(), e);
-            }
+        if (sender instanceof Player player) {
+            soundPlayerOpt.ifPresent(sp -> {
+                try {
+                    sp.playSound(player, key);
+                } catch (Exception e) {
+                    logger.log(Level.WARNING, "Erro ao tocar som ''{0}'' para {1}", new Object[]{key, player.getUsername()});
+                }
+            });
         }
     }
 
@@ -557,19 +702,15 @@ public class RoleCommand implements CommandInterface {
         }
         if (sender instanceof Player p) {
             try {
-                return roleService.getSessionDataFromCache(p.getUniqueId())
-                        .map(PlayerSessionData::getPrimaryRole)
-                        .or(() -> {
-                            try {
-                                logger.warning("[RoleCommand] Cache miss para sender " + p.getUsername() + ", carregando sync...");
-                                return Optional.of(roleService.loadPlayerDataAsync(p.getUniqueId()).join().getPrimaryRole());
-                            } catch (Exception e) {
-                                logger.log(Level.WARNING, "Falha ao obter role (sync fallback) para " + p.getUsername(), e);
-                                return Optional.empty();
-                            }
-                        });
+                Optional<PlayerSessionData> cachedData = roleService.getSessionDataFromCache(p.getUniqueId());
+                if (cachedData.isPresent()) {
+                    return cachedData.map(PlayerSessionData::getPrimaryRole);
+                }
+
+                logger.log(Level.WARNING, "Cache miss de sessão para o sender {0}, carregando sync...", p.getUsername());
+                return Optional.of(roleService.loadPlayerDataAsync(p.getUniqueId()).join().getPrimaryRole());
             } catch (Exception e) {
-                logger.log(Level.WARNING, "Erro ao obter role do sender " + p.getUsername(), e);
+                logger.log(Level.WARNING, "Falha ao obter role (sync fallback) para " + p.getUsername(), e);
                 return Optional.empty();
             }
         }
@@ -580,25 +721,22 @@ public class RoleCommand implements CommandInterface {
         if (sender instanceof ConsoleCommandSource) {
             return true;
         }
+        if (sender.hasPermission("controller.admin.bypass")) {
+            return true;
+        }
         return senderRole.isPresent() && senderRole.get().getName().equalsIgnoreCase("master");
-    }
-
-    private int getSenderRoleWeight(CommandSource sender) {
-        final Optional<Role> senderRoleOpt = getSenderPrimaryRole(sender);
-        final boolean hasBypass = checkBypass(sender, senderRoleOpt);
-        return senderRoleOpt.map(Role::getWeight).orElse(hasBypass ? Integer.MAX_VALUE : 0);
     }
 
     private Void handleCommandError(CommandSource sender, String action, Throwable t) {
         Throwable cause = t;
         while (cause.getCause() != null && cause.getCause() != cause) { cause = cause.getCause(); }
-        logger.log(Level.SEVERE, "Erro durante ação '" + action + "' no RoleCommand", cause);
+        logger.log(Level.SEVERE, "Erro durante ação ''" + action + "'' no RoleCommand", cause); // Log padronizado
         Messages.send(sender, MessageKey.COMMAND_ERROR);
         playSound(sender, SoundKeys.ERROR);
         return null;
     }
 
-    // --- Tab Completion ---
+    // --- Tab Completion (Roda na thread principal) ---
     @Override
     public List<String> tabComplete(CommandSource sender, String[] args) {
         if (!sender.hasPermission(requiredPermission)) return Collections.emptyList();
@@ -621,11 +759,10 @@ public class RoleCommand implements CommandInterface {
                     proxyServer.getAllPlayers().stream().map(Player::getUsername).filter(name -> name.toLowerCase().startsWith(currentArg)).forEach(completions::add);
                     if ("uuid:".startsWith(currentArg)) completions.add("uuid:");
                     if ("id:".startsWith(currentArg)) completions.add("id:");
-                    if (currentArg.startsWith("uuid:") && currentArg.length() > 5) completions.add(currentArg);
-                    if (currentArg.startsWith("id:") && currentArg.length() > 3) completions.add(currentArg);
                 }
                 if (suggestGroup) {
                     roleService.getAllCachedRoles().stream()
+                            // <<< CORREÇÃO (BUG 2): hasBpass -> hasBypass >>>
                             .filter(role -> hasBypass || role.getWeight() < senderWeight)
                             .map(Role::getName)
                             .filter(name -> name.toLowerCase().startsWith(currentArg))
@@ -644,7 +781,7 @@ public class RoleCommand implements CommandInterface {
                 }
             }
             else if (args.length == 4 && (args[0].equalsIgnoreCase("add") || args[0].equalsIgnoreCase("set"))) {
-                List<String> durations = Arrays.asList("1s", "30s", "1m", "5m", "15m", "30m", "1h", "12h", "1d", "7d", "15d", "30d", "90d", "180d", "1y");
+                List<String> durations = Arrays.asList("30s", "1m", "5m", "15m", "30m", "1h", "12h", "1d", "7d", "15d", "30d", "90d", "180d", "1y");
                 durations.stream().filter(d -> d.startsWith(currentArg)).forEach(completions::add);
                 if ("-hidden".startsWith(currentArg)) completions.add("-hidden");
             }
@@ -653,8 +790,9 @@ public class RoleCommand implements CommandInterface {
                     completions.add("-hidden");
                 }
             }
-        } catch (Exception e) { logger.log(Level.SEVERE, "Erro tab completion RoleCommand", e); }
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Erro tab completion RoleCommand", e);
+        }
         return completions.stream().distinct().sorted().collect(Collectors.toList());
     }
-
-} // Fim da classe RoleCommand
+}

@@ -3,14 +3,14 @@ package com.realmmc.controller.shared.storage.redis;
 import com.realmmc.controller.shared.utils.TaskScheduler;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPubSub;
-import redis.clients.jedis.exceptions.JedisConnectionException; // Import specific exception
+import redis.clients.jedis.exceptions.JedisConnectionException;
 
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CancellationException; // Import CancellationException
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
@@ -40,32 +40,40 @@ public final class RedisSubscriber {
 
     /**
      * Regista um listener para um canal Redis específico (usando Enum).
-     * APENAS adiciona ao mapa. A subscrição ocorrerá no próximo (re)connect.
      * @param channel O canal (Enum) para ouvir.
      * @param listener A implementação que processará as mensagens.
      */
     public void registerListener(RedisChannel channel, RedisMessageListener listener) {
         Objects.requireNonNull(channel, "RedisChannel cannot be null");
         Objects.requireNonNull(listener, "RedisMessageListener cannot be null");
-        String channelName = channel.getName();
-        listeners.put(channelName, listener);
-        LOGGER.info("Listener " + listener.getClass().getSimpleName() + " registrado (pronto para subscrição) para o canal: " + channelName);
-
-        // Lógica de subscrição dinâmica REMOVIDA
+        registerListener(channel.getName(), listener);
     }
 
     /**
      * Regista um listener para um canal Redis específico (usando String).
+     * Adiciona ao mapa e tenta subscrever dinamicamente se o thread principal estiver rodando.
      * @param channelName O nome do canal para ouvir.
      * @param listener A implementação que processará as mensagens.
      */
-    public void registerListener(String channelName, RedisMessageListener listener) {
+    public synchronized void registerListener(String channelName, RedisMessageListener listener) {
         Objects.requireNonNull(channelName, "Channel name cannot be null");
         Objects.requireNonNull(listener, "RedisMessageListener cannot be null");
-        listeners.put(channelName, listener);
-        LOGGER.info("Listener " + listener.getClass().getSimpleName() + " registrado (pronto para subscrição) para o canal: " + channelName);
 
-        // Lógica de subscrição dinâmica REMOVIDA
+        // 1. Adiciona ao mapa
+        listeners.put(channelName, listener);
+        LOGGER.info("Listener " + listener.getClass().getSimpleName() + " registrado para o canal: " + channelName);
+
+        // 2. Lógica de subscrição dinâmica
+        JedisPubSub currentPubSub = this.pubSub;
+        if (running && currentPubSub != null && currentPubSub.isSubscribed()) {
+            try {
+                LOGGER.fine("Subscrevendo dinamicamente ao novo canal: " + channelName);
+                currentPubSub.subscribe(channelName);
+            } catch (Exception e) {
+                // Loga como SEVERE, mas não quebra a aplicação, pois o listener será pego na próxima reconexão.
+                LOGGER.log(Level.SEVERE, "Falha ao subscrever dinamicamente no canal " + channelName + ". Será tentado novamente na próxima reconexão.", e);
+            }
+        }
     }
 
     /**
@@ -88,6 +96,7 @@ public final class RedisSubscriber {
             RedisMessageListener removedListener = listeners.remove(channelName);
             if (removedListener != null) {
                 LOGGER.fine("Listener " + removedListener.getClass().getSimpleName() + " removido do mapa para o canal: " + channelName);
+
                 // Tenta desinscrever dinamicamente (seguro fazer unsubscribe)
                 JedisPubSub currentPubSub = this.pubSub; // Leitura volátil
                 if (currentPubSub != null && currentPubSub.isSubscribed()) {

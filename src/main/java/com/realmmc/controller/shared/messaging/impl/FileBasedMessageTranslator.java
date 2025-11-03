@@ -8,6 +8,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+// <<< IMPORT ADICIONADO PARA CORRIGIR ACENTUAÇÃO >>>
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+// <<< FIM >>>
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
@@ -26,7 +30,6 @@ public class FileBasedMessageTranslator implements MessageTranslator {
     public FileBasedMessageTranslator(File messagesDirectory) {
         this.messagesDirectory = messagesDirectory;
         this.messageCache = new ConcurrentHashMap<>();
-        // <<< CORREÇÃO PONTO 2: Definir PT_BR como padrão >>>
         this.defaultLocale = new Locale("pt", "BR");
 
         if (!messagesDirectory.exists()) {
@@ -38,7 +41,6 @@ public class FileBasedMessageTranslator implements MessageTranslator {
 
     @Override
     public String translate(Message message) {
-        // Usa o defaultLocale (PT_BR) se nenhum for fornecido
         return translate(message, defaultLocale);
     }
 
@@ -50,7 +52,10 @@ public class FileBasedMessageTranslator implements MessageTranslator {
             for (Map.Entry<String, Object> entry : message.getPlaceholders().entrySet()) {
                 String placeholder = "{" + entry.getKey() + "}";
                 String value = String.valueOf(entry.getValue());
+                // <<< CORREÇÃO DO BUG DE PLACEHOLDER >>>
+                // Garante que a variável 'template' é atualizada
                 template = template.replace(placeholder, value);
+                // <<< FIM CORREÇÃO >>>
             }
         }
 
@@ -59,7 +64,6 @@ public class FileBasedMessageTranslator implements MessageTranslator {
 
     @Override
     public String translate(MessageKey key) {
-        // Usa o defaultLocale (PT_BR) se nenhum for fornecido
         return translate(key, defaultLocale);
     }
 
@@ -87,7 +91,6 @@ public class FileBasedMessageTranslator implements MessageTranslator {
             loadMessageFile(file);
         }
 
-        // Garante que o locale padrão (PT_BR) seja definido
         if (!messageCache.containsKey(this.defaultLocale)) {
             LOGGER.warning("Locale padrão " + this.defaultLocale + " não encontrado, tentando carregar 'pt_BR' ou 'en' como fallback...");
             if (messageCache.containsKey(new Locale("pt", "BR"))) {
@@ -131,7 +134,6 @@ public class FileBasedMessageTranslator implements MessageTranslator {
             return messages.getProperty(key.getKey());
         }
 
-        // Fallback para o locale padrão (PT_BR) se o locale específico (ex: EN_US) não tiver a chave
         if (!locale.equals(defaultLocale)) {
             messages = messageCache.get(defaultLocale);
             if (messages != null && messages.containsKey(key.getKey())) {
@@ -139,7 +141,6 @@ public class FileBasedMessageTranslator implements MessageTranslator {
             }
         }
 
-        // Fallback final para Inglês se o padrão (PT_BR) também falhar
         if (!defaultLocale.equals(Locale.ENGLISH)) {
             messages = messageCache.get(Locale.ENGLISH);
             if (messages != null && messages.containsKey(key.getKey())) {
@@ -163,9 +164,11 @@ public class FileBasedMessageTranslator implements MessageTranslator {
         }
 
         Properties properties = new Properties();
-        try (InputStream input = new FileInputStream(file)) {
-            // <<< CORREÇÃO: Ler como UTF-8 >>>
-            properties.load(new java.io.InputStreamReader(input, java.nio.charset.StandardCharsets.UTF_8));
+        // <<< CORREÇÃO: Força a leitura do ficheiro como UTF-8 >>>
+        try (InputStream input = new FileInputStream(file);
+             InputStreamReader reader = new InputStreamReader(input, StandardCharsets.UTF_8)) {
+
+            properties.load(reader);
             // <<< FIM CORREÇÃO >>>
             messageCache.put(locale, properties);
             LOGGER.info("Loaded " + properties.size() + " messages for locale: " + locale);

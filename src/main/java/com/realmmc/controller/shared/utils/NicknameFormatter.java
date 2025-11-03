@@ -16,6 +16,7 @@ import java.util.logging.Logger;
 /**
  * Classe utilitária para formatar nicknames de jogadores
  * com base no seu perfil e grupo primário.
+ * (Versão corrigida: Apenas lê do cache, nunca bloqueia a thread).
  */
 public final class NicknameFormatter {
 
@@ -49,32 +50,30 @@ public final class NicknameFormatter {
     }
 
     /**
-     * Busca os Dados de Sessão (com grupo primário calculado) de um jogador online pelo UUID.
-     * Tenta buscar do cache, com fallback para carregamento síncrono (com timeout curto) se houver cache miss.
-     * Retorna Optional.empty() se não encontrado ou em caso de erro/timeout.
+     * <<< CORREÇÃO (Prioridade Alta) >>>
+     * Busca os Dados de Sessão (com grupo primário calculado) de um jogador online pelo UUID,
+     * consultando *apenas* o cache local (Java Map).
+     *
+     * Este método NUNCA deve bloquear a thread para carregar dados do Redis ou DB.
+     *
+     * @param uuid O UUID do jogador.
+     * @return Optional contendo os dados do cache, ou Optional.empty() se não estiverem no cache.
      */
-    private static Optional<PlayerSessionData> getSessionData(UUID uuid) {
+    private static Optional<PlayerSessionData> getSessionDataFromCacheOnly(UUID uuid) {
         if (uuid == null) {
             return Optional.empty();
         }
+
+        // Apenas verifica o cache local. NUNCA carregar síncrono.
         Optional<PlayerSessionData> cachedData = roleService.getSessionDataFromCache(uuid);
-        if (cachedData.isPresent()) {
-            return cachedData;
+
+        if (cachedData.isEmpty()) {
+            // Isto não é um erro, apenas o cache pode estar frio (ex: jogador a entrar).
+            // Mudado de WARNING para FINEST para não poluir os logs.
+            logger.finest("[NicknameFormatter] Cache miss (local) para PlayerSessionData (UUID: " + uuid + "). O nome não será formatado nesta passagem.");
         }
-        logger.warning("[NicknameFormatter] Cache miss para PlayerSessionData (UUID: " + uuid + "). Tentando carregamento síncrono como fallback.");
-        try {
-            PlayerSessionData loadedData = roleService.loadPlayerDataAsync(uuid).get(3, TimeUnit.SECONDS); // Timeout de 3 segundos
-            if (loadedData != null) {
-                logger.info("[NicknameFormatter] Carregamento síncrono de PlayerSessionData bem-sucedido para " + uuid + " após cache miss.");
-                return Optional.of(loadedData);
-            } else {
-                logger.severe("[NicknameFormatter] Carregamento síncrono de PlayerSessionData retornou null para " + uuid);
-                return Optional.empty();
-            }
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "[NicknameFormatter] Falha ao carregar PlayerSessionData síncrono para " + uuid, e);
-            return Optional.empty();
-        }
+
+        return cachedData; // Apenas retorna o que estiver no cache (presente ou vazio)
     }
 
     // --- Métodos de Formatação Públicos ---
@@ -120,9 +119,12 @@ public final class NicknameFormatter {
             return originalName;
         }
 
-        Optional<PlayerSessionData> sessionDataOpt = getSessionData(uuid);
+        // <<< CORREÇÃO: Usar o método de cache-only >>>
+        Optional<PlayerSessionData> sessionDataOpt = getSessionDataFromCacheOnly(uuid);
         if (sessionDataOpt.isEmpty()) {
-            logger.warning("[NicknameFormatter] Não foi possível obter dados de sessão para getNick(UUID: " + uuid + "). Retornando nome original.");
+            // Fallback seguro: retorna o nome original sem formatação.
+            // Isto não bloqueia o servidor.
+            logger.finer("[NicknameFormatter] Não foi possível obter dados de sessão (cache-only) para getNick(UUID: " + uuid + "). Retornando nome original.");
             return originalName;
         }
 
@@ -145,9 +147,10 @@ public final class NicknameFormatter {
      * @return Uma string contendo o prefixo e/ou sufixo formatados, ou string vazia se não houver dados.
      */
     public static String getTagsGroup(UUID uuid) {
-        Optional<PlayerSessionData> sessionDataOpt = getSessionData(uuid);
+        // <<< CORREÇÃO: Usar o método de cache-only >>>
+        Optional<PlayerSessionData> sessionDataOpt = getSessionDataFromCacheOnly(uuid);
         if (sessionDataOpt.isEmpty()) {
-            logger.warning("[NicknameFormatter] Não foi possível obter dados de sessão para getTagsGroup(UUID: " + uuid + "). Retornando string vazia.");
+            logger.finer("[NicknameFormatter] Não foi possível obter dados de sessão (cache-only) para getTagsGroup(UUID: " + uuid + "). Retornando string vazia.");
             return "";
         }
 
@@ -172,7 +175,6 @@ public final class NicknameFormatter {
     }
 
     /**
-     * <<< NOVO MÉTODO >>>
      * Retorna o nickname completo formatado com prefixo, nome original e sufixo.
      * Ex: <gold>[Master] MrLucas127 <blue>[ALPHA]
      * Retorna o nome original se os dados do grupo não forem encontrados.
@@ -186,9 +188,10 @@ public final class NicknameFormatter {
             return originalName; // Retorna "Unknown" se o perfil não foi encontrado
         }
 
-        Optional<PlayerSessionData> sessionDataOpt = getSessionData(uuid);
+        // <<< CORREÇÃO: Usar o método de cache-only >>>
+        Optional<PlayerSessionData> sessionDataOpt = getSessionDataFromCacheOnly(uuid);
         if (sessionDataOpt.isEmpty()) {
-            logger.warning("[NicknameFormatter] Não foi possível obter dados de sessão para getFullFormattedNick(UUID: " + uuid + "). Retornando nome original.");
+            logger.finer("[NicknameFormatter] Não foi possível obter dados de sessão (cache-only) para getFullFormattedNick(UUID: " + uuid + "). Retornando nome original.");
             return originalName; // Retorna nome original como fallback
         }
 
