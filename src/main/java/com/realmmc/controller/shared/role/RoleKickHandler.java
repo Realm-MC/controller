@@ -1,6 +1,5 @@
 package com.realmmc.controller.shared.role;
 
-import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
@@ -34,12 +33,6 @@ public class RoleKickHandler {
     }
     private static PlatformKicker platformKicker = null;
 
-    private enum KickReason {
-        ADD_SET,
-        REMOVED,
-        EXPIRED
-    }
-
     private static class KickInfo {
         final RoleType roleType;
         final KickReason reason;
@@ -52,6 +45,12 @@ public class RoleKickHandler {
             this.groupDisplayName = groupDisplayName;
             this.kickAtMillis = kickAtMillis;
         }
+    }
+
+    public enum KickReason {
+        ADD_SET,
+        REMOVED,
+        EXPIRED
     }
 
     public static synchronized void initialize(PlatformKicker kicker) {
