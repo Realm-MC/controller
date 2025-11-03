@@ -9,6 +9,7 @@ import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileService;
 import com.realmmc.controller.shared.stats.StatisticsService;
 import com.realmmc.controller.shared.session.SessionTrackerService;
+import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.realmmc.controller.spigot.Main;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -39,8 +40,6 @@ public class SpigotPlayerListener implements Listener {
     private final StatisticsService statisticsService;
     private final RoleService roleService;
     private final Optional<SessionTrackerService> sessionTrackerServiceOpt;
-    private final boolean geyserApiAvailable;
-    private final boolean viaVersionApiAvailable;
     private final Logger logger;
 
     private final ConcurrentHashMap<UUID, Long> loginTimestamps = new ConcurrentHashMap<>();
@@ -56,126 +55,65 @@ public class SpigotPlayerListener implements Listener {
                 .orElseThrow(() -> new IllegalStateException("RoleService não encontrado para SpigotPlayerListener!"));
         this.sessionTrackerServiceOpt = ServiceRegistry.getInstance().getService(SessionTrackerService.class);
         this.logger = Main.getInstance().getLogger();
-        this.geyserApiAvailable = Bukkit.getPluginManager().isPluginEnabled("Geyser-Spigot");
-        this.viaVersionApiAvailable = Bukkit.getPluginManager().isPluginEnabled("ViaVersion");
 
+        // Remoção da deteção de API (Geyser/ViaVersion) pois não são mais usadas aqui
         if (sessionTrackerServiceOpt.isEmpty()) {
             logger.warning("SessionTrackerService não encontrado! Rastreamento de sessão não funcionará.");
         }
-        if (geyserApiAvailable) logger.info("Geyser-Spigot detectado."); else logger.info("Geyser-Spigot não detectado.");
-        if (viaVersionApiAvailable) logger.info("ViaVersion detectado."); else logger.info("ViaVersion não detectado.");
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
-    public void onPlayerLoginEnsureProfile(PlayerLoginEvent event) {
+    public void onPlayerLogin(PlayerLoginEvent event) {
         if (event.getResult() != PlayerLoginEvent.Result.ALLOWED) {
-            sessionTrackerServiceOpt.ifPresent(service -> service.endSession(event.getPlayer().getUniqueId(), event.getPlayer().getName())); // Passa username
+            sessionTrackerServiceOpt.ifPresent(service -> service.endSession(event.getPlayer().getUniqueId(), event.getPlayer().getName()));
             return;
         }
 
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
-        String displayName = player.getName();
-        String usernameLower = displayName.toLowerCase();
+        String playerName = player.getName();
 
+        // Define o estado como CONECTANDO (o SessionService definirá como ONLINE após carregar)
         sessionTrackerServiceOpt.ifPresent(service ->
                 service.setSessionState(uuid, AuthenticationGuard.STATE_CONNECTING)
         );
 
-        String ip = null;
-        try { ip = event.getAddress().getHostAddress(); }
-        catch (Exception e) { logger.log(Level.FINER, "Não foi possível obter IP do PlayerLoginEvent para " + displayName, e); }
-        if (ip == null) {
-            try {
-                InetSocketAddress address = player.getAddress();
-                if (address != null) {
-                    InetAddress inetAddressFallback = address.getAddress();
-                    if (inetAddressFallback != null) { ip = inetAddressFallback.getHostAddress(); }
-                }
-            } catch (Exception ignored) {}
-        }
-
-        boolean isPremium = profileService.getByUuid(uuid).map(Profile::isPremiumAccount).orElse(false);
-
-        String clientVersion = "Unknown";
-        String clientType = "Java";
-        int protocolVersion = -1;
-
-        if (geyserApiAvailable) {
-            try {
-                Object geyserApi = Class.forName("org.geysermc.geyser.api.GeyserApi").getMethod("api").invoke(null);
-                Object connection = geyserApi.getClass().getMethod("connectionByUuid", UUID.class).invoke(geyserApi, uuid);
-                if (connection != null) {
-                    clientType = "Bedrock";
-                    String javaUsername = (String) connection.getClass().getMethod("javaUsername").invoke(connection);
-                    int bedrockProtocol = (int) connection.getClass().getMethod("protocolVersion").invoke(connection);
-                    clientVersion = javaUsername + " (Bedrock/" + bedrockProtocol + ")";
-                    protocolVersion = bedrockProtocol;
-                    logger.finer("Jogador Bedrock detectado: " + displayName);
-                }
-            } catch (Exception | NoClassDefFoundError geyserEx) {
-                logger.log(Level.WARNING, "Erro ao acessar Geyser API para " + displayName + ". Assumindo Java.", geyserEx);
-                clientType = "Java";
-            }
-        }
-
-        if ("Java".equals(clientType)) {
-            if (viaVersionApiAvailable) {
-                try {
-                    protocolVersion = Via.getAPI().getPlayerVersion(uuid);
-                    ProtocolVersion pv = ProtocolVersion.getProtocol(protocolVersion);
-                    clientVersion = (pv != null) ? pv.getName() : "Java/" + protocolVersion;
-                } catch (Exception | NoClassDefFoundError viaEx) {
-                    logger.log(Level.FINER, "Falha ao obter versão Java via ViaVersion API para " + displayName + ". Usando fallback.", viaEx);
-                    clientVersion = "Java";
-                    protocolVersion = -1;
-                }
-            } else {
-                clientVersion = "Java (ViaVersion Ausente)";
-            }
-            if(protocolVersion == -1){
-                try {
-                    Class<?> protocolSupportApi = Class.forName("protocolsupport.api.ProtocolSupportAPI");
-                    Object apiInstance = protocolSupportApi.getMethod("getAPI").invoke(null);
-                    protocolVersion = (int) apiInstance.getClass().getMethod("getProtocolVersion", Player.class).invoke(apiInstance, player);
-                } catch (Exception | NoClassDefFoundError ignored) {
-                    try {
-                        Object entityPlayer = player.getClass().getMethod("getHandle").invoke(player);
-                        Object connection = entityPlayer.getClass().getField("playerConnection").get(entityPlayer);
-                        Object networkManager = connection.getClass().getField("networkManager").get(connection);
-                        try {
-                            protocolVersion = (int) networkManager.getClass().getMethod("getVersion").invoke(networkManager);
-                        } catch (NoSuchMethodException ex) {
-                            protocolVersion = (int) networkManager.getClass().getMethod("getProtocolVersion").invoke(networkManager);
-                        }
-                    } catch (Exception | NoClassDefFoundError nmsEx) {
-                        logger.log(Level.FINEST, "Não foi possível obter a versão do protocolo NMS para " + displayName, nmsEx);
-                        protocolVersion = -1;
-                    }
-                }
-            }
-        }
-
+        // Armazena o tempo de login para estatísticas
         loginTimestamps.put(uuid, System.currentTimeMillis());
 
-        try {
-            Profile profile = profileService.ensureProfile(uuid, displayName, usernameLower, ip, clientVersion, clientType, isPremium, player);
+        // Apenas atualiza o lastIp e lastLogin no perfil existente (NÃO CRIA)
+        TaskScheduler.runAsync(() -> {
+            try {
+                Optional<Profile> profileOpt = profileService.getByUuid(uuid);
+                if (profileOpt.isPresent()) {
+                    Profile profile = profileOpt.get();
+                    String ip = null;
+                    try { ip = event.getAddress().getHostAddress(); } catch (Exception e) { /* ignora */ }
 
-            final int finalProtocolForLambda = protocolVersion;
-            final String serverName = Bukkit.getServer().getName();
-            final String proxyIdPlaceholder = "spigot_direct";
+                    boolean needsSave = false;
+                    if (ip != null && !ip.isEmpty() && !ip.equals(profile.getLastIp())) {
+                        profile.setLastIp(ip);
+                        if (!profile.getIpHistory().contains(ip)) {
+                            profile.getIpHistory().add(ip);
+                        }
+                        needsSave = true;
+                    }
+                    if (System.currentTimeMillis() - profile.getLastLogin() > 1000) { // Evita saves desnecessários
+                        profile.setLastLogin(System.currentTimeMillis());
+                        needsSave = true;
+                    }
 
-            sessionTrackerServiceOpt.ifPresent(service ->
-                    service.startSession(uuid, profile.getName(), proxyIdPlaceholder, serverName, finalProtocolForLambda, -1)
-            );
-
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Erro CRÍTICO durante ensureProfile/startSession para " + displayName + " (" + uuid + ")", e);
-            event.disallow(PlayerLoginEvent.Result.KICK_OTHER, "§cOcorreu um erro ao carregar/registrar sua sessão. Tente novamente.");
-            loginTimestamps.remove(uuid);
-            sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, displayName)); // Passa username
-            return;
-        }
+                    if (needsSave) {
+                        profileService.save(profile);
+                    }
+                } else {
+                    // Este é o log de aviso que você viu.
+                    logger.warning("[SpigotPlayerListener] Perfil não encontrado no DB para " + uuid + ". O Velocity (Proxy) deveria tê-lo criado. O jogador pode ter problemas de permissão.");
+                }
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Erro CRÍTICO ao tentar atualizar lastLogin/IP para " + playerName + " (" + uuid + ")", e);
+            }
+        });
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -185,6 +123,7 @@ public class SpigotPlayerListener implements Listener {
 
         this.roleService.clearSentWarnings(uuid);
 
+        // Atualiza o ping no SessionTracker (agora que o jogador está totalmente no servidor)
         sessionTrackerServiceOpt.ifPresent(service -> {
             try {
                 int currentPing = player.getPing();
@@ -202,13 +141,13 @@ public class SpigotPlayerListener implements Listener {
         UUID uuid = player.getUniqueId();
         String username = player.getName();
 
-        // 1. Limpa a sessão no Redis (previne o log de erro se for a primeira limpeza)
+        // Limpa a sessão no Redis
         sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, username));
 
-        // 2. Invalida o cache de sessão local do RoleService (crucial para o próximo login)
+        // Invalida o cache de sessão local do RoleService
         roleService.invalidateSession(uuid);
 
-        // 3. Salva o tempo online
+        // Salva o tempo online
         Long loginTime = loginTimestamps.remove(uuid);
         if (loginTime != null) {
             long sessionDuration = System.currentTimeMillis() - loginTime;
@@ -221,7 +160,7 @@ public class SpigotPlayerListener implements Listener {
             }
         }
 
-        // 4. Limpezas adicionais
+        // Limpezas adicionais
         this.preferencesService.removeCachedLanguage(uuid);
         this.roleService.clearSentWarnings(uuid);
     }

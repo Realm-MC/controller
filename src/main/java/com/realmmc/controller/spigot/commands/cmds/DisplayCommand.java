@@ -7,7 +7,6 @@ import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.sounds.SoundKeys;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
-import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.commands.CommandInterface;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
@@ -29,23 +28,20 @@ import java.util.stream.Stream;
 public class DisplayCommand implements CommandInterface {
 
     private final String permission = "controller.manager";
-    // <<< CORREÇÃO: Nome do grupo associado à permissão >>>
-    private final String requiredGroupName = "Gerente"; // Ou o nome de display correto do grupo Manager
+    private final String requiredGroupName = "Gerente";
     private final DisplayItemService displayService;
 
     public DisplayCommand() {
         this.displayService = ServiceRegistry.getInstance().getService(DisplayItemService.class)
-                .orElseThrow(() -> new IllegalStateException("DisplayItemService não registrado no ServiceRegistry!"));
+                .orElseThrow(() -> new IllegalStateException("DisplayItemService not registered in ServiceRegistry!"));
     }
 
     @Override
     public void execute(CommandSender sender, String label, String[] args) {
         if (!sender.hasPermission(permission)) {
-            // <<< CORREÇÃO: Usar COMMON_NO_PERMISSION_GROUP >>>
             Messages.send(sender, Message.of(MessageKey.COMMON_NO_PERMISSION_GROUP).with("group", requiredGroupName));
             playSound(sender, SoundKeys.USAGE_ERROR);
             return;
-            // <<< FIM CORREÇÃO >>>
         }
 
         if (args.length == 0 || (args.length > 0 && args[0].equalsIgnoreCase("help"))) {
@@ -84,8 +80,6 @@ public class DisplayCommand implements CommandInterface {
         }
     }
 
-    // --- Métodos de Ajuda e Utilitários ---
-
     private void showHelp(CommandSender sender) {
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_HEADER).with("system", "Display Items"));
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display criar <id> <material>").with("description", "Cria um novo item flutuante."));
@@ -121,8 +115,6 @@ public class DisplayCommand implements CommandInterface {
             soundPlayerOpt.ifPresent(sp -> sp.playSound(player, key));
         }
     }
-
-    // --- Handlers dos Subcomandos ---
 
     private void handleCreate(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); playSound(sender, SoundKeys.ERROR); return; }
@@ -445,8 +437,6 @@ public class DisplayCommand implements CommandInterface {
         else { for (int i = 0; i < actions.size(); i++) { Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_ITEM).with("index", i + 1).with("value", actions.get(i))); } }
         playSound(sender, SoundKeys.NOTIFICATION);
     }
-
-    // --- Tab Completion ---
 
     @Override
     public List<String> tabComplete(CommandSender sender, String[] args) {

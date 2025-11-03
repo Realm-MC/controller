@@ -5,10 +5,8 @@ import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.proxy.Proxy;
 import com.realmmc.controller.shared.annotations.Listeners;
 import com.realmmc.controller.shared.auth.AuthenticationGuard;
-// <<< CORREÇÃO: Imports de Mensagens >>>
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
-// <<< FIM CORREÇÃO >>>
 import com.realmmc.controller.shared.preferences.PreferencesService;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileService;
@@ -23,9 +21,7 @@ import com.velocitypowered.api.event.connection.PreLoginEvent;
 import com.velocitypowered.api.plugin.PluginContainer;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
-// <<< CORREÇÃO: Import de MiniMessage >>>
 import net.kyori.adventure.text.minimessage.MiniMessage;
-// <<< FIM CORREÇÃO >>>
 import com.viaversion.viaversion.api.Via;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 
@@ -51,15 +47,15 @@ public class PlayerJoinListener {
 
     public PlayerJoinListener() {
         this.proxyServer = ServiceRegistry.getInstance().getService(ProxyServer.class)
-                .orElseThrow(() -> new IllegalStateException("ProxyServer não encontrado no ServiceRegistry!"));
+                .orElseThrow(() -> new IllegalStateException("ProxyServer not found in ServiceRegistry!"));
         this.profileService = ServiceRegistry.getInstance().getService(ProfileService.class)
-                .orElseThrow(() -> new IllegalStateException("ProfileService não encontrado!"));
+                .orElseThrow(() -> new IllegalStateException("ProfileService not found!"));
         this.preferencesService = ServiceRegistry.getInstance().getService(PreferencesService.class)
-                .orElseThrow(() -> new IllegalStateException("PreferencesService não encontrado!"));
+                .orElseThrow(() -> new IllegalStateException("PreferencesService not found!"));
         this.roleService = ServiceRegistry.getInstance().getService(RoleService.class)
-                .orElseThrow(() -> new IllegalStateException("RoleService não encontrado para PlayerListener (Velocity)!"));
+                .orElseThrow(() -> new IllegalStateException("RoleService not found for PlayerListener (Velocity)!"));
         this.statisticsService = ServiceRegistry.getInstance().getService(StatisticsService.class)
-                .orElseThrow(() -> new IllegalStateException("StatisticsService não encontrado para PlayerListener (Velocity)!"));
+                .orElseThrow(() -> new IllegalStateException("StatisticsService not found for PlayerListener (Velocity)!"));
         this.sessionTrackerServiceOpt = ServiceRegistry.getInstance().getService(SessionTrackerService.class);
         this.logger = Proxy.getInstance().getLogger();
 
@@ -69,12 +65,12 @@ public class PlayerJoinListener {
 
 
         if (sessionTrackerServiceOpt.isEmpty()) {
-            logger.warning("SessionTrackerService não encontrado! Rastreamento de sessão não funcionará.");
+            logger.warning("[PlayerJoin] SessionTrackerService not found! Session tracking will not work.");
         }
-        if(geyserApiAvailable) logger.info("Geyser (Velocity) detectado.");
-        else logger.info("Geyser (Velocity) não detectado.");
-        if(viaVersionApiAvailable) logger.info("ViaVersion (Velocity) detectado.");
-        else logger.info("ViaVersion (Velocity) não detectado.");
+        if(geyserApiAvailable) logger.info("[PlayerJoin] Geyser detected.");
+        else logger.info("[PlayerJoin] Geyser not detected.");
+        if(viaVersionApiAvailable) logger.info("[PlayerJoin] ViaVersion detected.");
+        else logger.info("[PlayerJoin] ViaVersion not detected.");
     }
 
     @Subscribe(order = com.velocitypowered.api.event.PostOrder.EARLY)
@@ -92,7 +88,7 @@ public class PlayerJoinListener {
         UUID uuid = player.getUniqueId();
 
         roleService.startPreLoadingPlayerData(uuid);
-        logger.finer("Pré-carregamento de roles iniciado (LoginEvent) para " + player.getUsername());
+        logger.finer("[PlayerJoin] Role pre-loading started (LoginEvent) for " + player.getUsername());
     }
 
 
@@ -104,7 +100,8 @@ public class PlayerJoinListener {
         UUID uuid = player.getUniqueId();
 
         String ip = player.getRemoteAddress() instanceof InetSocketAddress isa ? isa.getAddress().getHostAddress() : null;
-        boolean isPremium = profileService.getByUuid(uuid).map(Profile::isPremiumAccount).orElse(false);
+
+        boolean isPremium = Proxy.getInstance().getPremiumLoginStatus().getOrDefault(usernameLower, false);
 
         String clientVersion = "Unknown";
         String clientType = "Java";
@@ -116,14 +113,12 @@ public class PlayerJoinListener {
                 Object connection = geyserApi.getClass().getMethod("connectionByUuid", UUID.class).invoke(geyserApi, uuid);
                 if (connection != null) {
                     clientType = "Bedrock";
-                    String javaUsername = (String) connection.getClass().getMethod("javaUsername").invoke(connection);
-                    int bedrockProtocol = (int) connection.getClass().getMethod("protocolVersion").invoke(connection);
-                    clientVersion = javaUsername + " (Bedrock/" + bedrockProtocol + ")";
-                    protocolVersion = bedrockProtocol;
-                    logger.finer("Jogador Bedrock detectado: " + displayName);
+                    protocolVersion = (int) connection.getClass().getMethod("protocolVersion").invoke(connection);
+                    clientVersion = String.valueOf(protocolVersion);
+                    logger.finer("[PlayerJoin] Bedrock player detected: " + displayName);
                 }
             } catch (Exception | NoClassDefFoundError geyserEx) {
-                logger.log(Level.WARNING, "Erro ao acessar Geyser API para " + displayName + ". Assumindo Java.", geyserEx);
+                logger.log(Level.WARNING, "[PlayerJoin] Error accessing Geyser API for " + displayName + ". Assuming Java.", geyserEx);
                 clientType = "Java";
             }
         }
@@ -133,9 +128,9 @@ public class PlayerJoinListener {
                 try {
                     protocolVersion = Via.getAPI().getPlayerVersion(uuid);
                     ProtocolVersion pv = ProtocolVersion.getProtocol(protocolVersion);
-                    clientVersion = (pv != null) ? pv.getName() : "Java/" + protocolVersion;
+                    clientVersion = (pv != null) ? pv.getName() : String.valueOf(protocolVersion);
                 } catch (Exception | NoClassDefFoundError viaEx) {
-                    logger.log(Level.FINER, "Falha ao obter versão Java via ViaVersion API para " + displayName + ". Usando fallback.", viaEx);
+                    logger.log(Level.FINER, "[PlayerJoin] Failed to get Java version via ViaVersion API for " + displayName + ". Using Velocity fallback.", viaEx);
                     clientVersion = player.getProtocolVersion().getName();
                     protocolVersion = player.getProtocolVersion().getProtocol();
                 }
@@ -166,17 +161,15 @@ public class PlayerJoinListener {
             sessionTrackerServiceOpt.ifPresent(service -> {
                 service.startSession(uuid, profile.getName(), finalProxyId, null, finalProtocol, (int)player.getPing());
                 service.setSessionState(uuid, AuthenticationGuard.STATE_CONNECTING);
-                logger.fine("Estado da sessão definido como CONNECTING para " + displayName);
+                logger.fine("[PlayerJoin] Session state set to CONNECTING for " + displayName);
             });
 
             roleService.clearSentWarnings(uuid);
 
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "Erro CRÍTICO durante ensureProfile/startSession no PostLogin para " + displayName + " (" + uuid + ")", e);
-            // <<< CORREÇÃO: Usar tradução >>>
+            logger.log(Level.SEVERE, "[PlayerJoin] CRITICAL error during ensureProfile/startSession for " + displayName + " (" + uuid + ")", e);
             String translatedKick = Messages.translate(MessageKey.KICK_GENERIC_PROFILE_ERROR);
             player.disconnect(MiniMessage.miniMessage().deserialize(translatedKick));
-            // <<< FIM CORREÇÃO >>>
             Proxy.getInstance().getLoginTimestamps().remove(uuid);
             sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, displayName));
             roleService.removePreLoginFuture(uuid);
@@ -203,7 +196,7 @@ public class PlayerJoinListener {
                 try {
                     statisticsService.addOnlineTime(uuid, sessionDuration);
                 } catch (Exception e) {
-                    logger.log(Level.WARNING, "Erro ao salvar tempo online no disconnect para " + uuid, e);
+                    logger.log(Level.WARNING, "[PlayerJoin] Error saving online time on disconnect for " + uuid, e);
                 }
             }
         }
@@ -215,6 +208,6 @@ public class PlayerJoinListener {
         Proxy.getInstance().getOfflineUuids().remove(player.getUsername().toLowerCase());
 
         roleService.invalidateSession(uuid);
-        logger.finer("Sessão invalidada (cache local RoleService) para " + uuid + " no disconnect.");
+        logger.finer("[PlayerJoin] Session invalidated (local RoleService cache) for " + uuid + " on disconnect.");
     }
 }

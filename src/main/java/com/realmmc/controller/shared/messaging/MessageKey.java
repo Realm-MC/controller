@@ -204,6 +204,7 @@ public enum MessageKey {
     KICK_PROFILE_ERROR("kick.profile_error"),
     KICK_PROFILE_UNEXPECTED("kick.profile_unexpected"),
     KICK_GENERIC_PROFILE_ERROR("kick.generic_profile_error"),
+    KICK_PREMIUM_AUTH_FAILED("kick.premium_auth_failed"),
 
     ROLE_WARN_CLEAR_GROUP_FAIL_COUNT("role.warn.clear_group.fail_count"),
 

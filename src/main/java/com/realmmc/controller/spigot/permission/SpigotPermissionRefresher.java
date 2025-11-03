@@ -21,48 +21,41 @@ public class SpigotPermissionRefresher implements PermissionRefresher {
         this.plugin = plugin;
         this.logger = logger;
         try { this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class); }
-        catch (IllegalStateException e) { /* ... log e throw ... */ logger.log(Level.SEVERE, "Erro Crítico: RoleService não encontrado!", e); throw new RuntimeException("Falha: RoleService ausente.", e); }
-        logger.info("SpigotPermissionRefresher inicializado.");
+        catch (IllegalStateException e) { logger.log(Level.SEVERE, "[PermissionRefresher] Critical Error: RoleService not found!", e); throw new RuntimeException("Failed: RoleService is missing.", e); }
+        logger.info("[PermissionRefresher] SpigotPermissionRefresher initialized.");
     }
 
     @Override
     public void refreshPlayerPermissions(UUID playerUuid) {
         if (playerUuid == null) return;
 
-        // Delega para a thread principal do Bukkit
         Bukkit.getScheduler().runTask(plugin, () -> {
             Player player = Bukkit.getPlayer(playerUuid);
 
             if (player != null && player.isOnline()) {
-                logger.info("[Permissions] Recebido pedido de refresh para " + player.getName() + ". Disparando recálculo async...");
+                logger.info("[PermissionRefresher] Received refresh request for online Spigot player: " + player.getName() + ". Dispatching async recalculation...");
 
-                // Dispara recálculo assíncrono
                 roleService.loadPlayerDataAsync(playerUuid)
-                        .whenComplete((sessionData, error) -> { // Roda no pool do RoleService
-                            // Agenda a parte final na thread principal do Bukkit
+                        .whenComplete((sessionData, error) -> {
                             Bukkit.getScheduler().runTask(plugin, () -> {
-                                if (!player.isOnline()) return; // Verifica se ainda está online
+                                if (!player.isOnline()) return;
 
                                 if (error != null) {
-                                    logger.log(Level.SEVERE, "Erro durante recálculo de permissões no refresh para " + player.getName(), error);
+                                    logger.log(Level.SEVERE, "[PermissionRefresher] Error during permission recalculation for " + player.getName(), error);
                                 } else {
-                                    logger.fine("Recálculo concluído para " + player.getName() + ". Forçando reavaliação do Bukkit...");
+                                    logger.fine("[PermissionRefresher] Recalculation complete for " + player.getName() + ". Forcing Bukkit re-evaluation...");
                                     try {
-                                        // <<< ================= CORREÇÃO AQUI ================= >>>
                                         player.recalculatePermissions();
-                                        // <<< =============================================== >>>
-                                        logger.fine("Bukkit recalculatePermissions() chamado para " + player.getName());
-                                        // Opcional: player.updateCommands(); // Se comandos baseados em perm não atualizarem
+                                        logger.fine("[PermissionRefresher] Bukkit recalculatePermissions() called for " + player.getName());
                                     } catch (Exception e) {
-                                        logger.log(Level.WARNING, "Erro ao chamar recalculatePermissions() para " + player.getName(), e);
+                                        logger.log(Level.WARNING, "[PermissionRefresher] Error calling recalculatePermissions() for " + player.getName(), e);
                                     }
                                 }
-                            }); // Fim do runTask interno
-                        }); // Fim do whenComplete
-
+                            });
+                        });
             } else {
-                logger.finest("[Permissions] Pedido de refresh para jogador offline/outro servidor: " + playerUuid);
+                logger.finest("[PermissionRefresher] Refresh request for player not online on this server: " + playerUuid);
             }
-        }); // Fim do runTask externo
+        });
     }
 }

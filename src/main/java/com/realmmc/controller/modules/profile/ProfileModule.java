@@ -4,23 +4,19 @@ import com.realmmc.controller.core.modules.AbstractCoreModule;
 import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.shared.profile.ProfileService;
-import com.realmmc.controller.shared.profile.ProfileSyncSubscriber; // Importa o novo listener
+import com.realmmc.controller.shared.profile.ProfileSyncSubscriber;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
-import com.realmmc.controller.shared.storage.redis.RedisSubscriber; // Importa o subscriber
-// --- Adicionar import ---
+import com.realmmc.controller.shared.storage.redis.RedisSubscriber;
 import com.realmmc.controller.shared.session.SessionTrackerService;
-// --- Fim Adição ---
-import java.util.logging.Level; // Import Level
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 @AutoRegister(platforms = {AutoRegister.Platform.ALL})
 public class ProfileModule extends AbstractCoreModule {
 
-    private ProfileSyncSubscriber profileSyncSubscriber; // <<< Tipo mudado para o novo listener
-    private RedisSubscriber redisSubscriber; // <<< Referência ao subscriber compartilhado
-    // --- Adicionar instância ---
+    private ProfileSyncSubscriber profileSyncSubscriber;
+    private RedisSubscriber redisSubscriber;
     private SessionTrackerService sessionTrackerService;
-    // --- Fim Adição ---
 
     public ProfileModule(Logger logger) {
         super(logger);
@@ -31,12 +27,10 @@ public class ProfileModule extends AbstractCoreModule {
         return "Profile";
     }
 
-    // <<< ADICIONADO MÉTODO getVersion() >>>
     @Override
     public String getVersion() {
-        return "1.0.0"; // Ou a versão correta
+        return "1.0.0";
     }
-    // <<< FIM ADIÇÃO >>>
 
     @Override
     public String getDescription() {
@@ -45,93 +39,77 @@ public class ProfileModule extends AbstractCoreModule {
 
     @Override
     protected void onEnable() throws Exception {
-        logger.info("Inicializando serviço de perfis e rastreamento de sessão..."); // Mensagem atualizada
+        logger.info("[ProfileModule] Initializing profile and session tracking service...");
 
-        // --- Inicializa ProfileService ---
         ProfileService profileService = new ProfileService();
         ServiceRegistry.getInstance().registerService(ProfileService.class, profileService);
 
-        // --- Inicializa SessionTrackerService ---
         try {
-            this.sessionTrackerService = new SessionTrackerService(); // Cria a instância
-            ServiceRegistry.getInstance().registerService(SessionTrackerService.class, this.sessionTrackerService); // Registra
-            logger.info("SessionTrackerService inicializado e registrado.");
+            this.sessionTrackerService = new SessionTrackerService();
+            ServiceRegistry.getInstance().registerService(SessionTrackerService.class, this.sessionTrackerService);
+            logger.info("[ProfileModule] SessionTrackerService initialized and registered.");
         } catch (IllegalStateException e) {
-            logger.log(Level.SEVERE, "Falha crítica ao inicializar SessionTrackerService (dependência ProfileService ausente?). Módulo Profile não habilitado completamente.", e);
-            // Não lançar exceção aqui permite que ProfileService funcione, mas SessionTracker não.
-            this.sessionTrackerService = null; // Garante que é nulo
-            // Poderia lançar 'throw e;' se SessionTracker for absolutamente essencial
+            logger.log(Level.SEVERE, "[ProfileModule] Critical failure initializing SessionTrackerService. Profile module not fully enabled.", e);
+            this.sessionTrackerService = null;
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "Erro inesperado ao inicializar SessionTrackerService!", e);
+            logger.log(Level.SEVERE, "[ProfileModule] Unexpected error initializing SessionTrackerService!", e);
             this.sessionTrackerService = null;
         }
-        // --- Fim SessionTrackerService ---
 
-        // --- Lógica do ProfileSyncSubscriber (sem mudanças) ---
         try {
-            // Obtém o subscriber compartilhado (criado pelo DatabaseModule)
             this.redisSubscriber = ServiceRegistry.getInstance().requireService(RedisSubscriber.class);
 
-            // Instancia o novo listener (que agora é só um listener)
             this.profileSyncSubscriber = new ProfileSyncSubscriber();
 
-            // Registra o listener no subscriber compartilhado
             this.redisSubscriber.registerListener(RedisChannel.PROFILES_SYNC, this.profileSyncSubscriber);
 
-            logger.info("ProfileSyncSubscriber (v2) registrado no RedisSubscriber compartilhado.");
+            logger.info("[ProfileModule] ProfileSyncSubscriber (v2) registered with shared RedisSubscriber.");
         } catch (IllegalStateException e) {
-            logger.log(Level.SEVERE, "Falha ao registrar ProfileSyncSubscriber: RedisSubscriber não encontrado!", e);
+            logger.log(Level.SEVERE, "[ProfileModule] Failed to register ProfileSyncSubscriber: RedisSubscriber not found!", e);
             this.redisSubscriber = null;
             this.profileSyncSubscriber = null;
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "Erro inesperado ao registrar ProfileSyncSubscriber!", e);
+            logger.log(Level.SEVERE, "[ProfileModule] Unexpected error registering ProfileSyncSubscriber!", e);
             this.redisSubscriber = null;
             this.profileSyncSubscriber = null;
         }
-        // <<< FIM ATUALIZAÇÃO >>>
 
-        logger.info("Módulo de perfis inicializado"); // Mensagem original ligeiramente ajustada
+        logger.info("[ProfileModule] Profile module initialized");
     }
 
     @Override
     protected void onDisable() throws Exception {
-        logger.info("Finalizando serviço de perfis e rastreamento de sessão..."); // Mensagem atualizada
+        logger.info("[ProfileModule] Finalizing profile and session tracking service...");
 
-        // <<< LÓGICA DE DESREGISTRO ATUALIZADA >>>
         if (this.profileSyncSubscriber != null && this.redisSubscriber != null) {
             try {
                 this.redisSubscriber.unregisterListener(RedisChannel.PROFILES_SYNC);
-                logger.info("ProfileSyncSubscriber (v2) desregistrado.");
+                logger.info("[ProfileModule] ProfileSyncSubscriber (v2) unregistered.");
             } catch (Exception e) {
-                logger.log(Level.WARNING, "Erro ao desregistrar ProfileSyncSubscriber.", e);
+                logger.log(Level.WARNING, "[ProfileModule] Error unregistering ProfileSyncSubscriber.", e);
             }
         }
         this.profileSyncSubscriber = null;
         this.redisSubscriber = null;
-        // <<< FIM ATUALIZAÇÃO >>>
 
-        // --- Desregistro do SessionTrackerService ---
         if (this.sessionTrackerService != null) {
             ServiceRegistry.getInstance().unregisterService(SessionTrackerService.class);
-            logger.info("SessionTrackerService desregistrado.");
+            logger.info("[ProfileModule] SessionTrackerService unregistered.");
             this.sessionTrackerService = null;
         }
-        // --- Fim Desregistro ---
 
-        // --- Desregistro do ProfileService (sem mudanças) ---
         ServiceRegistry.getInstance().unregisterService(ProfileService.class);
 
-        logger.info("Módulo de perfis finalizado");
+        logger.info("[ProfileModule] Profile module finalized");
     }
 
     @Override
     public String[] getDependencies() {
-        // Depende de Database (para MongoDB e RedisSubscriber) e Scheduler (para RoleService)
         return new String[]{"Database", "SchedulerModule"};
     }
 
     @Override
     public int getPriority() {
-        return 18; // Roda depois de Database e Scheduler
+        return 18;
     }
 }

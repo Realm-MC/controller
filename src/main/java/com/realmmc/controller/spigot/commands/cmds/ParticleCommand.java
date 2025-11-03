@@ -13,7 +13,6 @@ import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.commands.CommandInterface;
-import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.config.ParticleEntry;
 import com.realmmc.controller.spigot.entities.particles.ParticleService;
 import org.bukkit.Bukkit;
@@ -34,14 +33,13 @@ import java.util.stream.Stream;
 public class ParticleCommand implements CommandInterface {
 
     private final String permission = "controller.manager";
-    private final String requiredGroupName = "Gerente"; // Nome do grupo
+    private final String requiredGroupName = "Gerente";
     private final ParticleService particleService;
-    private final Logger logger; // Logger padronizado
+    private final Logger logger;
 
     public ParticleCommand() {
         this.particleService = ServiceRegistry.getInstance().getService(ParticleService.class)
-                .orElseThrow(() -> new IllegalStateException("ParticleService não foi encontrado!"));
-        // Obter logger da instância principal
+                .orElseThrow(() -> new IllegalStateException("ParticleService not found!"));
         this.logger = Main.getInstance().getLogger();
     }
 
@@ -54,7 +52,7 @@ public class ParticleCommand implements CommandInterface {
         }
 
         if (args.length == 0 || (args.length > 0 && args[0].equalsIgnoreCase("help"))) {
-            showHelp(sender, label); // Passar label para showHelp
+            showHelp(sender, label);
             return;
         }
 
@@ -76,17 +74,15 @@ public class ParticleCommand implements CommandInterface {
                 playSound(sender, SoundKeys.SUCCESS);
                 break;
             default:
-                showHelp(sender, label); // Passar label
+                showHelp(sender, label);
                 playSound(sender, SoundKeys.USAGE_ERROR);
                 break;
         }
     }
 
-    // --- Métodos de Ajuda e Utilitários ---
-
     private void showHelp(CommandSender sender, String label) {
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_HEADER).with("system", "Partículas"));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " criar <id> <tipo> [qtd] [intervalo]").with("description", "Cria um novo efeito de partícula."));
+        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " criar <id> <tipo> [qtd] [intervalo_ticks]").with("description", "Cria um novo efeito de partícula."));
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " clone <id original> <novo id>").with("description", "Duplica um efeito de partícula."));
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " remover <id>").with("description", "Remove um efeito permanentemente."));
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " list").with("description", "Lista todos os efeitos existentes."));
@@ -97,7 +93,7 @@ public class ParticleCommand implements CommandInterface {
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " stopanimation <id>").with("description", "Para a animação e volta ao efeito estático."));
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " testplayer <id> [jogador]").with("description", "Mostra um efeito apenas para um jogador."));
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " reload").with("description", "Recarrega todos os efeitos do ficheiro."));
-        Messages.send(sender, MessageKey.COMMON_HELP_FOOTER_FULL); // Usa rodapé completo (pois tem [])
+        Messages.send(sender, MessageKey.COMMON_HELP_FOOTER_FULL);
         playSound(sender, SoundKeys.NOTIFICATION);
     }
 
@@ -112,8 +108,6 @@ public class ParticleCommand implements CommandInterface {
             soundPlayerOpt.ifPresent(sp -> sp.playSound(player, key));
         }
     }
-
-    // --- Handlers dos Subcomandos ---
 
     private void handleCreate(CommandSender sender, String[] args, String label) {
         if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); playSound(sender, SoundKeys.ERROR); return; }
@@ -130,8 +124,8 @@ public class ParticleCommand implements CommandInterface {
             playSound(sender, SoundKeys.ERROR); return;
         }
         int amount = 1; int interval = 20;
-        try { if (args.length > 3) amount = Integer.parseInt(args[3]); } catch (NumberFormatException e) { /* Usa default */ }
-        try { if (args.length > 4) interval = Integer.parseInt(args[4]); } catch (NumberFormatException e) { /* Usa default */ }
+        try { if (args.length > 3) amount = Integer.parseInt(args[3]); } catch (NumberFormatException e) { }
+        try { if (args.length > 4) interval = Integer.parseInt(args[4]); } catch (NumberFormatException e) { }
         amount = Math.max(1, amount);
         interval = Math.max(1, interval);
 
@@ -157,7 +151,6 @@ public class ParticleCommand implements CommandInterface {
         if (args.length < 3) { sendUsage(sender, "/" + label + " clone <id original> <novo id>"); return; }
 
         String originalId = args[1];
-        // <<< CORREÇÃO: Mover a declaração para antes do uso >>>
         String newId = args[2];
 
         if (particleService.getParticleEntry(originalId) == null) {
@@ -271,8 +264,7 @@ public class ParticleCommand implements CommandInterface {
             success = false;
         } catch (Exception e) {
             Messages.send(sender, MessageKey.COMMAND_ERROR);
-            // Logar o erro detalhado no console
-            logger.log(Level.WARNING, "Erro ao executar /" + label + " set " + id + " " + prop + " " + value, e);
+            logger.log(Level.WARNING, "[ParticleCommand] Error executing /" + label + " set " + id + " " + prop + " " + value, e);
             success = false;
         }
 
@@ -291,7 +283,6 @@ public class ParticleCommand implements CommandInterface {
         String type = args[2].toLowerCase();
 
         if (!Arrays.asList("circle", "helix", "sphere").contains(type)) {
-            // Reutiliza a mensagem de uso
             sendUsage(sender, "/" + label + " animate <id> <circle|helix|sphere> [opções...]");
             return;
         }
@@ -304,11 +295,8 @@ public class ParticleCommand implements CommandInterface {
                 if (parts.length == 2 && !parts[0].isBlank() && !parts[1].isBlank()) {
                     props.put(parts[0].toLowerCase().trim(), parts[1].trim());
                 } else {
-                    // Usar MessageKey (assumindo que PARTICLE_INVALID_ANIMATION_OPTION foi adicionada)
-                    // Messages.send(sender, Message.of(MessageKey.PARTICLE_INVALID_ANIMATION_OPTION).with("option", args[i]));
-                    // Por enquanto, log e mensagem hardcoded (mas traduzível)
-                    logger.log(Level.FINER, "Opção de animação mal formatada: {0}", args[i]);
-                    Messages.send(sender, "<yellow>Ignorando opção de animação mal formatada: " + args[i] + "</yellow>");
+                    logger.log(Level.FINER, "[ParticleCommand] Malformed animation option: {0}", args[i]);
+                    Messages.send(sender, Message.of(MessageKey.PARTICLE_INVALID_ANIM_OPTION).with("option", args[i]));
                 }
             }
         }
@@ -365,11 +353,9 @@ public class ParticleCommand implements CommandInterface {
                     Profile targetProfile = targetProfileOpt.get();
                     UUID targetUuid = targetProfile.getUuid();
 
-                    // 1. Verificar se o jogador está online NESTE SERVIDOR primeiro
                     Player targetOnline = Bukkit.getPlayer(targetUuid);
 
                     if (targetOnline == null || !targetOnline.isOnline()) {
-                        // O jogador não está neste servidor Spigot.
                         String formattedNick = com.realmmc.controller.shared.utils.NicknameFormatter.getFullFormattedNick(targetUuid);
                         Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NOT_ONLINE)
                                 .with("player", formattedNick));
@@ -377,16 +363,13 @@ public class ParticleCommand implements CommandInterface {
                         return;
                     }
 
-                    // 2. O jogador está neste servidor, AGORA verificar se está autenticado
                     Optional<String> authError = AuthenticationGuard.checkCanInteractWith(targetUuid);
                     if (authError.isPresent()) {
-                        // O jogador está aqui, mas ainda está no estado "CONNECTING"
-                        Messages.send(sender, authError.get()); // Envia a mensagem (ex: "jogador conectando")
+                        Messages.send(sender, authError.get());
                         playSound(sender, SoundKeys.ERROR);
                         return;
                     }
 
-                    // 3. O jogador está online E autenticado. Enviar partícula.
                     if (particleService.spawnForPlayerOnce(targetOnline, particleId)) {
                         String formattedNick = com.realmmc.controller.shared.utils.NicknameFormatter.getFullFormattedNick(targetUuid);
                         Messages.send(sender, Message.of(MessageKey.PARTICLE_TESTED)
@@ -400,15 +383,12 @@ public class ParticleCommand implements CommandInterface {
 
                 }, runnable -> Bukkit.getScheduler().runTask(ServiceRegistry.getInstance().requireService(Plugin.class), runnable))
                 .exceptionally(ex -> {
-                    // Log padronizado
-                    logger.log(Level.SEVERE, "Erro ao resolver perfil ou enviar partícula para " + finalTargetNameInput, ex);
+                    logger.log(Level.SEVERE, "[ParticleCommand] Error resolving profile or sending particle for " + finalTargetNameInput, ex);
                     Messages.send(sender, MessageKey.COMMAND_ERROR);
                     playSound(sender, SoundKeys.ERROR);
                     return null;
                 });
     }
-
-    // --- Tab Completion ---
 
     @Override
     public List<String> tabComplete(CommandSender sender, String[] args) {
@@ -427,35 +407,27 @@ public class ParticleCommand implements CommandInterface {
                 StringUtil.copyPartialMatches(currentArg, particleService.getAllParticleIds(), completions);
             }
         }
-
-        // <<< CORREÇÃO DE TAB COMPLETION AQUI (Lógica para args.length == 3) >>>
         else if (args.length == 3) {
             String sub = args[0].toLowerCase();
 
             if (sub.equals("criar")) {
-                // Sugere tipos de partícula (para /particle criar <id> <tipo>)
                 List<String> pTypes = Stream.of(Particle.values())
                         .map(m -> m.name().toLowerCase())
                         .collect(Collectors.toList());
                 StringUtil.copyPartialMatches(currentArg, pTypes, completions);
             }
             else if (sub.equals("set")) {
-                // Sugere propriedades (para /particle set <id> <propriedade>)
                 StringUtil.copyPartialMatches(currentArg, Arrays.asList(
                         "tipo", "quantidade", "intervalo", "velocidade", "offset", "dados", "distancia"), completions);
             }
             else if (sub.equals("testplayer")) {
-                // Sugere jogadores online (para /particle testplayer <id> <jogador>)
                 List<String> suggestions = Bukkit.getOnlinePlayers().stream().map(Player::getName).collect(Collectors.toList());
                 StringUtil.copyPartialMatches(currentArg, suggestions, completions);
             }
             else if (sub.equals("animate")) {
-                // Sugere tipos de animação (para /particle animate <id> <tipo>)
                 StringUtil.copyPartialMatches(currentArg, Arrays.asList("circle", "helix", "sphere"), completions);
             }
         }
-        // <<< FIM DA CORREÇÃO DE TAB COMPLETION AQUI >>>
-
         else if (args.length == 4) {
             String sub = args[0].toLowerCase();
             if (sub.equals("set")) {

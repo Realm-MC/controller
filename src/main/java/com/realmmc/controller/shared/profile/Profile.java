@@ -29,6 +29,8 @@ public class Profile {
     private long lastLogin;
     private String lastClientVersion;
     private String lastClientType;
+    private String firstClientVersion;
+    private String firstClientType;
     @Builder.Default
     private List<PlayerRole> roles = new ArrayList<>();
     private String primaryRoleName;

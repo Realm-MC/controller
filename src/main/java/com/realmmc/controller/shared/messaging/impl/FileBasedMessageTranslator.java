@@ -8,10 +8,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-// <<< IMPORT ADICIONADO PARA CORRIGIR ACENTUAÇÃO >>>
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-// <<< FIM >>>
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
@@ -52,10 +50,7 @@ public class FileBasedMessageTranslator implements MessageTranslator {
             for (Map.Entry<String, Object> entry : message.getPlaceholders().entrySet()) {
                 String placeholder = "{" + entry.getKey() + "}";
                 String value = String.valueOf(entry.getValue());
-                // <<< CORREÇÃO DO BUG DE PLACEHOLDER >>>
-                // Garante que a variável 'template' é atualizada
                 template = template.replace(placeholder, value);
-                // <<< FIM CORREÇÃO >>>
             }
         }
 
@@ -77,13 +72,13 @@ public class FileBasedMessageTranslator implements MessageTranslator {
         messageCache.clear();
 
         if (!messagesDirectory.exists() || !messagesDirectory.isDirectory()) {
-            LOGGER.warning("Messages directory does not exist: " + messagesDirectory.getAbsolutePath());
+            LOGGER.warning("[Translator] Messages directory does not exist: " + messagesDirectory.getAbsolutePath());
             return;
         }
 
         File[] files = messagesDirectory.listFiles((dir, name) -> name.endsWith(".properties"));
         if (files == null) {
-            LOGGER.warning("No message files found in: " + messagesDirectory.getAbsolutePath());
+            LOGGER.warning("[Translator] No message files found in: " + messagesDirectory.getAbsolutePath());
             return;
         }
 
@@ -92,18 +87,18 @@ public class FileBasedMessageTranslator implements MessageTranslator {
         }
 
         if (!messageCache.containsKey(this.defaultLocale)) {
-            LOGGER.warning("Locale padrão " + this.defaultLocale + " não encontrado, tentando carregar 'pt_BR' ou 'en' como fallback...");
+            LOGGER.warning("[Translator] Default locale " + this.defaultLocale + " not found, trying fallback to 'pt_BR' or 'en'...");
             if (messageCache.containsKey(new Locale("pt", "BR"))) {
                 this.defaultLocale = new Locale("pt", "BR");
             } else if (messageCache.containsKey(Locale.ENGLISH)) {
                 this.defaultLocale = Locale.ENGLISH;
-                LOGGER.warning("Definindo 'en' como default fallback.");
+                LOGGER.warning("[Translator] Setting 'en' as default fallback.");
             } else {
-                LOGGER.severe("Nenhum arquivo de tradução (pt_BR ou en) encontrado!");
+                LOGGER.severe("[Translator] No translation file (pt_BR or en) found!");
             }
         }
 
-        LOGGER.info("Loaded messages for " + messageCache.size() + " locales. Default locale set to: " + this.defaultLocale);
+        LOGGER.info("[Translator] Loaded messages for " + messageCache.size() + " locales. Default locale set to: " + this.defaultLocale);
     }
 
     @Override
@@ -164,16 +159,14 @@ public class FileBasedMessageTranslator implements MessageTranslator {
         }
 
         Properties properties = new Properties();
-        // <<< CORREÇÃO: Força a leitura do ficheiro como UTF-8 >>>
         try (InputStream input = new FileInputStream(file);
              InputStreamReader reader = new InputStreamReader(input, StandardCharsets.UTF_8)) {
 
             properties.load(reader);
-            // <<< FIM CORREÇÃO >>>
             messageCache.put(locale, properties);
-            LOGGER.info("Loaded " + properties.size() + " messages for locale: " + locale);
+            LOGGER.info("[Translator] Loaded " + properties.size() + " messages for locale: " + locale);
         } catch (IOException e) {
-            LOGGER.severe("Failed to load message file: " + file.getAbsolutePath() + " - " + e.getMessage());
+            LOGGER.severe("[Translator] Failed to load message file: " + file.getAbsolutePath() + " - " + e.getMessage());
         }
     }
 }

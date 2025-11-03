@@ -14,12 +14,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.logging.Level; // Importar Level
-import java.util.logging.Logger; // Importar Logger
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class ProfileRepository extends AbstractMongoRepository<Profile> {
 
-    private static final Logger LOGGER = Logger.getLogger(ProfileRepository.class.getName()); // Logger
+    private static final Logger LOGGER = Logger.getLogger(ProfileRepository.class.getName());
 
     public ProfileRepository() {
         super(Profile.class, "profiles");
@@ -34,22 +34,17 @@ public class ProfileRepository extends AbstractMongoRepository<Profile> {
                     .unique(true)
                     .collation(Collation.builder()
                             .locale("en")
-                            .collationStrength(CollationStrength.SECONDARY) // Case-insensitive
+                            .collationStrength(CollationStrength.SECONDARY)
                             .build()));
             col.createIndex(Indexes.descending("lastLogin"));
 
-            // <<< CORREÇÃO: Mudar de hashed para ascending (Multikey Index) >>>
             col.createIndex(Indexes.ascending("roles.roleName"));
-            // <<< FIM CORREÇÃO >>>
 
             col.createIndex(Indexes.ascending("roles.status"));
 
-            LOGGER.info("Índices da coleção 'profiles' verificados/criados com sucesso.");
+            LOGGER.info("[ProfileRepository] Indexes for 'profiles' collection checked/created successfully.");
         } catch (MongoException e) {
-            // Loga o erro mas não impede a inicialização (pode ser erro de permissão ou já existe)
-            LOGGER.log(Level.SEVERE, "Falha ao criar/verificar índices para a coleção 'profiles'", e);
-            // Relança a exceção para fazer o módulo falhar (como aconteceu nos logs)
-            // Isso é BOM, pois impede o servidor de iniciar com configuração de DB errada.
+            LOGGER.log(Level.SEVERE, "[ProfileRepository] Failed to create/check indexes for 'profiles' collection", e);
             throw e;
         }
     }

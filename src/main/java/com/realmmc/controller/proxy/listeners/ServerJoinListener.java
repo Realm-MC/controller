@@ -4,7 +4,7 @@ import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.PlayerSessionData;
 import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.modules.server.ServerRegistryService;
-import com.realmmc.controller.modules.server.data.ServerInfo; // Sua classe ServerInfo do DB
+import com.realmmc.controller.modules.server.data.ServerInfo;
 import com.realmmc.controller.modules.server.data.ServerInfoRepository;
 import com.realmmc.controller.shared.annotations.Listeners;
 import com.realmmc.controller.shared.auth.AuthenticationGuard;
@@ -17,7 +17,6 @@ import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.player.ServerPreConnectEvent;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
-// NÃO importamos a ServerInfo do Velocity para evitar conflito. Usaremos o nome completo.
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 
@@ -33,7 +32,7 @@ public class ServerJoinListener {
     private final Optional<SoundPlayer> soundPlayerOpt;
     private final ServerRegistryService serverRegistryService;
     private final Logger logger = Logger.getLogger(ServerJoinListener.class.getName());
-    private final MiniMessage miniMessage = MiniMessage.miniMessage(); // Instância do MiniMessage
+    private final MiniMessage miniMessage = MiniMessage.miniMessage();
 
 
     public ServerJoinListener() {
@@ -49,7 +48,6 @@ public class ServerJoinListener {
 
         RegisteredServer targetServer = event.getOriginalServer();
 
-        // 1. Verificar se o jogador está autenticado
         if (!AuthenticationGuard.isAuthenticated(player.getUniqueId())) {
             if (AuthenticationGuard.isConnecting(player.getUniqueId())) {
                 return;
@@ -75,10 +73,8 @@ public class ServerJoinListener {
         Optional<PlayerSessionData> sessionDataOpt = roleService.getSessionDataFromCache(player.getUniqueId());
 
         if (sessionDataOpt.isEmpty()) {
-            logger.warning("Session Data não encontrado para " + player.getUsername() + " ao tentar conectar a " + targetName);
-
-            // <<< CORREÇÃO API: Usar denied() e Messages.send() >>>
-            event.setResult(ServerPreConnectEvent.ServerResult.denied()); // Erro Linha 90
+            logger.warning("[ServerJoin] Session Data not found for " + player.getUsername() + " when trying to connect to " + targetName);
+            event.setResult(ServerPreConnectEvent.ServerResult.denied());
             Messages.send(player, Message.of(MessageKey.AUTH_STILL_CONNECTING));
             return;
         }
@@ -86,7 +82,6 @@ public class ServerJoinListener {
         PlayerSessionData sessionData = sessionDataOpt.get();
         int playerWeight = sessionData.getPrimaryRole().getWeight();
 
-        // --- 1. VERIFICAÇÃO DE GRUPO MÍNIMO (PONTO 1) ---
         if (!serverInfo.getMinGroup().equalsIgnoreCase("default")) {
             Optional<Integer> minGroupWeightOpt = roleService.getRole(serverInfo.getMinGroup()).map(r -> r.getWeight());
 
@@ -95,15 +90,13 @@ public class ServerJoinListener {
                         .with("server", serverInfo.getDisplayName())
                         .with("min_group_display", roleService.getRole(serverInfo.getMinGroup()).map(r -> r.getDisplayName()).orElse(serverInfo.getMinGroup()));
 
-                // <<< CORREÇÃO API: Usar denied() e Messages.send() >>>
-                event.setResult(ServerPreConnectEvent.ServerResult.denied()); // Erro Linha 108
+                event.setResult(ServerPreConnectEvent.ServerResult.denied());
                 Messages.send(player, msg);
                 sendFailureSound(player);
                 return;
             }
         }
 
-        // --- 2. VERIFICAÇÃO DE LOTAÇÃO ---
         int currentPlayers = targetServer.getPlayersConnected().size();
 
         int maxNormalSlots = serverInfo.getMaxPlayers();
@@ -114,18 +107,15 @@ public class ServerJoinListener {
             if (sessionData.getPrimaryRole().getType() == com.realmmc.controller.shared.role.RoleType.VIP || playerWeight > roleService.getRole("default").map(r->r.getWeight()).orElse(0)) {
 
                 if (currentPlayers >= maxVipSlots) {
-                    // (PONTO 3)
                     Message msg = Message.of(MessageKey.SERVER_JOIN_FAIL_FULL_NO_VIP)
                             .with("server", serverInfo.getDisplayName())
                             .with("max_slots", maxVipSlots);
 
-                    // <<< CORREÇÃO API: Usar denied() e Messages.send() >>>
-                    event.setResult(ServerPreConnectEvent.ServerResult.denied()); // Erro Linha 131
+                    event.setResult(ServerPreConnectEvent.ServerResult.denied());
                     Messages.send(player, msg);
                     sendFailureSound(player);
                     return;
                 }
-                // (PONTO 2)
                 Messages.send(player,
                         Message.of(MessageKey.SERVER_JOIN_FAIL_FULL_VIP_SLOT)
                                 .with("server", serverInfo.getDisplayName())
@@ -133,20 +123,17 @@ public class ServerJoinListener {
                 );
 
             } else {
-                // (Default cheio)
                 Message msg = Message.of(MessageKey.SERVER_JOIN_FAIL_FULL_NO_VIP)
                         .with("server", serverInfo.getDisplayName())
                         .with("max_slots", maxNormalSlots);
 
-                // <<< CORREÇÃO API: Usar denied() e Messages.send() >>>
-                event.setResult(ServerPreConnectEvent.ServerResult.denied()); // Erro Linha 146
+                event.setResult(ServerPreConnectEvent.ServerResult.denied());
                 Messages.send(player, msg);
                 sendFailureSound(player);
                 return;
             }
         }
 
-        // 3. LOGICA PONTO 4 (Redirecionamento de LOBBY_AUTO Fechado)
         if (serverInfo.getType() == com.realmmc.controller.modules.server.data.ServerType.LOBBY_AUTO && serverInfo.getStatus() == com.realmmc.controller.modules.server.data.ServerStatus.STOPPING) {
             Optional<RegisteredServer> bestLobby = serverRegistryService.getBestLobby();
             if (bestLobby.isPresent()) {
@@ -157,8 +144,7 @@ public class ServerJoinListener {
 
                 Message msg = Message.of(MessageKey.SERVER_JOIN_FAIL_NO_LOBBY);
 
-                // <<< CORREÇÃO API: Usar denied() e Messages.send() >>>
-                event.setResult(ServerPreConnectEvent.ServerResult.denied()); // Erro Linha 165
+                event.setResult(ServerPreConnectEvent.ServerResult.denied());
                 Messages.send(player, msg);
                 sendFailureSound(player);
             }

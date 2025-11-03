@@ -9,7 +9,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerLoginEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.permissions.PermissibleBase; // Import necessário
+import org.bukkit.permissions.PermissibleBase;
 import org.bukkit.plugin.Plugin;
 
 import java.lang.reflect.Field;
@@ -19,16 +19,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * Injeta o RealmPermissible nos jogadores do Spigot via reflexão no login
- * e restaura o original no logout.
- */
 public class SpigotPermissionInjector implements Listener {
 
     private final Logger logger;
     private final RoleService roleService;
     private final Plugin plugin;
-    private final Field permissibleField; // Campo 'perm' refletido
+    private final Field permissibleField;
     private final Map<UUID, PermissibleBase> originalPermissibles = new ConcurrentHashMap<>();
 
     public SpigotPermissionInjector(Plugin plugin, Logger logger) {
@@ -37,54 +33,43 @@ public class SpigotPermissionInjector implements Listener {
         try {
             this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
         } catch (IllegalStateException e) {
-            logger.log(Level.SEVERE, "Erro crítico: RoleService não encontrado ao iniciar SpigotPermissionInjector!", e);
-            throw new RuntimeException("Falha ao inicializar SpigotPermissionInjector: RoleService ausente.", e);
+            logger.log(Level.SEVERE, "[SpigotPerm] Critical Error: RoleService not found during initialization!", e);
+            throw new RuntimeException("Failed to initialize SpigotPermissionInjector: RoleService missing.", e);
         }
 
-        // --- Reflexão para encontrar o campo 'perm' ---
         Field tempField = null;
-        String version = null; // Para log
+        String version = null;
         try {
-            // Usa o Bukkit API para obter a versão NMS
-            String bukkitVersion = Bukkit.getServer().getBukkitVersion(); // Ex: 1.21-R0.1-SNAPSHOT
-            version = bukkitVersion.split("-")[0]; // Tenta extrair "1.21"
+            String bukkitVersion = Bukkit.getServer().getBukkitVersion();
+            version = bukkitVersion.split("-")[0];
 
-            // Heurística para encontrar a classe CraftHumanEntity correta (pode precisar de ajuste)
-            // Pacote mudou em 1.17+ para não incluir versão
             Class<?> craftHumanEntityClass;
             try {
-                craftHumanEntityClass = Class.forName("org.bukkit.craftbukkit.entity.CraftHumanEntity"); // 1.17+
-                logger.fine("[PermissionInjector] Tentando encontrar campo 'perm' na estrutura 1.17+...");
+                craftHumanEntityClass = Class.forName("org.bukkit.craftbukkit.entity.CraftHumanEntity");
+                logger.fine("[SpigotPerm] Attempting to find 'perm' field in 1.17+ structure...");
             } catch (ClassNotFoundException e) {
-                // Fallback para estrutura < 1.17 (incluindo versão no pacote)
-                version = Bukkit.getServer().getClass().getPackage().getName().split("\\.")[3]; // Formato antigo: v1_16_R3
-                logger.fine("[PermissionInjector] Tentando encontrar campo 'perm' na estrutura < 1.17 (" + version + ")...");
+                version = Bukkit.getServer().getClass().getPackage().getName().split("\\.")[3];
+                logger.fine("[SpigotPerm] Attempting to find 'perm' field in < 1.17 structure (" + version + ")...");
                 craftHumanEntityClass = Class.forName("org.bukkit.craftbukkit." + version + ".entity.CraftHumanEntity");
             }
 
-            // Tenta acessar o campo 'perm'
             tempField = craftHumanEntityClass.getDeclaredField("perm");
             tempField.setAccessible(true);
-            logger.info("[PermissionInjector] Campo 'perm' localizado com sucesso via reflexão.");
+            logger.info("[SpigotPerm] 'perm' field located successfully via reflection.");
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "[PermissionInjector] !!! FALHA CRÍTICA AO LOCALIZAR CAMPO 'perm' VIA REFLEXÃO !!!");
-            logger.log(Level.SEVERE, "[PermissionInjector] Bukkit Version Detectada: " + Bukkit.getServer().getBukkitVersion() + (version != null ? " | NMS Package Version: " + version : ""));
-            logger.log(Level.SEVERE, "[PermissionInjector] O sistema de permissões customizado NÃO funcionará.");
-            logger.log(Level.SEVERE, "[PermissionInjector] Erro: ", e);
-            // Permite que o plugin continue, mas permissões não serão injetadas
+            logger.log(Level.SEVERE, "[SpigotPerm] !!! CRITICAL FAILURE LOCATING 'perm' FIELD VIA REFLECTION !!!");
+            logger.log(Level.SEVERE, "[SpigotPerm] Bukkit Version Detected: " + Bukkit.getServer().getBukkitVersion() + (version != null ? " | NMS Package Version: " + version : ""));
+            logger.log(Level.SEVERE, "[SpigotPerm] Custom permission system will NOT work.");
+            logger.log(Level.SEVERE, "[SpigotPerm] Error: ", e);
         }
-        this.permissibleField = tempField; // Pode ser null se a reflexão falhou
+        this.permissibleField = tempField;
     }
 
-    /**
-     * No evento de Login (após permissões serem pré-carregadas pelo SessionService),
-     * injeta o RealmPermissible.
-     */
-    @EventHandler(priority = EventPriority.HIGH) // Roda DEPOIS do SessionService
+    @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerLoginInject(PlayerLoginEvent event) {
         if (permissibleField == null || event.getResult() != PlayerLoginEvent.Result.ALLOWED) {
             if (permissibleField == null && event.getResult() == PlayerLoginEvent.Result.ALLOWED) {
-                logger.warning("[PermissionInjector] Injeção pulada para " + event.getPlayer().getName() + " - falha na inicialização da reflexão.");
+                logger.warning("[SpigotPerm] Injection skipped for " + event.getPlayer().getName() + " - reflection failed during initialization.");
             }
             return;
         }
@@ -93,30 +78,25 @@ public class SpigotPermissionInjector implements Listener {
         UUID uuid = player.getUniqueId();
 
         try {
-            // Obtém o PermissibleBase atual (pode ser o padrão ou de outro plugin)
             PermissibleBase currentPermissible = (PermissibleBase) permissibleField.get(player);
 
-            // Só injeta se não for o nosso e guarda o original
             if (!(currentPermissible instanceof RealmPermissible)) {
-                originalPermissibles.put(uuid, currentPermissible); // Guarda o que estava lá
+                originalPermissibles.put(uuid, currentPermissible);
                 RealmPermissible customPerm = new RealmPermissible(player, roleService);
                 permissibleField.set(player, customPerm);
-                logger.finer("[PermissionInjector] RealmPermissible injetado para " + player.getName());
+                logger.finer("[SpigotPerm] RealmPermissible injected for " + player.getName());
             } else {
-                logger.finer("[PermissionInjector] RealmPermissible já estava injetado para " + player.getName());
+                logger.finer("[SpigotPerm] RealmPermissible was already injected for " + player.getName());
             }
 
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "[PermissionInjector] Falha ao injetar RealmPermissible para " + player.getName(), e);
-            event.disallow(PlayerLoginEvent.Result.KICK_OTHER, "§cErro ao inicializar sistema de permissões.");
-            originalPermissibles.remove(uuid); // Limpa se guardou algo
+            logger.log(Level.SEVERE, "[SpigotPerm] Failed to inject RealmPermissible for " + player.getName(), e);
+            event.disallow(PlayerLoginEvent.Result.KICK_OTHER, "§cError initializing permission system.");
+            originalPermissibles.remove(uuid);
         }
     }
 
-    /**
-     * No evento de Quit, restaura o PermissibleBase original.
-     */
-    @EventHandler(priority = EventPriority.MONITOR) // Roda por último
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuitRestore(PlayerQuitEvent event) {
         if (permissibleField == null) return;
 
@@ -126,36 +106,31 @@ public class SpigotPermissionInjector implements Listener {
 
         if (original != null) {
             try {
-                // Verifica se o Permissible atual é o nosso antes de restaurar
                 Object currentPerm = permissibleField.get(player);
                 if (currentPerm instanceof RealmPermissible) {
                     permissibleField.set(player, original);
-                    logger.finer("[PermissionInjector] PermissibleBase original restaurado para " + player.getName());
+                    logger.finer("[SpigotPerm] Original PermissibleBase restored for " + player.getName());
                 } else {
-                    logger.warning("[PermissionInjector] PermissibleBase para " + player.getName() + " não era RealmPermissible no quit. Não restaurado.");
+                    logger.warning("[SpigotPerm] PermissibleBase for " + player.getName() + " was not RealmPermissible on quit. Not restored.");
                 }
             } catch (Exception e) {
-                logger.log(Level.WARNING, "[PermissionInjector] Falha ao restaurar PermissibleBase original para " + player.getName(), e);
+                logger.log(Level.WARNING, "[SpigotPerm] Failed to restore original PermissibleBase for " + player.getName(), e);
             }
         } else {
-            // Se não tínhamos um original guardado, apenas garante que o nosso não está mais lá (caso raro)
             try {
                 Object currentPerm = permissibleField.get(player);
                 if (currentPerm instanceof RealmPermissible) {
-                    logger.warning("[PermissionInjector] RealmPermissible encontrado em " + player.getName() + " no quit, mas sem original guardado. Tentando restaurar padrão (PODE FALHAR).");
-                    permissibleField.set(player, new PermissibleBase(player)); // Tenta restaurar padrão
+                    logger.warning("[SpigotPerm] RealmPermissible found in " + player.getName() + " on quit, but no original saved. Attempting to restore default (MAY FAIL).");
+                    permissibleField.set(player, new PermissibleBase(player));
                 }
             } catch (Exception e) {
-                logger.log(Level.WARNING, "[PermissionInjector] Falha ao tentar limpar RealmPermissible no quit para " + player.getName(), e);
+                logger.log(Level.WARNING, "[SpigotPerm] Failed to attempt clean up of RealmPermissible on quit for " + player.getName(), e);
             }
         }
     }
 
-    /**
-     * Limpa o mapa de permissíveis originais (chamado no onDisable do plugin).
-     */
     public void cleanupOnDisable() {
         originalPermissibles.clear();
-        logger.info("[PermissionInjector] Mapa de permissíveis originais limpo.");
+        logger.info("[SpigotPerm] Original permissibles map cleared.");
     }
 }

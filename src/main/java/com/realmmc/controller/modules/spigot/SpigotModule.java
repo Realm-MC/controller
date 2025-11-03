@@ -3,32 +3,26 @@ package com.realmmc.controller.modules.spigot;
 import com.realmmc.controller.core.modules.AbstractCoreModule;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.RoleService;
-import com.realmmc.controller.services.SessionService; // Assumindo que SessionService está neste pacote
-import com.realmmc.controller.shared.profile.Profile; // Importar Profile
-import com.realmmc.controller.shared.profile.ProfileService; // Importar ProfileService
+import com.realmmc.controller.services.SessionService;
 import com.realmmc.controller.shared.role.PermissionRefresher;
-import com.realmmc.controller.shared.role.RoleKickHandler; // <<< IMPORTAR
+import com.realmmc.controller.shared.role.RoleKickHandler;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.realmmc.controller.spigot.commands.CommandManager;
 import com.realmmc.controller.spigot.listeners.ListenersManager;
 import com.realmmc.controller.spigot.permission.SpigotPermissionInjector;
 import com.realmmc.controller.spigot.permission.SpigotPermissionRefresher;
 import com.realmmc.controller.spigot.sounds.SpigotSoundPlayer;
-// --- Imports para Heartbeat ---
-import com.realmmc.controller.shared.session.SessionTrackerService; // Importar
-import com.realmmc.controller.shared.utils.TaskScheduler; // Importar
-import org.bukkit.Bukkit; // Importar Bukkit
-import org.bukkit.entity.Player; // Importar Player
-import java.util.Optional; // Importar Optional
-import java.util.concurrent.ScheduledFuture; // Importar ScheduledFuture
-import java.util.concurrent.TimeUnit; // Importar TimeUnit
-// --- Fim Imports Heartbeat ---
+import com.realmmc.controller.shared.session.SessionTrackerService;
+import com.realmmc.controller.shared.utils.TaskScheduler;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import java.util.Optional;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.event.HandlerList;
 
-// --- Imports para ViaVersion (Heartbeat) ---
 import com.viaversion.viaversion.api.Via;
-// --- Fim Imports ViaVersion ---
 
 import java.util.UUID;
 import java.util.logging.Level;
@@ -38,17 +32,13 @@ public class SpigotModule extends AbstractCoreModule {
     private final Plugin plugin;
     private SessionService sessionServiceInstance;
     private SpigotPermissionInjector permissionInjectorInstance;
-    // --- Campos para Heartbeat ---
-    private Optional<SessionTrackerService> sessionTrackerServiceOpt; // Para acesso ao serviço
-    private ScheduledFuture<?> heartbeatTaskFuture = null; // Para guardar a referência da tarefa
-    // Flag ViaVersion (inicializada no construtor ou onEnable)
+    private Optional<SessionTrackerService> sessionTrackerServiceOpt;
+    private ScheduledFuture<?> heartbeatTaskFuture = null;
     private final boolean viaVersionApiAvailable;
-    // --- Fim Campos Heartbeat ---
 
     public SpigotModule(Plugin plugin, Logger logger) {
         super(logger);
         this.plugin = plugin;
-        // Inicializa a flag ViaVersion aqui
         this.viaVersionApiAvailable = Bukkit.getPluginManager().isPluginEnabled("ViaVersion");
     }
 
@@ -56,10 +46,9 @@ public class SpigotModule extends AbstractCoreModule {
     @Override public String getVersion() { return "1.0.0"; }
     @Override public String getDescription() { return "Módulo específico para funcionalidades Spigot (v2)."; }
 
-    @Override public int getPriority() { return 50; } // Carrega por último
+    @Override public int getPriority() { return 50; }
 
     @Override public String[] getDependencies() {
-        // Adicionar ProfileModule como dependência por causa do SessionTrackerService
         return new String[]{
                 "Profile", "RoleModule", "SchedulerModule", "Command", "Preferences", "Particle"
         };
@@ -67,66 +56,55 @@ public class SpigotModule extends AbstractCoreModule {
 
     @Override
     protected void onEnable() {
-        logger.info("Registrando serviços e listeners específicos do Spigot (v2)...");
-        // --- Obter SessionTrackerService ---
+        logger.info("[SpigotModule] Registering Spigot-specific services and listeners (v2)...");
         this.sessionTrackerServiceOpt = ServiceRegistry.getInstance().getService(SessionTrackerService.class);
         if(sessionTrackerServiceOpt.isEmpty()){
-            logger.warning("SessionTrackerService não encontrado no SpigotModule! Heartbeat não funcionará.");
+            logger.warning("[SpigotModule] SessionTrackerService not found! Heartbeat will not function.");
         }
-        // --- Fim Obtenção ---
 
-        // 1. Registar SoundPlayer
         try {
             ServiceRegistry.getInstance().registerService(SoundPlayer.class, new SpigotSoundPlayer());
-            logger.info("SpigotSoundPlayer registrado.");
-        } catch (Exception e) { logger.log(Level.WARNING, "Falha ao registrar SpigotSoundPlayer", e); }
+            logger.info("[SpigotModule] SpigotSoundPlayer registered.");
+        } catch (Exception e) { logger.log(Level.WARNING, "[SpigotModule] Failed to register SpigotSoundPlayer", e); }
 
-        // 2. Registar Comandos e Listeners
         try { CommandManager.registerAll(plugin); }
-        catch (Exception e) { logger.log(Level.SEVERE, "Falha ao registrar comandos Spigot!", e); }
+        catch (Exception e) { logger.log(Level.SEVERE, "[SpigotModule] Failed to register Spigot commands!", e); }
         try { ListenersManager.registerAll(plugin); }
-        catch (Exception e) { logger.log(Level.SEVERE, "Falha ao registrar listeners Spigot!", e); }
+        catch (Exception e) { logger.log(Level.SEVERE, "[SpigotModule] Failed to register Spigot listeners!", e); }
 
-
-        // --- INTEGRAÇÃO PERMISSÕES E SESSÃO (v2) ---
-
-        // 3. SessionService
         try {
-            this.sessionServiceInstance = new SessionService(logger); // Passa o logger do módulo
+            this.sessionServiceInstance = new SessionService(logger);
             Bukkit.getServer().getPluginManager().registerEvents(sessionServiceInstance, plugin);
-            logger.info("SessionService (Listener) registrado.");
+            logger.info("[SpigotModule] SessionService (Listener) registered.");
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "Falha ao registrar SessionService!", e);
+            logger.log(Level.SEVERE, "[SpigotModule] Failed to register SessionService!", e);
             this.sessionServiceInstance = null;
         }
 
-        // 4. SpigotPermissionInjector
         if (this.sessionServiceInstance != null) {
             try {
-                this.permissionInjectorInstance = new SpigotPermissionInjector(plugin, logger); // Passa o logger do módulo
+                this.permissionInjectorInstance = new SpigotPermissionInjector(plugin, logger);
                 Bukkit.getServer().getPluginManager().registerEvents(permissionInjectorInstance, plugin);
-                logger.info("SpigotPermissionInjector (Listener) registrado.");
+                logger.info("[SpigotModule] SpigotPermissionInjector (Listener) registered.");
             } catch (Exception e) {
-                logger.log(Level.SEVERE, "Falha ao registrar SpigotPermissionInjector!", e);
+                logger.log(Level.SEVERE, "[SpigotModule] Failed to register SpigotPermissionInjector!", e);
                 this.permissionInjectorInstance = null;
             }
         } else {
-            logger.severe("SpigotPermissionInjector não registrado porque SessionService falhou ao inicializar.");
+            logger.severe("[SpigotModule] SpigotPermissionInjector not registered because SessionService failed to initialize.");
         }
 
-        // 5. SpigotPermissionRefresher e RoleKickHandler
         ServiceRegistry.getInstance().getService(RoleService.class).ifPresentOrElse(roleService -> {
             if (this.permissionInjectorInstance != null) {
                 try {
-                    PermissionRefresher spigotRefresher = new SpigotPermissionRefresher(plugin, logger); // Passa o logger
+                    PermissionRefresher spigotRefresher = new SpigotPermissionRefresher(plugin, logger);
                     ServiceRegistry.getInstance().registerService(PermissionRefresher.class, spigotRefresher);
-                    logger.info("SpigotPermissionRefresher registrado no ServiceRegistry.");
-                } catch (Exception e) { logger.log(Level.SEVERE, "Falha ao registrar SpigotPermissionRefresher!", e); }
+                    logger.info("[SpigotModule] SpigotPermissionRefresher registered in ServiceRegistry.");
+                } catch (Exception e) { logger.log(Level.SEVERE, "[SpigotModule] Failed to register SpigotPermissionRefresher!", e); }
 
-                // <<< Inicializar o KickHandler AQUI >>>
                 try {
                     RoleKickHandler.PlatformKicker kicker = (uuid, formattedKickMessage) -> {
-                        Bukkit.getScheduler().runTask(plugin, () -> { // Usa a instância do plugin
+                        Bukkit.getScheduler().runTask(plugin, () -> {
                             Player player = Bukkit.getPlayer(uuid);
                             if (player != null && player.isOnline()) {
                                 player.kickPlayer(formattedKickMessage);
@@ -134,98 +112,86 @@ public class SpigotModule extends AbstractCoreModule {
                         });
                     };
                     RoleKickHandler.initialize(kicker);
-                    logger.info("RoleKickHandler inicializado para plataforma Spigot.");
+                    logger.info("[SpigotModule] RoleKickHandler initialized for Spigot platform.");
                 } catch (Exception e) {
-                    logger.log(Level.SEVERE, "Falha ao inicializar RoleKickHandler no SpigotModule!", e);
+                    logger.log(Level.SEVERE, "[SpigotModule] Failed to initialize RoleKickHandler in SpigotModule!", e);
                 }
-                // <<< FIM KickHandler >>>
 
             } else {
-                logger.severe("SpigotPermissionRefresher (e KickHandler) não registrado porque o SpigotPermissionInjector falhou.");
+                logger.severe("[SpigotModule] SpigotPermissionRefresher (and KickHandler) not registered because SpigotPermissionInjector failed.");
             }
         }, () -> {
-            logger.severe("RoleService NÃO detectado. Integração de permissões Spigot não será configurada.");
+            logger.severe("[SpigotModule] RoleService NOT detected. Spigot permission integration will not be configured.");
         });
-        // --- FIM INTEGRAÇÃO (v2) ---
 
-        // --- Iniciar Tarefa de Heartbeat ---
         startHeartbeatTask();
-        // --- Fim Heartbeat ---
 
-        logger.info("SpigotModule habilitado com sucesso.");
+        logger.info("[SpigotModule] SpigotModule enabled successfully.");
     }
 
     @Override
     protected void onDisable() {
-        logger.info("Desabilitando SpigotModule...");
+        logger.info("[SpigotModule] Disabling SpigotModule...");
 
-        // --- Parar Tarefa de Heartbeat ---
         stopHeartbeatTask();
-        // --- Fim Heartbeat ---
 
-        // Desregistro de Serviços
         ServiceRegistry.getInstance().unregisterService(SoundPlayer.class);
         ServiceRegistry.getInstance().unregisterService(PermissionRefresher.class);
-        logger.info("Serviços Spigot desregistrados.");
+        logger.info("[SpigotModule] Spigot services unregistered.");
 
-        // Desregistro de Listeners
         if (sessionServiceInstance != null) {
             try { HandlerList.unregisterAll(sessionServiceInstance); }
-            catch (Exception e) { logger.log(Level.WARNING, "Erro ao desregistrar SessionService.", e); }
+            catch (Exception e) { logger.log(Level.WARNING, "[SpigotModule] Error unregistering SessionService.", e); }
             sessionServiceInstance = null;
         }
         if (permissionInjectorInstance != null) {
             try {
                 HandlerList.unregisterAll(permissionInjectorInstance);
-                permissionInjectorInstance.cleanupOnDisable(); // Chama limpeza interna
+                permissionInjectorInstance.cleanupOnDisable();
             }
-            catch (Exception e) { logger.log(Level.WARNING, "Erro ao desregistrar SpigotPermissionInjector.", e); }
+            catch (Exception e) { logger.log(Level.WARNING, "[SpigotModule] Error unregistering SpigotPermissionInjector.", e); }
             permissionInjectorInstance = null;
         }
 
-        try { HandlerList.unregisterAll(plugin); logger.info("Outros listeners Spigot desregistrados."); }
-        catch (Exception e) { logger.log(Level.WARNING, "Erro ao desregistrar outros listeners do plugin.", e); }
+        try { HandlerList.unregisterAll(plugin); logger.info("[SpigotModule] Other Spigot listeners unregistered."); }
+        catch (Exception e) { logger.log(Level.WARNING, "[SpigotModule] Error unregistering other plugin listeners.", e); }
 
-        // O RoleKickHandler.shutdown() é chamado pelo RoleModule.onDisable()
-
-        logger.info("SpigotModule desabilitado.");
+        logger.info("[SpigotModule] SpigotModule disabled.");
     }
 
-    // --- Métodos para Heartbeat Task ---
     private void startHeartbeatTask() {
         if (heartbeatTaskFuture != null && !heartbeatTaskFuture.isDone()) {
-            logger.fine("Tarefa de Heartbeat já está rodando.");
+            logger.fine("[SpigotModule] Heartbeat task is already running.");
             return;
         }
 
         sessionTrackerServiceOpt.ifPresentOrElse(sessionTracker -> {
             try {
-                // Roda a cada 15 segundos, começando após 10 segundos
                 heartbeatTaskFuture = TaskScheduler.runAsyncTimer(() -> {
                     try {
                         runHeartbeat(sessionTracker);
                     } catch (Exception e) {
-                        logger.log(Level.SEVERE, "Erro na execução periódica do Heartbeat Task (Spigot)", e);
+                        logger.log(Level.SEVERE, "[SpigotModule] Error in periodic Heartbeat Task (Spigot)", e);
                     }
                 }, 10, 15, TimeUnit.SECONDS);
-                logger.info("Tarefa de Heartbeat (Spigot) iniciada.");
+                logger.info("[SpigotModule] Heartbeat Task (Spigot) started.");
             } catch (IllegalStateException e) {
-                logger.log(Level.SEVERE, "Falha ao agendar Heartbeat Task (Spigot): TaskScheduler não inicializado?", e);
+                logger.log(Level.SEVERE, "[SpigotModule] Failed to schedule Heartbeat Task (Spigot): TaskScheduler not initialized?", e);
             } catch (Exception e) {
-                logger.log(Level.SEVERE, "Erro inesperado ao agendar Heartbeat Task (Spigot)", e);
+                logger.log(Level.SEVERE, "[SpigotModule] Unexpected error scheduling Heartbeat Task (Spigot)", e);
             }
         }, () -> {
-            logger.warning("Heartbeat Task (Spigot) não iniciada: SessionTrackerService não encontrado.");
+            logger.warning("[SpigotModule] Heartbeat Task (Spigot) not started: SessionTrackerService not found.");
         });
     }
 
     private void stopHeartbeatTask() {
         if (heartbeatTaskFuture != null) {
             try {
-                heartbeatTaskFuture.cancel(false); // false: não interrompe se estiver rodando
-                logger.info("Tarefa de Heartbeat (Spigot) parada.");
+                heartbeatTaskFuture.cancel(false);
+                logger.info("[SpigotModule] Heartbeat Task (Spigot) stopped.");
             } catch (Exception e) {
-                logger.log(Level.WARNING, "Erro ao parar Heartbeat Task (Spigot)", e);
+                logger.log(Level.WARNING, "[SpigotModule] Error stopping Heartbeat Task (Spigot)", e);
             } finally {
                 heartbeatTaskFuture = null;
             }
@@ -233,19 +199,18 @@ public class SpigotModule extends AbstractCoreModule {
     }
 
     private void runHeartbeat(SessionTrackerService sessionTracker) {
-        // Itera sobre os jogadores online NESTE servidor Spigot
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (!player.isOnline()) continue; // Verificação extra
+            if (!player.isOnline()) continue;
 
             UUID uuid = player.getUniqueId();
-            String serverName = Bukkit.getServer().getName(); // Nome deste servidor Spigot
+            String serverName = Bukkit.getServer().getName();
             int ping = player.getPing();
-            int protocol = -1; // Tentar obter o protocolo novamente
+            int protocol = -1;
+
             try {
-                if(viaVersionApiAvailable) { // Usar a flag já existente
+                if(viaVersionApiAvailable) {
                     protocol = Via.getAPI().getPlayerVersion(uuid);
                 } else {
-                    // Adicionar fallbacks se necessário (ProtocolSupport, NMS) como no SpigotPlayerListener
                     try {
                         Class<?> protocolSupportApi = Class.forName("protocolsupport.api.ProtocolSupportAPI");
                         Object apiInstance = protocolSupportApi.getMethod("getAPI").invoke(null);
@@ -266,16 +231,11 @@ public class SpigotModule extends AbstractCoreModule {
             } catch (Exception | NoClassDefFoundError ignored) { protocol = -1; }
 
 
-            // Chama o método do serviço para atualizar o Redis
             try {
                 sessionTracker.updateHeartbeat(uuid, serverName, ping, protocol);
             } catch (Exception e) {
-                // Logar erro específico da atualização, mas continuar para outros jogadores
-                logger.log(Level.WARNING, "Erro ao enviar heartbeat para " + player.getName() + " (UUID: " + uuid + ")", e);
+                logger.log(Level.WARNING, "[SpigotModule] Error sending heartbeat for " + player.getName() + " (UUID: " + uuid + ")", e);
             }
         }
-        // Log opcional para indicar que o heartbeat rodou
-         logger.finest("Heartbeat Task (Spigot) executado.");
     }
-    // --- Fim Métodos Heartbeat ---
 }
