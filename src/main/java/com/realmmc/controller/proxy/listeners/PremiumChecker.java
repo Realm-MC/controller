@@ -35,7 +35,9 @@ public class PremiumChecker {
                 connection.setConnectTimeout(TIMEOUT_MS);
                 connection.setReadTimeout(TIMEOUT_MS);
 
-                if (connection.getResponseCode() == 200) {
+                int responseCode = connection.getResponseCode();
+
+                if (responseCode == 200) {
                     try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
                         StringBuilder response = new StringBuilder();
                         String line;
@@ -44,7 +46,10 @@ public class PremiumChecker {
                         }
                         return response.toString();
                     }
+                } else if (responseCode == 204 || responseCode == 404) {
+                    return "{}";
                 }
+
             } catch (Exception e) {
             } finally {
                 if (connection != null) {
@@ -70,7 +75,7 @@ public class PremiumChecker {
         try {
             JsonNode uuidJson = MAPPER.readTree(uuidJsonString);
             if (uuidJson == null || !uuidJson.has("id")) {
-                return new PremiumCheckResult(false, null, "invalid_uuid_json");
+                return new PremiumCheckResult(false, null, null);
             }
 
             String idNoDash = uuidJson.get("id").asText();
