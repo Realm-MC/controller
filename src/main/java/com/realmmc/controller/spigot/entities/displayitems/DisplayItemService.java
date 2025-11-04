@@ -104,12 +104,13 @@ public class DisplayItemService {
         itemDisplay.addScoreboardTag("controller_display_item");
 
         Transformation transformation = itemDisplay.getTransformation();
-        transformation.getScale().set(entry.getScale(), entry.getScale(), entry.getScale());
+        float scale = entry.getScale() != null ? entry.getScale() : 1.0f;
+        transformation.getScale().set(scale, scale, scale);
         itemDisplay.setTransformation(transformation);
 
         entityIdToEntryId.put(itemDisplay.getEntityId(), entry.getId());
 
-        ArmorStand hitbox = base.getWorld().spawn(itemLocation.clone().add(0, entry.getScale() / 2, 0), ArmorStand.class);
+        ArmorStand hitbox = base.getWorld().spawn(itemLocation.clone().add(0, scale / 2.0, 0), ArmorStand.class);
         hitbox.setInvisible(true);
         hitbox.setMarker(false);
         hitbox.setGravity(false);
@@ -120,7 +121,17 @@ public class DisplayItemService {
 
         List<String> lines = entry.getLines();
         if (lines != null && !lines.isEmpty() && Boolean.TRUE.equals(entry.getHologramVisible())) {
-            double lineY = base.getY() - 0.35;
+
+            double lineStep = 0.30;
+            double baseOffsetY = -0.30;
+
+            double lowestLineY = base.getY() + baseOffsetY;
+
+            double totalHologramHeight = (lines.size() - 1) * lineStep;
+            double highestLineY = lowestLineY + totalHologramHeight;
+
+            double lineY = highestLineY;
+
             for (String lineText : lines) {
                 TextDisplay textDisplay = base.getWorld().spawn(new Location(base.getWorld(), base.getX(), lineY, base.getZ()), TextDisplay.class);
                 textDisplay.text(MiniMessage.miniMessage().deserialize(MiniMessage.miniMessage().serialize(legacySerializer.deserialize(lineText))));
@@ -131,7 +142,8 @@ public class DisplayItemService {
                 textDisplay.setPersistent(false);
                 textDisplay.setAlignment(TextDisplay.TextAlignment.CENTER);
                 textDisplay.addScoreboardTag("controller_display_item");
-                lineY -= 0.30;
+
+                lineY -= lineStep;
             }
         }
     }
