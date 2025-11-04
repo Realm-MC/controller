@@ -1,5 +1,7 @@
 package com.realmmc.controller.spigot.entities.npcs;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
@@ -314,9 +316,7 @@ public class NPCService implements Listener {
                 if (entry.getLines() != null && !entry.getLines().isEmpty()) {
                     lines = entry.getLines();
                 } else if (entry.getMessage() != null) {
-                    Component formattedComponent = legacySerializer.deserialize(entry.getMessage());
-                    String mmName = mm.serialize(formattedComponent);
-                    lines = List.of(mmName);
+                    lines = List.of(entry.getMessage());
                 }
             }
             if (lines == null || lines.isEmpty()) {
@@ -452,8 +452,8 @@ public class NPCService implements Listener {
         newEntry.setItem(originalEntry.getItem());
         newEntry.setIsMovible(originalEntry.getIsMovible());
         newEntry.setHologramVisible(originalEntry.getHologramVisible());
-        newEntry.setLines(new ArrayList<>(originalEntry.getLines()));
-        newEntry.setActions(new ArrayList<>(originalEntry.getActions()));
+        newEntry.setLines((originalEntry.getLines() != null) ? new ArrayList<>(originalEntry.getLines()) : new ArrayList<>());
+        newEntry.setActions((originalEntry.getActions() != null) ? new ArrayList<>(originalEntry.getActions()) : new ArrayList<>());
         newEntry.setTexturesValue(originalEntry.getTexturesValue());
         newEntry.setTexturesSignature(originalEntry.getTexturesSignature());
 
@@ -548,7 +548,7 @@ public class NPCService implements Listener {
     public void addLine(String id, String text) {
         DisplayEntry entry = configLoader.getById(id);
         if (entry != null) {
-            List<String> lines = new ArrayList<>(entry.getLines());
+            List<String> lines = (entry.getLines() != null) ? new ArrayList<>(entry.getLines()) : new ArrayList<>();
             lines.add(text);
             entry.setLines(lines);
             configLoader.updateEntry(entry);
@@ -561,6 +561,7 @@ public class NPCService implements Listener {
         DisplayEntry entry = configLoader.getById(id);
         if (entry != null) {
             List<String> lines = entry.getLines();
+            if (lines == null) return false;
             if (lineIndex > 0 && lineIndex <= lines.size()) {
                 lines.set(lineIndex - 1, text);
                 entry.setLines(lines);
@@ -577,6 +578,7 @@ public class NPCService implements Listener {
         DisplayEntry entry = configLoader.getById(id);
         if (entry != null) {
             List<String> lines = entry.getLines();
+            if (lines == null) return false;
             if (lineIndex > 0 && lineIndex <= lines.size()) {
                 lines.remove(lineIndex - 1);
                 entry.setLines(lines);
@@ -592,7 +594,7 @@ public class NPCService implements Listener {
     public void addAction(String id, String action) {
         DisplayEntry entry = configLoader.getById(id);
         if (entry != null) {
-            List<String> actions = new ArrayList<>(entry.getActions());
+            List<String> actions = (entry.getActions() != null) ? new ArrayList<>(entry.getActions()) : new ArrayList<>();
             actions.add(action);
             entry.setActions(actions);
             configLoader.updateEntry(entry);
@@ -604,6 +606,7 @@ public class NPCService implements Listener {
         DisplayEntry entry = configLoader.getById(id);
         if (entry != null) {
             List<String> actions = entry.getActions();
+            if (actions == null) return false;
             if (actionIndex > 0 && actionIndex <= actions.size()) {
                 actions.remove(actionIndex - 1);
                 entry.setActions(actions);

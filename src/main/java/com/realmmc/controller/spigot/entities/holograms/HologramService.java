@@ -5,6 +5,7 @@ import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.config.HologramConfigLoader;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -16,12 +17,14 @@ import org.bukkit.entity.TextDisplay;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 public class HologramService {
     private final Map<UUID, List<UUID>> spawnedByPlayer = new HashMap<>();
     private final Map<String, List<UUID>> globalHolograms = new HashMap<>();
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
     private final HologramConfigLoader configLoader;
+    private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.builder().character('&').hexColors().build();
 
     private final Logger logger = Main.getInstance().getLogger();
 
@@ -140,7 +143,7 @@ public class HologramService {
 
             textDisplay.setPersistent(false);
 
-            Component component = miniMessage.deserialize(line);
+            Component component = miniMessage.deserialize(MiniMessage.miniMessage().serialize(legacySerializer.deserialize(line)));
             textDisplay.text(component);
             textDisplay.setBillboard(Display.Billboard.CENTER);
             textDisplay.setSeeThrough(true);
@@ -183,5 +186,95 @@ public class HologramService {
 
     private Entity findEntityByUuid(UUID uuid) {
         return Bukkit.getEntity(uuid);
+    }
+
+    public DisplayEntry getHologramEntry(String id) {
+        return configLoader.getById(id);
+    }
+
+    public Set<String> getAllHologramIds() {
+        return configLoader.getEntries().stream()
+                .map(DisplayEntry::getId)
+                .collect(Collectors.toSet());
+    }
+
+    public void removeHologram(String id) {
+        if (configLoader.removeEntry(id)) {
+            reload();
+        }
+    }
+
+    public void teleportHologram(String id, Location location) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            entry.setWorld(location.getWorld().getName());
+            entry.setX(location.getX());
+            entry.setY(location.getY());
+            entry.setZ(location.getZ());
+            entry.setYaw(location.getYaw());
+            entry.setPitch(location.getPitch());
+            configLoader.addEntry(entry);
+            configLoader.save();
+            reload();
+        }
+    }
+
+    public boolean toggleGlow(String id) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            boolean newState = !Boolean.TRUE.equals(entry.getGlow());
+            entry.setGlow(newState);
+            configLoader.addEntry(entry);
+            configLoader.save();
+            reload();
+            return newState;
+        }
+        return false;
+    }
+
+    public void addLine(String id, String text) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> lines = (entry.getLines() != null) ? new ArrayList<>(entry.getLines()) : new ArrayList<>();
+            lines.add(text);
+            entry.setLines(lines);
+            configLoader.addEntry(entry);
+            configLoader.save();
+            reload();
+        }
+    }
+
+    public boolean setLine(String id, int lineIndex, String text) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> lines = entry.getLines();
+            if (lines == null) return false;
+            if (lineIndex > 0 && lineIndex <= lines.size()) {
+                lines.set(lineIndex - 1, text);
+                entry.setLines(lines);
+                configLoader.addEntry(entry);
+                configLoader.save();
+                reload();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean removeLine(String id, int lineIndex) {
+        DisplayEntry entry = configLoader.getById(id);
+        if (entry != null) {
+            List<String> lines = entry.getLines();
+            if (lines == null) return false;
+            if (lineIndex > 0 && lineIndex <= lines.size()) {
+                lines.remove(lineIndex - 1);
+                entry.setLines(lines);
+                configLoader.addEntry(entry);
+                configLoader.save();
+                reload();
+                return true;
+            }
+        }
+        return false;
     }
 }
