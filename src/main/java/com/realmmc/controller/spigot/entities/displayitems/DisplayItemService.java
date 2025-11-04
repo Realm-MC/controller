@@ -56,13 +56,16 @@ public class DisplayItemService {
                             clickDebounce.put(key, now);
 
                             DisplayEntry entry = configLoader.getById(entryId);
-                            if (entry == null || entry.getActions() == null || entry.getActions().isEmpty()) return;
+                            if (entry == null) return;
+
+                            List<String> actions = entry.getActions();
+                            if (actions == null || actions.isEmpty()) return;
 
                             Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
                                 World w = Bukkit.getWorld(entry.getWorld());
                                 if (w == null) w = player.getWorld();
                                 Location eloc = new Location(w, entry.getX(), entry.getY(), entry.getZ());
-                                Actions.runAll(player, entry, eloc);
+                                Actions.runAll(player, entry, eloc, actions);
                             });
                         }
                     }

@@ -71,7 +71,7 @@ public class HologramCommand implements CommandInterface {
 
     private void showHelp(CommandSender sender, String label) {
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_HEADER).with("system", "Hologramas"));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " criar <id> <texto inicial...>")
+        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " criar <id> <texto>")
                 .with("description", Messages.translate(MessageKey.HOLOGRAM_HELP_CREATE)));
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " remover <id>")
                 .with("description", Messages.translate(MessageKey.HOLOGRAM_HELP_REMOVE)));
@@ -83,9 +83,9 @@ public class HologramCommand implements CommandInterface {
                 .with("description", Messages.translate(MessageKey.HOLOGRAM_HELP_TPHERE)));
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " toggleglow <id>")
                 .with("description", Messages.translate(MessageKey.HOLOGRAM_HELP_TOGGLEGLOW)));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " addline <id> <texto...>")
+        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " addline <id> <texto>")
                 .with("description", Messages.translate(MessageKey.HOLOGRAM_HELP_ADDLINE)));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " setline <id> <linha> <texto...>")
+        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " setline <id> <linha> <texto>")
                 .with("description", Messages.translate(MessageKey.HOLOGRAM_HELP_SETLINE)));
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " removeline <id> <linha>")
                 .with("description", Messages.translate(MessageKey.HOLOGRAM_HELP_REMOVELINE)));
@@ -114,7 +114,7 @@ public class HologramCommand implements CommandInterface {
             return;
         }
         if (args.length < 3) {
-            sendUsage(sender, "/" + label + " criar <id> <texto inicial...>");
+            sendUsage(sender, "/" + label + " criar <id> <texto>");
             return;
         }
         String id = args[1];
@@ -241,7 +241,7 @@ public class HologramCommand implements CommandInterface {
 
     private void handleAddLine(CommandSender sender, String[] args, String label) {
         if (args.length < 3) {
-            sendUsage(sender, "/" + label + " addline <id> <texto...>");
+            sendUsage(sender, "/" + label + " addline <id> <texto>");
             return;
         }
         String id = args[1];
@@ -260,7 +260,7 @@ public class HologramCommand implements CommandInterface {
 
     private void handleSetLine(CommandSender sender, String[] args, String label) {
         if (args.length < 4) {
-            sendUsage(sender, "/" + label + " setline <id> <linha> <texto...>");
+            sendUsage(sender, "/" + label + " setline <id> <linha> <texto>");
             return;
         }
         String id = args[1];

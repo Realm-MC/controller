@@ -11,6 +11,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
+import java.util.List;
 
 public class DisplayConfigLoader {
     private final Logger logger = Main.getInstance().getLogger();
@@ -68,11 +69,18 @@ public class DisplayConfigLoader {
                     entry.setYaw((float) entrySection.getDouble("yaw"));
                     entry.setPitch((float) entrySection.getDouble("pitch"));
                     entry.setItem(entrySection.getString("item"));
-                    entry.setLines(entrySection.getStringList("lines"));
+
+                    List<String> lines = entrySection.getStringList("lines");
+                    entry.setLines(lines != null ? lines : new ArrayList<>());
+
                     entry.setGlow(entrySection.getBoolean("glow", false));
                     entry.setBillboard(entrySection.getString("billboard", "CENTER"));
                     entry.setScale((float) entrySection.getDouble("scale", 1.0));
-                    entry.setActions(entrySection.getStringList("actions"));
+
+                    List<String> actions = entrySection.getStringList("actions");
+                    entry.setActions(actions != null ? actions : new ArrayList<>());
+
+                    entry.setHologramVisible(entrySection.getBoolean("hologramVisible", true));
 
                     if (entry.getWorld() != null && entry.getItem() != null) {
                         entries.put(id, entry);
@@ -115,6 +123,7 @@ public class DisplayConfigLoader {
             config.set(path + ".billboard", entry.getBillboard());
             config.set(path + ".scale", entry.getScale());
             config.set(path + ".actions", entry.getActions());
+            config.set(path + ".hologramVisible", entry.getHologramVisible());
         }
 
         try {
