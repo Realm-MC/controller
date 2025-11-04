@@ -2,6 +2,7 @@ package com.realmmc.controller.shared.messaging;
 
 public enum MessageKey {
     ONLY_PLAYERS("only_players"),
+    KICK_PERMISSION_SYSTEM_ERROR("kick.permission_system_error"),
     COMMAND_ERROR("command_error"),
     COMMON_PLAYER_NOT_ONLINE("common.player.not_online"),
     COMMON_PLAYER_NEVER_JOINED("common.player.never_joined"),

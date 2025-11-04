@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-@Cmd(cmd = "hologram", aliases = {"holo", "holograms", "holograma", "hologramas"})
+@Cmd(cmd = "hologram", aliases = {"holograms", "holograma", "hologramas"})
 public class HologramCommand implements CommandInterface {
 
     private final String permission = "controller.manager";

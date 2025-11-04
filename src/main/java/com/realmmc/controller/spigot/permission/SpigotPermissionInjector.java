@@ -2,6 +2,8 @@ package com.realmmc.controller.spigot.permission;
 
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.RoleService;
+import com.realmmc.controller.shared.messaging.MessageKey;
+import com.realmmc.controller.shared.messaging.Messages;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -91,7 +93,8 @@ public class SpigotPermissionInjector implements Listener {
 
         } catch (Exception e) {
             logger.log(Level.SEVERE, "[SpigotPerm] Failed to inject RealmPermissible for " + player.getName(), e);
-            event.disallow(PlayerLoginEvent.Result.KICK_OTHER, "§cError initializing permission system.");
+            String translatedKick = Messages.translate(MessageKey.KICK_PERMISSION_SYSTEM_ERROR);
+            event.disallow(PlayerLoginEvent.Result.KICK_OTHER, translatedKick);
             originalPermissibles.remove(uuid);
         }
     }
