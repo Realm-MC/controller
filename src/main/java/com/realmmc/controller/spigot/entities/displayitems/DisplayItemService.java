@@ -11,6 +11,7 @@ import com.realmmc.controller.spigot.entities.actions.Actions;
 import com.realmmc.controller.spigot.entities.config.DisplayConfigLoader;
 import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -28,6 +29,7 @@ public class DisplayItemService {
     private final Map<Integer, String> entityIdToEntryId = new ConcurrentHashMap<>();
     private final Map<String, Long> clickDebounce = new ConcurrentHashMap<>();
     private PacketListenerAbstract interactListener;
+    private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.builder().character('&').hexColors().build();
 
     public DisplayItemService() {
         this.configLoader = new DisplayConfigLoader();
@@ -118,7 +120,7 @@ public class DisplayItemService {
             double lineY = base.getY() - 0.35;
             for (String lineText : lines) {
                 TextDisplay textDisplay = base.getWorld().spawn(new Location(base.getWorld(), base.getX(), lineY, base.getZ()), TextDisplay.class);
-                textDisplay.text(MiniMessage.miniMessage().deserialize(lineText));
+                textDisplay.text(MiniMessage.miniMessage().deserialize(MiniMessage.miniMessage().serialize(legacySerializer.deserialize(lineText))));
                 textDisplay.setBillboard(Display.Billboard.CENTER);
                 textDisplay.setSeeThrough(true);
                 textDisplay.setDefaultBackground(false);
@@ -184,8 +186,8 @@ public class DisplayItemService {
         newEntry.setBillboard(originalEntry.getBillboard());
         newEntry.setGlow(originalEntry.getGlow());
         newEntry.setHologramVisible(originalEntry.getHologramVisible());
-        newEntry.setLines(new ArrayList<>(originalEntry.getLines()));
-        newEntry.setActions(new ArrayList<>(originalEntry.getActions()));
+        newEntry.setLines((originalEntry.getLines() != null) ? new ArrayList<>(originalEntry.getLines()) : new ArrayList<>());
+        newEntry.setActions((originalEntry.getActions() != null) ? new ArrayList<>(originalEntry.getActions()) : new ArrayList<>());
 
         newEntry.setWorld(location.getWorld().getName());
         newEntry.setX(location.getX());
@@ -279,7 +281,7 @@ public class DisplayItemService {
     public void addLine(String id, String text) {
         DisplayEntry entry = configLoader.getById(id);
         if (entry != null) {
-            List<String> lines = new ArrayList<>(entry.getLines());
+            List<String> lines = (entry.getLines() != null) ? new ArrayList<>(entry.getLines()) : new ArrayList<>();
             lines.add(text);
             entry.setLines(lines);
             configLoader.updateEntry(entry);
@@ -292,6 +294,7 @@ public class DisplayItemService {
         DisplayEntry entry = configLoader.getById(id);
         if (entry != null) {
             List<String> lines = entry.getLines();
+            if (lines == null) return false;
             if (lineIndex > 0 && lineIndex <= lines.size()) {
                 lines.set(lineIndex - 1, text);
                 entry.setLines(lines);
@@ -308,6 +311,7 @@ public class DisplayItemService {
         DisplayEntry entry = configLoader.getById(id);
         if (entry != null) {
             List<String> lines = entry.getLines();
+            if (lines == null) return false;
             if (lineIndex > 0 && lineIndex <= lines.size()) {
                 lines.remove(lineIndex - 1);
                 entry.setLines(lines);
@@ -323,7 +327,7 @@ public class DisplayItemService {
     public void addAction(String id, String action) {
         DisplayEntry entry = configLoader.getById(id);
         if (entry != null) {
-            List<String> actions = new ArrayList<>(entry.getActions());
+            List<String> actions = (entry.getActions() != null) ? new ArrayList<>(entry.getActions()) : new ArrayList<>();
             actions.add(action);
             entry.setActions(actions);
             configLoader.updateEntry(entry);
@@ -335,6 +339,7 @@ public class DisplayItemService {
         DisplayEntry entry = configLoader.getById(id);
         if (entry != null) {
             List<String> actions = entry.getActions();
+            if (actions == null) return false;
             if (actionIndex > 0 && actionIndex <= actions.size()) {
                 actions.remove(actionIndex - 1);
                 entry.setActions(actions);
