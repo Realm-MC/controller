@@ -103,7 +103,6 @@ public enum MessageKey {
     PARTICLE_INFO_ANIM_NONE("particle.info.anim.none"),
     PARTICLE_INFO_DATA_NONE("particle.info.data.none"),
 
-    // --- Role Command Specific Keys ---
     ROLE_INFO_PRIMARY_ACTIVE("role.info.primary_active"),
     ROLE_INFO_HISTORY_HEADER("role.info.history_header"),
     ROLE_INFO_STATUS_PAUSED("role.info.status.paused"),
@@ -149,7 +148,6 @@ public enum MessageKey {
     ROLE_SUCCESS_CLEAR_PLAYER("role.success.clear_player"),
     ROLE_SUCCESS_CLEAR_GROUP("role.success.clear_group"),
 
-    // --- Role Kick Messages ---
     ROLE_KICK_ADD_SET_VIP("role.kick.add_set_vip"),
     ROLE_KICK_REMOVED_VIP("role.kick.removed_vip"),
     ROLE_KICK_EXPIRED_VIP("role.kick.expired_vip"),
@@ -158,16 +156,13 @@ public enum MessageKey {
     ROLE_KICK_EXPIRED_STAFF("role.kick.expired_staff"),
     ROLE_KICK_GENERIC("role.kick.generic"),
 
-    // --- Role Expiration Warnings ---
     ROLE_WARN_EXPIRING_DAY("role.warn.expiring.day"),
     ROLE_WARN_EXPIRING_HOUR("role.warn.expiring.hour"),
     ROLE_WARN_EXPIRING_MINUTES("role.warn.expiring.minutes"),
 
-    // --- Role Expiration Notifications (Login) ---
     ROLE_NOTIFY_EXPIRED_VIP("role.notify.expired_vip"),
     ROLE_NOTIFY_EXPIRED_STAFF("role.notify.expired_staff"),
 
-    // --- Role Broadcast (Title) ---
     ROLE_BROADCAST_TITLE("role.broadcast.title"),
     ROLE_BROADCAST_SUBTITLE("role.broadcast.subtitle"),
 
@@ -184,7 +179,6 @@ public enum MessageKey {
     SERVER_REDIRECT_LOBBY_CLOSED("server.redirect.lobby_closed"),
     SERVER_JOIN_FAIL_NO_LOBBY("server.join.fail.no_lobby"),
 
-    // Perfis e Sistema
     PROFILE_LOADED("profile.loaded"),
     PROFILE_SAVED("profile.saved"),
     PROFILE_ERROR("profile.error"),
@@ -210,7 +204,6 @@ public enum MessageKey {
 
     PARTICLE_INVALID_ANIM_OPTION("particle.invalid_animation_option"),
 
-    // SCONFIG
     SCONFIG_NOT_FOUND("sconfig.not_found"),
     SCONFIG_ALREADY_EXISTS("sconfig.already_exists"),
     SCONFIG_RELOADED("sconfig.reloaded"),
@@ -232,7 +225,6 @@ public enum MessageKey {
     SCONFIG_LIST_LINE("sconfig.list.line"),
     SCONFIG_LIST_EMPTY("sconfig.list.empty"),
 
-    // <<< NOVAS CHAVES HOVER >>>
     SCONFIG_LIST_LINE_HOVER_HEADER("sconfig.list.line.hover.header"),
     SCONFIG_LIST_LINE_HOVER_DETAILS("sconfig.list.line.hover.details"),
     SCONFIG_LIST_LINE_HOVER_ACTION_ONLINE("sconfig.list.line.hover.action.online"),
@@ -255,7 +247,18 @@ public enum MessageKey {
     SCONFIG_HELP_MAXPLAYER("sconfig.help.maxplayer"),
     SCONFIG_HELP_MAXPLAYERVIP("sconfig.help.maxplayervip"),
     SCONFIG_HELP_MINGROUP("sconfig.help.mingroup"),
-    SCONFIG_HELP_TYPE("sconfig.help.type");
+    SCONFIG_HELP_TYPE("sconfig.help.type"),
+
+    HOLOGRAM_HELP_CREATE("hologram.help.create"),
+    HOLOGRAM_HELP_REMOVE("hologram.help.remove"),
+    HOLOGRAM_HELP_LIST("hologram.help.list"),
+    HOLOGRAM_HELP_INFO("hologram.help.info"),
+    HOLOGRAM_HELP_TPHERE("hologram.help.tphere"),
+    HOLOGRAM_HELP_TOGGLEGLOW("hologram.help.toggleglow"),
+    HOLOGRAM_HELP_ADDLINE("hologram.help.addline"),
+    HOLOGRAM_HELP_SETLINE("hologram.help.setline"),
+    HOLOGRAM_HELP_REMOVELINE("hologram.help.removeline"),
+    HOLOGRAM_HELP_RELOAD("hologram.help.reload");
 
     private final String key;
 
@@ -270,5 +273,14 @@ public enum MessageKey {
     @Override
     public String toString() {
         return key;
+    }
+
+    public static MessageKey value(String key) {
+        for (MessageKey k : values()) {
+            if (k.getKey().equals(key)) {
+                return k;
+            }
+        }
+        throw new IllegalArgumentException("No MessageKey constant found for key: " + key);
     }
 }
