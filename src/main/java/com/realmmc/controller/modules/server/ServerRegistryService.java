@@ -189,15 +189,22 @@ public class ServerRegistryService {
                         }
 
                         ServerStatus pteroStatus = parsePteroState(detailsOpt.get());
+                        ServerStatus oldStatus = server.getStatus();
 
-                        if (pteroStatus != server.getStatus()) {
-                            logger.info("[ServerRegistry] [Health Check] Discrepancy detected for '" + server.getName() + "'. DB: " + server.getStatus() + ", Ptero: " + pteroStatus + ". Updating DB.");
+                        if (pteroStatus != oldStatus) {
+                            logger.info("[ServerRegistry] [Health Check] Discrepancy detected for '" + server.getName() + "'. DB: " + oldStatus + ", Ptero: " + pteroStatus + ". Updating DB.");
 
                             server.setStatus(pteroStatus);
                             if (pteroStatus == ServerStatus.OFFLINE) {
                                 server.setPlayerCount(0);
+                                unregisterServerFromVelocity(server.getName());
                             }
                             repository.save(server);
+
+                            if (pteroStatus == ServerStatus.ONLINE) {
+                                registerServerWithVelocity(server);
+                                logger.info("[ServerRegistry] [Health Check] Forçando re-registro no Velocity para '" + server.getName() + "' (ONLINE).");
+                            }
                         } else {
                             logger.finer("[ServerRegistry] Health Check: Status OK for " + server.getName() + " (" + pteroStatus + ")");
                         }
@@ -373,7 +380,6 @@ public class ServerRegistryService {
         pterodactylService.startServer(serverToStart.getPterodactylId())
                 .thenAccept(success -> {
                     if (success) {
-                        registerServerWithVelocity(serverToStart);
                         logger.info("[ServerRegistry] 'start' command sent for '" + serverToStart.getName() + "'. Awaiting Health Check.");
                     } else {
                         logger.severe("[ServerRegistry] Failed to start server '" + serverToStart.getName() + "' via Pterodactyl API.");
@@ -402,7 +408,6 @@ public class ServerRegistryService {
         pterodactylService.startServer(server.getPterodactylId())
                 .thenAccept(success -> {
                     if (success) {
-                        registerServerWithVelocity(server);
                         logger.info("[ServerRegistry] 'start' command sent for static server '" + server.getName() + "'. Awaiting Health Check.");
                     } else {
                         logger.severe("[ServerRegistry] Failed to re-start static server '" + server.getName() + "' via API.");
@@ -453,10 +458,13 @@ public class ServerRegistryService {
         com.velocitypowered.api.proxy.server.ServerInfo velocityInfo =
                 new com.velocitypowered.api.proxy.server.ServerInfo(serverInfo.getName(), address);
 
-        if (proxyServer.getServer(serverInfo.getName()).isEmpty()) {
-            proxyServer.registerServer(velocityInfo);
-            logger.info("[ServerRegistry] Server '" + serverInfo.getName() + "' added to Velocity runtime.");
+        if (proxyServer.getServer(serverInfo.getName()).isPresent()) {
+            proxyServer.unregisterServer(proxyServer.getServer(serverInfo.getName()).get().getServerInfo());
+            logger.fine("[ServerRegistry] Server '" + serverInfo.getName() + "' removed from Velocity runtime for update.");
         }
+
+        proxyServer.registerServer(velocityInfo);
+        logger.info("[ServerRegistry] Server '" + serverInfo.getName() + "' added to Velocity runtime.");
     }
 
     public void unregisterServerFromVelocity(String serverName) {
