@@ -4,16 +4,22 @@ import com.mongodb.MongoException;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileService;
-import com.realmmc.controller.shared.role.*;
+import com.realmmc.controller.shared.role.DefaultRole;
+import com.realmmc.controller.shared.role.PermissionRefresher;
+import com.realmmc.controller.shared.role.PlayerRole;
+import com.realmmc.controller.shared.role.Role;
+import com.realmmc.controller.shared.role.RoleKickHandler;
+import com.realmmc.controller.shared.role.RoleRepository;
+import com.realmmc.controller.shared.role.RoleType;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
+import com.realmmc.controller.shared.storage.redis.RedisManager;
 import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.utils.TimeUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.realmmc.controller.shared.storage.redis.RedisManager;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.exceptions.JedisException;
 import org.bukkit.Bukkit;
@@ -192,12 +198,12 @@ public class RoleService {
             return DefaultRole.DEFAULT.toRole();
         });
 
-        loadRolesToCache();
+        loadRolesToCache(false);
 
         logger.info("[RoleService] Default roles synchronization complete. Total groups in cache: " + roleCache.size());
     }
 
-    public void loadRolesToCache() {
+    public void loadRolesToCache(boolean publishUpdate) {
         logger.info("[RoleService] Reloading roles from MongoDB to cache and recalculating inheritance...");
         AtomicInteger loadedCount = new AtomicInteger();
         int errorCount = 0;
@@ -254,9 +260,18 @@ public class RoleService {
         }
         logger.info("[RoleService] Total groups in cache after full load: " + roleCache.size());
 
-        // Publicar sinal de que o cache global de roles foi atualizado (Bug C)
-        try { RedisPublisher.publish(RedisChannel.ROLES_UPDATE, "reload"); }
-        catch (Exception e) { logger.log(Level.WARNING, "[RoleService] Failed to publish ROLES_UPDATE signal.", e); }
+        if (publishUpdate) {
+            try {
+                RedisPublisher.publish(RedisChannel.ROLES_UPDATE, "reload");
+                logger.info("[RoleService] Published ROLES_UPDATE signal after successful reload.");
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "[RoleService] Failed to publish ROLES_UPDATE signal.", e);
+            }
+        }
+    }
+
+    public void loadRolesToCache() {
+        loadRolesToCache(false);
     }
 
     public Optional<Role> getRole(String name) {
@@ -574,7 +589,6 @@ public class RoleService {
                     return roleCache.getOrDefault("default", Role.builder().name("default").displayName("Membro").weight(0).permissions(new ArrayList<>()).inheritance(new ArrayList<>()).build());
                 });
 
-        // USAR O CACHE DE PERMISSÕES PRÉ-CALCULADAS (Otimização)
         for (Role activeRole : activeRolesFound) {
             Set<String> perms = activeRole.getCachedEffectivePermissions();
             if (perms != null) {
@@ -585,10 +599,6 @@ public class RoleService {
         return new PlayerSessionData(uuid, primaryRole, effectivePermissions);
     }
 
-    /**
-     * Calcula as permissões de um grupo recursivamente (com herança).
-     * Chamada APENAS durante o loadRolesToCache.
-     */
     private Set<String> calculateEffectivePermissionsForRole(Role role) {
         Set<String> permissions = new HashSet<>();
         Set<String> visited = new HashSet<>();
@@ -596,10 +606,6 @@ public class RoleService {
         return Collections.unmodifiableSet(permissions);
     }
 
-    /**
-     * Implementação recursiva para coletar permissões de um grupo e seus pais.
-     * (Usado APENAS no loadRolesToCache para pré-cálculo)
-     */
     public void collectPermissionsRecursiveExplicit(Role role, Set<String> permissions, Set<String> visited) {
         if (role == null || !visited.add(role.getName().toLowerCase())) {
             return;
