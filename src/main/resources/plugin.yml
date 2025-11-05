@@ -1,0 +1,6 @@
+name: controller
+version: 1.0.0
+main: com.realmmc.controller.spigot.Main
+api-version: 1.21
+authors: ["xxxlc"]
+description: Controller to all plugins for RealmMC

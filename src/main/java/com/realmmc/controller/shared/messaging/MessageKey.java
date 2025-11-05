@@ -1,0 +1,287 @@
+package com.realmmc.controller.shared.messaging;
+
+public enum MessageKey {
+    ONLY_PLAYERS("only_players"),
+    KICK_PERMISSION_SYSTEM_ERROR("kick.permission_system_error"),
+    COMMAND_ERROR("command_error"),
+    COMMON_PLAYER_NOT_ONLINE("common.player.not_online"),
+    COMMON_PLAYER_NEVER_JOINED("common.player.never_joined"),
+    COMMON_USAGE("common.usage"),
+    COMMON_NO_PERMISSION_GROUP("common.no_permission.group"),
+    COMMON_NO_PERMISSION_RANK("common.no_permission.rank"),
+    COMMON_NO_PERMISSION_GENERIC("common.no_permission.generic"),
+
+    COMMON_HELP_HEADER("common.help.header"),
+    COMMON_HELP_LINE("common.help.line"),
+    COMMON_HELP_FOOTER_FULL("common.help.footer.full"),
+    COMMON_HELP_FOOTER_REQUIRED("common.help.footer.required"),
+
+    COMMON_INFO_HEADER("common.info.header"),
+    COMMON_INFO_LINE("common.info.line"),
+    COMMON_INFO_BOOLEAN_TRUE("common.info.boolean.true"),
+    COMMON_INFO_BOOLEAN_FALSE("common.info.boolean.false"),
+    COMMON_INFO_LIST_HEADER("common.info.list.header"),
+    COMMON_INFO_LIST_ITEM("common.info.list.item"),
+    COMMON_INFO_LIST_EMPTY("common.info.list.empty"),
+
+    DISPLAY_SPAWNED("display.spawned"),
+    DISPLAY_CLONED("display.cloned"),
+    DISPLAY_REMOVED("display.removed"),
+    DISPLAY_LIST_EMPTY("display.list.empty"),
+    DISPLAY_LIST_HEADER("display.list.header"),
+    DISPLAY_RELOADED("display.reloaded"),
+    DISPLAY_TELEPORTED("display.teleported"),
+    DISPLAY_ITEM_SET("display.item_set"),
+    DISPLAY_SCALE_SET("display.scale_set"),
+    DISPLAY_BILLBOARD_SET("display.billboard_set"),
+    DISPLAY_GLOW_TOGGLED("display.glow_toggled"),
+    DISPLAY_LINES_TOGGLED("display.lines_toggled"),
+    DISPLAY_LINE_ADDED("display.line_added"),
+    DISPLAY_LINE_SET("display.line_set"),
+    DISPLAY_LINE_REMOVED("display.line_removed"),
+    DISPLAY_ACTION_ADDED("display.action_added"),
+    DISPLAY_ACTION_REMOVED("display.action_removed"),
+    DISPLAY_INVALID_ID("display.invalid_id"),
+    DISPLAY_NOT_FOUND("display.not_found"),
+    DISPLAY_INVALID_MATERIAL("display.invalid_material"),
+    DISPLAY_INVALID_SCALE("display.invalid_scale"),
+    DISPLAY_INVALID_BILLBOARD("display.invalid_billboard"),
+    DISPLAY_INVALID_LINE("display.invalid_line"),
+    DISPLAY_INVALID_ACTION_LINE("display.invalid_action_line"),
+    DISPLAY_ALL_SPAWNED("display.all_spawned"),
+    DISPLAY_NO_ENTRIES("display.no_entries"),
+
+    NPC_CREATED("npc.created"),
+    NPC_CLONED("npc.cloned"),
+    NPC_REMOVED("npc.removed"),
+    NPC_RENAMED("npc.renamed"),
+    NPC_LIST_EMPTY("npc.list.empty"),
+    NPC_LIST_HEADER("npc.list.header"),
+    NPC_NOT_FOUND("npc.not_found"),
+    NPC_INVALID_ID("npc.invalid_id"),
+    NPC_TELEPORTED("npc.teleported"),
+    NPC_SKIN_SET("npc.skin_set"),
+    NPC_NAME_TOGGLED("npc.name_toggled"),
+    NPC_LOOK_TOGGLED("npc.look_toggled"),
+    NPC_LINE_ADDED("npc.line_added"),
+    NPC_LINE_SET("npc.line_set"),
+    NPC_LINE_REMOVED("npc.line_removed"),
+    NPC_ACTION_ADDED("npc.action_added"),
+    NPC_ACTION_REMOVED("npc.action_removed"),
+    NPC_INFO_SKIN("npc.info.skin"),
+    NPC_INFO_NAME("npc.info.name"),
+    NPC_INFO_LOCATION("npc.info.location"),
+    NPC_INFO_LOOKATPLAYER("npc.info.lookatplayer"),
+    NPC_INFO_NAMEVISIBLE("npc.info.namevisible"),
+    NPC_INFO_LINES("npc.info.lines"),
+    NPC_INFO_ACTIONS("npc.info.actions"),
+
+
+    PARTICLE_CREATED("particle.created"),
+    PARTICLE_CLONED("particle.cloned"),
+    PARTICLE_REMOVED("particle.removed"),
+    PARTICLE_NOT_FOUND("particle.not_found"),
+    PARTICLE_INVALID_ID("particle.invalid_id"),
+    PARTICLE_INVALID_TYPE("particle.invalid_type"),
+    PARTICLE_INVALID_PROPERTY("particle.invalid_property"),
+    PARTICLE_INVALID_VALUE("particle.invalid_value"),
+    PARTICLE_LIST_EMPTY("particle.list.empty"),
+    PARTICLE_LIST_HEADER("particle.list.header"),
+    PARTICLE_TELEPORTED("particle.teleported"),
+    PARTICLE_PROPERTY_SET("particle.property_set"),
+    PARTICLE_ANIMATION_SET("particle.animation_set"),
+    PARTICLE_ANIMATION_STOPPED("particle.animation_stopped"),
+    PARTICLE_TESTED("particle.tested"),
+    PARTICLE_RELOADED("particle.reloaded"),
+    PARTICLE_INFO_TYPE("particle.info.type"),
+    PARTICLE_INFO_ANIMATION("particle.info.animation"),
+    PARTICLE_INFO_AMOUNT("particle.info.amount"),
+    PARTICLE_INFO_INTERVAL("particle.info.interval"),
+    PARTICLE_INFO_SPEED("particle.info.speed"),
+    PARTICLE_INFO_OFFSET("particle.info.offset"),
+    PARTICLE_INFO_DATA("particle.info.data"),
+    PARTICLE_INFO_LONGDISTANCE("particle.info.longdistance"),
+    PARTICLE_INFO_ANIM_NONE("particle.info.anim.none"),
+    PARTICLE_INFO_DATA_NONE("particle.info.data.none"),
+
+    ROLE_INFO_PRIMARY_ACTIVE("role.info.primary_active"),
+    ROLE_INFO_HISTORY_HEADER("role.info.history_header"),
+    ROLE_INFO_STATUS_PAUSED("role.info.status.paused"),
+    ROLE_INFO_STATUS_EXPIRED("role.info.status.expired"),
+    ROLE_INFO_STATUS_PERMANENT("role.info.status.permanent"),
+    ROLE_INFO_STATUS_TEMPORARY("role.info.status.temporary"),
+    ROLE_INFO_STATUS_REMOVED("role.info.status.removed"),
+    ROLE_INFO_STATUS_REMOVED_AT("role.info.status.removed_at"),
+    ROLE_INFO_STATUS_UNKNOWN("role.info.status.unknown"),
+
+    ROLE_GROUP_INFO_HEADER("role.group.info.header"),
+    ROLE_GROUP_INFO_KEY_WEIGHT("role.group.info.key.weight"),
+    ROLE_GROUP_INFO_KEY_PREFIX("role.group.info.key.prefix"),
+    ROLE_GROUP_INFO_KEY_SUFFIX("role.group.info.key.suffix"),
+    ROLE_GROUP_INFO_KEY_PERMISSIONS("role.group.info.key.permissions"),
+    ROLE_GROUP_INFO_KEY_INHERITANCE("role.group.info.key.inheritance"),
+    ROLE_GROUP_INFO_VALUE_NONE("role.group.info.value.none"),
+    ROLE_GROUP_INFO_KEY_TYPE("role.group.info.key.type"),
+
+    ROLE_LIST_HEADER("role.list.header"),
+    ROLE_LIST_ITEM_FORMAT("role.list.item_format"),
+    ROLE_LIST_EMPTY("role.list.empty"),
+    ROLE_LIST_IN_PROGRESS("role.list.in_progress"),
+
+    ROLE_ERROR_GROUP_NOT_FOUND("role.error.group_not_found"),
+    ROLE_ERROR_CANNOT_MODIFY_DEFAULT("role.error.cannot_modify_default"),
+    ROLE_ERROR_INVALID_DURATION("role.error.invalid_duration"),
+    ROLE_ERROR_CANNOT_MANAGE_SUPERIOR("role.error.cannot_manage_superior"),
+    ROLE_ERROR_CANNOT_CLEAR_GROUP("role.error.cannot_clear_group"),
+    ROLE_ERROR_CLEAR_SUPERIOR("role.error.clear_superior"),
+    ROLE_ERROR_CANNOT_CLEAR_SELF("role.error.cannot_clear_self"),
+
+    ROLE_WARN_ALREADY_HAS_PERMANENT("role.warn.already_has_permanent"),
+    ROLE_WARN_NOT_ACTIVE("role.warn.not_active"),
+    ROLE_WARN_NOT_IN_HISTORY("role.warn.not_in_history"),
+    ROLE_WARN_ALREADY_DEFAULT("role.warn.already_default"),
+    ROLE_WARN_CLEAR_GROUP_NO_ELIGIBLE("role.warn.clear_group.no_eligible"),
+    ROLE_WARN_CLEAR_GROUP_IN_PROGRESS("role.warn.clear_group.in_progress"),
+
+    ROLE_SUCCESS_ADD("role.success.add"),
+    ROLE_SUCCESS_SET("role.success.set"),
+    ROLE_SUCCESS_REMOVE("role.success.remove"),
+    ROLE_SUCCESS_CLEAR_PLAYER("role.success.clear_player"),
+    ROLE_SUCCESS_CLEAR_GROUP("role.success.clear_group"),
+
+    ROLE_KICK_ADD_SET_VIP("role.kick.add_set_vip"),
+    ROLE_KICK_REMOVED_VIP("role.kick.removed_vip"),
+    ROLE_KICK_EXPIRED_VIP("role.kick.expired_vip"),
+    ROLE_KICK_ADD_SET_STAFF("role.kick.add_set_staff"),
+    ROLE_KICK_REMOVED_STAFF("role.kick.removed_staff"),
+    ROLE_KICK_EXPIRED_STAFF("role.kick.expired_staff"),
+    ROLE_KICK_GENERIC("role.kick.generic"),
+
+    ROLE_WARN_EXPIRING_DAY("role.warn.expiring.day"),
+    ROLE_WARN_EXPIRING_HOUR("role.warn.expiring.hour"),
+    ROLE_WARN_EXPIRING_MINUTES("role.warn.expiring.minutes"),
+
+    ROLE_NOTIFY_EXPIRED_VIP("role.notify.expired_vip"),
+    ROLE_NOTIFY_EXPIRED_STAFF("role.notify.expired_staff"),
+
+    ROLE_BROADCAST_TITLE("role.broadcast.title"),
+    ROLE_BROADCAST_SUBTITLE("role.broadcast.subtitle"),
+
+    ROLE_HELP_INFO("role.help.info"),
+    ROLE_HELP_LIST("role.help.list"),
+    ROLE_HELP_ADD("role.help.add"),
+    ROLE_HELP_SET("role.help.set"),
+    ROLE_HELP_REMOVE("role.help.remove"),
+    ROLE_HELP_CLEAR("role.help.clear"),
+
+    SERVER_JOIN_FAIL_MIN_GROUP("server.join.fail.min_group"),
+    SERVER_JOIN_FAIL_FULL_NO_VIP("server.join.fail.full_no_vip"),
+    SERVER_JOIN_FAIL_FULL_VIP_SLOT("server.join.fail.full_vip_slot"),
+    SERVER_REDIRECT_LOBBY_CLOSED("server.redirect.lobby_closed"),
+    SERVER_JOIN_FAIL_NO_LOBBY("server.join.fail.no_lobby"),
+
+    PROFILE_LOADED("profile.loaded"),
+    PROFILE_SAVED("profile.saved"),
+    PROFILE_ERROR("profile.error"),
+    TEST_COMMAND("test.command"),
+    TEST_WELCOME("test.welcome"),
+    SYSTEM_STARTUP("system.startup"),
+    SYSTEM_SHUTDOWN("system.shutdown"),
+    MODULE_ENABLED("module.enabled"),
+    MODULE_DISABLED("module.disabled"),
+
+    AUTH_STILL_CONNECTING("auth.still_connecting"),
+    AUTH_INVALID_PLAYER("auth.invalid_player"),
+
+    KICK_ALREADY_CONNECTED("kick.already_connected"),
+    KICK_PREMIUM_NICKNAME("kick.premium_nickname"),
+    KICK_PROFILE_TIMEOUT("kick.profile_timeout"),
+    KICK_PROFILE_ERROR("kick.profile_error"),
+    KICK_PROFILE_UNEXPECTED("kick.profile_unexpected"),
+    KICK_GENERIC_PROFILE_ERROR("kick.generic_profile_error"),
+    KICK_PREMIUM_AUTH_FAILED("kick.premium_auth_failed"),
+
+    ROLE_WARN_CLEAR_GROUP_FAIL_COUNT("role.warn.clear_group.fail_count"),
+
+    PARTICLE_INVALID_ANIM_OPTION("particle.invalid_animation_option"),
+
+    SCONFIG_NOT_FOUND("sconfig.not_found"),
+    SCONFIG_ALREADY_EXISTS("sconfig.already_exists"),
+    SCONFIG_RELOADED("sconfig.reloaded"),
+    SCONFIG_CREATED("sconfig.created"),
+    SCONFIG_DELETED("sconfig.deleted"),
+    SCONFIG_INVALID_NUMBER("sconfig.invalid_number"),
+    SCONFIG_INVALID_TYPE("sconfig.invalid_type"),
+    SCONFIG_PROP_UPDATED("sconfig.prop_updated"),
+    SCONFIG_INFO_HEADER("sconfig.info.header"),
+    SCONFIG_INFO_KEY_DISPLAYNAME("sconfig.info.key.displayname"),
+    SCONFIG_INFO_KEY_TYPE("sconfig.info.key.type"),
+    SCONFIG_INFO_KEY_STATUS("sconfig.info.key.status"),
+    SCONFIG_INFO_KEY_ADDRESS("sconfig.info.key.address"),
+    SCONFIG_INFO_KEY_PTEROID("sconfig.info.key.pteroid"),
+    SCONFIG_INFO_KEY_PLAYERS("sconfig.info.key.players"),
+    SCONFIG_INFO_KEY_MAXVIP("sconfig.info.key.maxvip"),
+    SCONFIG_INFO_KEY_MINGROUP("sconfig.info.key.mingroup"),
+    SCONFIG_LIST_HEADER("sconfig.list.header"),
+    SCONFIG_LIST_LINE("sconfig.list.line"),
+    SCONFIG_LIST_EMPTY("sconfig.list.empty"),
+
+    SCONFIG_LIST_LINE_HOVER_HEADER("sconfig.list.line.hover.header"),
+    SCONFIG_LIST_LINE_HOVER_DETAILS("sconfig.list.line.hover.details"),
+    SCONFIG_LIST_LINE_HOVER_ACTION_ONLINE("sconfig.list.line.hover.action.online"),
+    SCONFIG_LIST_LINE_HOVER_ACTION_OFFLINE("sconfig.list.line.hover.action.offline"),
+    SCONFIG_INFO_STATUS_ONLINE("sconfig.info.status.online"),
+    SCONFIG_INFO_STATUS_OFFLINE("sconfig.info.status.offline"),
+    SCONFIG_INFO_STATUS_STARTING("sconfig.info.status.starting"),
+    SCONFIG_INFO_STATUS_STOPPING("sconfig.info.status.stopping"),
+    SCONFIG_LIST_LINE_HOVER_ACTION_STARTING("sconfig.list.line.hover.action.starting"),
+
+    SCONFIG_HELP_CREATE("sconfig.help.create"),
+    SCONFIG_HELP_DELETE("sconfig.help.delete"),
+    SCONFIG_HELP_LIST("sconfig.help.list"),
+    SCONFIG_HELP_INFO("sconfig.help.info"),
+    SCONFIG_HELP_RELOAD("sconfig.help.reload"),
+    SCONFIG_HELP_SETDISPLAYNAME("sconfig.help.setdisplayname"),
+    SCONFIG_HELP_IP("sconfig.help.ip"),
+    SCONFIG_HELP_PORT("sconfig.help.port"),
+    SCONFIG_HELP_PTEROID("sconfig.help.pteroid"),
+    SCONFIG_HELP_MAXPLAYER("sconfig.help.maxplayer"),
+    SCONFIG_HELP_MAXPLAYERVIP("sconfig.help.maxplayervip"),
+    SCONFIG_HELP_MINGROUP("sconfig.help.mingroup"),
+    SCONFIG_HELP_TYPE("sconfig.help.type"),
+
+    HOLOGRAM_HELP_CREATE("hologram.help.create"),
+    HOLOGRAM_HELP_REMOVE("hologram.help.remove"),
+    HOLOGRAM_HELP_LIST("hologram.help.list"),
+    HOLOGRAM_HELP_INFO("hologram.help.info"),
+    HOLOGRAM_HELP_TPHERE("hologram.help.tphere"),
+    HOLOGRAM_HELP_TOGGLEGLOW("hologram.help.toggleglow"),
+    HOLOGRAM_HELP_ADDLINE("hologram.help.addline"),
+    HOLOGRAM_HELP_SETLINE("hologram.help.setline"),
+    HOLOGRAM_HELP_REMOVELINE("hologram.help.removeline"),
+    HOLOGRAM_HELP_RELOAD("hologram.help.reload");
+
+    private final String key;
+
+    MessageKey(String key) {
+        this.key = key;
+    }
+
+    public String getKey() {
+        return key;
+    }
+
+    @Override
+    public String toString() {
+        return key;
+    }
+
+    public static MessageKey value(String key) {
+        for (MessageKey k : values()) {
+            if (k.getKey().equals(key)) {
+                return k;
+            }
+        }
+        throw new IllegalArgumentException("No MessageKey constant found for key: " + key);
+    }
+}
