@@ -250,7 +250,7 @@ public class ProfileService {
         } else {
             long now = System.currentTimeMillis();
             int profileId = MongoSequences.getNext("profiles");
-            Language initialLang = Messages.determineInitialLanguage(playerObject);
+            final Language initialLang = Messages.determineInitialLanguage(playerObject);
 
             profileToReturn = Profile.builder()
                     .id(profileId)
@@ -279,6 +279,7 @@ public class ProfileService {
 
             final Profile finalProfileForServices = profileToReturn;
             getStatsService().ifPresent(stats -> stats.ensureStatistics(finalProfileForServices));
+            // PASSANDO O IDIOMA INICIAL AQUI
             getPreferencesService().ifPresent(prefs -> prefs.ensurePreferences(finalProfileForServices, initialLang));
         }
 

@@ -1,4 +1,4 @@
-package com.realmmc.controller.services; // Ou o pacote correto onde está sua classe
+package com.realmmc.controller.services;
 
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.PlayerSessionData;
@@ -50,7 +50,6 @@ public class SessionService implements Listener {
             roleService.startPreLoadingPlayerData(uuid);
         } else {
             UUID uuid = event.getUniqueId();
-            // Assumimos que o username é o do evento, se o login falhou cedo
             sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, event.getName()));
             roleService.removePreLoginFuture(uuid);
         }
@@ -58,9 +57,9 @@ public class SessionService implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onLoginWaitForLoadAndSetOnline(PlayerLoginEvent event) {
-        Player player = event.getPlayer();
-        UUID uuid = player.getUniqueId();
-        String playerName = player.getName(); // Obtem o nome AQUI
+        final Player player = event.getPlayer();
+        final UUID uuid = player.getUniqueId();
+        final String playerName = player.getName();
 
         if (event.getResult() != PlayerLoginEvent.Result.ALLOWED) {
             logger.finer("[SessionService] Login negado (HIGH) para " + playerName + ". Limpando futuro e sessão.");
