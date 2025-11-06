@@ -19,6 +19,8 @@ import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.utils.TimeUtils;
+import com.realmmc.controller.shared.sounds.SoundKeys;
+import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.exceptions.JedisException;
@@ -37,7 +39,7 @@ import java.util.logging.Logger;
 public class RoleService {
 
     private final Logger logger;
-    private final RoleRepository roleRepository;
+    private final RoleRepository roleRepository = new RoleRepository();
     private final ProfileService profileService;
     private final ExecutorService asyncExecutor;
 
@@ -51,14 +53,10 @@ public class RoleService {
 
     private final Map<UUID, Set<String>> sentExpirationWarnings = new ConcurrentHashMap<>();
     private ScheduledFuture<?> expirationCheckTask = null;
-    private static final long WARN_THRESHOLD_1_DAY = TimeUnit.DAYS.toMillis(1);
-    private static final long WARN_THRESHOLD_1_HOUR = TimeUnit.HOURS.toMillis(1);
-    private static final long WARN_THRESHOLD_15_MIN = TimeUnit.MINUTES.toMillis(15);
-    private static final long EXPIRATION_CHECK_INTERVAL_MINUTES = 5;
+    private static final long WARN_THRESHOLD_7_DAYS = TimeUnit.DAYS.toMillis(7);
 
     public RoleService(Logger logger) {
         this.logger = logger;
-        this.roleRepository = new RoleRepository();
         try {
             this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
             this.asyncExecutor = TaskScheduler.getAsyncExecutor();
@@ -67,7 +65,6 @@ public class RoleService {
             logger.log(Level.SEVERE, "[RoleService] Critical error initializing RoleService: Dependent service (ProfileService or TaskScheduler) not found!", e);
             throw e;
         }
-        startExpirationWarningTask();
     }
 
     public ExecutorService getAsyncExecutor() {
@@ -663,97 +660,64 @@ public class RoleService {
         }
     }
 
-    private synchronized void startExpirationWarningTask() {
-        if (expirationCheckTask != null && !expirationCheckTask.isDone()) {
-            logger.fine("[RoleService:Expiry] Expiration warning task is already running.");
-            return;
-        }
+    public void checkAndSendLoginExpirationWarning(Object playerObj) {
+        UUID playerUuid = null;
         try {
-            expirationCheckTask = TaskScheduler.runAsyncTimer(() -> {
-                try {
-                    checkAndSendExpirationWarnings();
-                } catch (Exception e) {
-                    logger.log(Level.SEVERE, "[RoleService:Expiry] Error in periodic role expiration check task.", e);
-                }
-            }, EXPIRATION_CHECK_INTERVAL_MINUTES, EXPIRATION_CHECK_INTERVAL_MINUTES, TimeUnit.MINUTES);
-            logger.info("[RoleService:Expiry] Role expiration warning task started (interval: " + EXPIRATION_CHECK_INTERVAL_MINUTES + " minutes).");
-        } catch (IllegalStateException e) {
-            logger.log(Level.SEVERE, "[RoleService:Expiry] Failed to start expiration warning task: TaskScheduler not available?", e);
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "[RoleService:Expiry] Unexpected error scheduling expiration warning task.", e);
-        }
-    }
-
-    private void checkAndSendExpirationWarnings() {
-        long now = System.currentTimeMillis();
-        Collection<?> onlinePlayersGeneric;
-
-        try {
-            onlinePlayersGeneric = Bukkit.getOnlinePlayers();
-        } catch (Exception | NoClassDefFoundError e) {
-            try {
-                ProxyServer proxy = ServiceRegistry.getInstance().requireService(ProxyServer.class);
-                onlinePlayersGeneric = proxy.getAllPlayers();
-            } catch (Exception | NoClassDefFoundError e2) {
-                logger.finest("[RoleService:Expiry] Could not get online player list to check role expiration.");
-                return;
-            }
-        }
-
-        if (onlinePlayersGeneric == null || onlinePlayersGeneric.isEmpty()) {
-            return;
-        }
-
-        for (Object playerObj : onlinePlayersGeneric) {
-            UUID playerUuid = null;
-            Object platformPlayerObject = null;
-
-            if (playerObj instanceof Player) {
-                Player bukkitPlayer = (Player) playerObj;
-                if (!bukkitPlayer.isOnline()) continue;
-                playerUuid = bukkitPlayer.getUniqueId();
-                platformPlayerObject = bukkitPlayer;
+            if (playerObj instanceof org.bukkit.entity.Player) {
+                playerUuid = ((org.bukkit.entity.Player) playerObj).getUniqueId();
             } else if (playerObj instanceof com.velocitypowered.api.proxy.Player) {
-                com.velocitypowered.api.proxy.Player velocityPlayer = (com.velocitypowered.api.proxy.Player) playerObj;
-                if (!velocityPlayer.isActive()) continue;
-                playerUuid = velocityPlayer.getUniqueId();
-                platformPlayerObject = velocityPlayer;
+                playerUuid = ((com.velocitypowered.api.proxy.Player) playerObj).getUniqueId();
             }
-
-            if (playerUuid == null || platformPlayerObject == null) continue;
-
-            final UUID finalUuid = playerUuid;
-            final Object finalPlayerObj = platformPlayerObject;
-
-            profileService.getByUuid(finalUuid).ifPresent(profile -> {
-                if (profile.getRoles() == null) return;
-                profile.getRoles().stream()
-                        .filter(pr -> pr != null && pr.getStatus() == PlayerRole.Status.ACTIVE && !pr.isPermanent() && !pr.isPaused())
-                        .forEach(expiringRole -> {
-                            if (expiringRole.getExpiresAt() == null) return;
-                            long expiresInMillis = expiringRole.getExpiresAt() - now;
-                            checkAndSendWarning(finalPlayerObj, finalUuid, expiringRole, expiresInMillis, WARN_THRESHOLD_1_DAY, MessageKey.ROLE_WARN_EXPIRING_DAY);
-                            checkAndSendWarning(finalPlayerObj, finalUuid, expiringRole, expiresInMillis, WARN_THRESHOLD_1_HOUR, MessageKey.ROLE_WARN_EXPIRING_HOUR);
-                            checkAndSendWarning(finalPlayerObj, finalUuid, expiringRole, expiresInMillis, WARN_THRESHOLD_15_MIN, MessageKey.ROLE_WARN_EXPIRING_MINUTES);
-                        });
-            });
+        } catch (Throwable t) {
+            return;
         }
-    }
 
-    private void checkAndSendWarning(Object playerObj, UUID playerUuid, PlayerRole role, long expiresInMillis, long thresholdMillis, MessageKey messageKey) {
-        if (expiresInMillis > 0 && expiresInMillis <= thresholdMillis) {
-            String warningId = role.getRoleName() + ":" + thresholdMillis;
-            Set<String> playerWarnings = sentExpirationWarnings.computeIfAbsent(playerUuid, k -> ConcurrentHashMap.newKeySet());
-            if (playerWarnings.add(warningId)) {
-                getRole(role.getRoleName()).ifPresent(roleInfo -> {
-                    String timeRemaining = TimeUtils.formatDuration(expiresInMillis);
-                    Messages.send(playerObj, Message.of(messageKey)
-                            .with("group", roleInfo.getDisplayName())
-                            .with("time", timeRemaining));
-                    logger.fine("[RoleService:Expiry] Expiration warning ("+ messageKey.getKey() +") sent to " + playerUuid + " about role " + role.getRoleName());
-                });
-            }
+        if (playerUuid == null) return;
+
+        Optional<PlayerSessionData> sessionDataOpt = getSessionDataFromCache(playerUuid);
+        if (sessionDataOpt.isEmpty()) {
+            logger.fine("[RoleService] Ignorando notificação de login: Sessão de permissões não carregada para " + playerUuid);
+            return;
         }
+
+        profileService.getByUuid(playerUuid).ifPresent(profile -> {
+            if (profile.getRoles() == null) return;
+
+            long now = System.currentTimeMillis();
+            final long SEVEN_DAYS_MILLIS = TimeUnit.DAYS.toMillis(7);
+
+            profile.getRoles().stream()
+                    .filter(pr -> pr != null && pr.getStatus() == PlayerRole.Status.ACTIVE && !pr.isPermanent() && !pr.isPaused())
+                    .filter(pr -> pr.getExpiresAt() != null)
+                    .findFirst()
+                    .ifPresent(expiringRole -> {
+                        long expiresInMillis = expiringRole.getExpiresAt() - now;
+
+                        if (expiresInMillis > 0 && expiresInMillis <= SEVEN_DAYS_MILLIS) {
+                            getRole(expiringRole.getRoleName()).ifPresent(roleInfo -> {
+
+                                MessageKey keyToSend;
+                                if (roleInfo.getType() == RoleType.VIP) {
+                                    keyToSend = MessageKey.ROLE_WARN_EXPIRING_JOIN_VIP;
+                                } else {
+                                    keyToSend = MessageKey.ROLE_WARN_EXPIRING_JOIN_STAFF;
+                                }
+
+                                String timeRemaining = TimeUtils.formatDuration(expiresInMillis);
+
+                                Optional<SoundPlayer> soundPlayerOpt = ServiceRegistry.getInstance().getService(SoundPlayer.class);
+                                soundPlayerOpt.ifPresent(sp -> sp.playSound(playerObj, SoundKeys.NOTIFICATION));
+
+                                Messages.send(playerObj, Message.of(keyToSend)
+                                        .with("group_display", roleInfo.getDisplayName())
+                                        .with("time", timeRemaining));
+
+                                logger.info("[RoleService:LoginWarn] Notificação de expiração de " + roleInfo.getName() +
+                                        " enviada para o jogador: " + profile.getName() + " (Faltam: " + timeRemaining + ")");
+                            });
+                        }
+                    });
+        });
     }
 
     public void clearSentWarnings(UUID uuid) {
