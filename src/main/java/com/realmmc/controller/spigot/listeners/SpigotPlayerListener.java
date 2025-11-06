@@ -20,7 +20,6 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerLoginEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
-// Imports Geyser/ViaVersion/ProtocolSupport
 import com.viaversion.viaversion.api.Via;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 
@@ -56,7 +55,6 @@ public class SpigotPlayerListener implements Listener {
         this.sessionTrackerServiceOpt = ServiceRegistry.getInstance().getService(SessionTrackerService.class);
         this.logger = Main.getInstance().getLogger();
 
-        // Remoção da deteção de API (Geyser/ViaVersion) pois não são mais usadas aqui
         if (sessionTrackerServiceOpt.isEmpty()) {
             logger.warning("SessionTrackerService não encontrado! Rastreamento de sessão não funcionará.");
         }
@@ -69,26 +67,19 @@ public class SpigotPlayerListener implements Listener {
             return;
         }
 
-        Player player = event.getPlayer();
-        UUID uuid = player.getUniqueId();
-        String playerName = player.getName();
+        final Player player = event.getPlayer();
+        final UUID uuid = player.getUniqueId();
+        final String playerName = player.getName();
 
-        // Define o estado como CONECTANDO (o SessionService definirá como ONLINE após carregar)
-        sessionTrackerServiceOpt.ifPresent(service ->
-                service.setSessionState(uuid, AuthenticationGuard.STATE_CONNECTING)
-        );
-
-        // Armazena o tempo de login para estatísticas
         loginTimestamps.put(uuid, System.currentTimeMillis());
 
-        // Apenas atualiza o lastIp e lastLogin no perfil existente (NÃO CRIA)
         TaskScheduler.runAsync(() -> {
             try {
                 Optional<Profile> profileOpt = profileService.getByUuid(uuid);
                 if (profileOpt.isPresent()) {
                     Profile profile = profileOpt.get();
                     String ip = null;
-                    try { ip = event.getAddress().getHostAddress(); } catch (Exception e) { /* ignora */ }
+                    try { ip = event.getAddress().getHostAddress(); } catch (Exception e) { }
 
                     boolean needsSave = false;
                     if (ip != null && !ip.isEmpty() && !ip.equals(profile.getLastIp())) {
@@ -98,7 +89,7 @@ public class SpigotPlayerListener implements Listener {
                         }
                         needsSave = true;
                     }
-                    if (System.currentTimeMillis() - profile.getLastLogin() > 1000) { // Evita saves desnecessários
+                    if (System.currentTimeMillis() - profile.getLastLogin() > 1000) {
                         profile.setLastLogin(System.currentTimeMillis());
                         needsSave = true;
                     }
@@ -107,7 +98,6 @@ public class SpigotPlayerListener implements Listener {
                         profileService.save(profile);
                     }
                 } else {
-                    // Este é o log de aviso que você viu.
                     logger.warning("[SpigotPlayerListener] Perfil não encontrado no DB para " + uuid + ". O Velocity (Proxy) deveria tê-lo criado. O jogador pode ter problemas de permissão.");
                 }
             } catch (Exception e) {
@@ -118,12 +108,11 @@ public class SpigotPlayerListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerJoinFinalize(PlayerJoinEvent event){
-        Player player = event.getPlayer();
-        UUID uuid = player.getUniqueId();
+        final Player player = event.getPlayer();
+        final UUID uuid = player.getUniqueId();
 
         this.roleService.clearSentWarnings(uuid);
 
-        // Atualiza o ping no SessionTracker (agora que o jogador está totalmente no servidor)
         sessionTrackerServiceOpt.ifPresent(service -> {
             try {
                 int currentPing = player.getPing();
@@ -137,17 +126,14 @@ public class SpigotPlayerListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
-        Player player = event.getPlayer();
-        UUID uuid = player.getUniqueId();
-        String username = player.getName();
+        final Player player = event.getPlayer();
+        final UUID uuid = player.getUniqueId();
+        final String username = player.getName();
 
-        // Limpa a sessão no Redis
         sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, username));
 
-        // Invalida o cache de sessão local do RoleService
         roleService.invalidateSession(uuid);
 
-        // Salva o tempo online
         Long loginTime = loginTimestamps.remove(uuid);
         if (loginTime != null) {
             long sessionDuration = System.currentTimeMillis() - loginTime;
@@ -160,7 +146,6 @@ public class SpigotPlayerListener implements Listener {
             }
         }
 
-        // Limpezas adicionais
         this.preferencesService.removeCachedLanguage(uuid);
         this.roleService.clearSentWarnings(uuid);
     }

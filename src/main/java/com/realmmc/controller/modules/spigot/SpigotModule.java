@@ -199,11 +199,22 @@ public class SpigotModule extends AbstractCoreModule {
     }
 
     private void runHeartbeat(SessionTrackerService sessionTracker) {
+
+        String serverName = System.getProperty("controller.serverId");
+        if (serverName == null || serverName.isEmpty()) {
+            serverName = System.getenv("CONTROLLER_SERVER_ID");
+        }
+        if (serverName == null || serverName.isEmpty()) {
+            serverName = Bukkit.getServer().getName();
+            logger.warning("Aviso: 'controller.serverId' (propriedade Java) ou 'CONTROLLER_SERVER_ID' (variável de ambiente) não estão definidas! O Heartbeat está a reportar o nome do servidor como: " + serverName);
+        }
+
+        final String finalServerName = serverName;
+
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (!player.isOnline()) continue;
 
             UUID uuid = player.getUniqueId();
-            String serverName = Bukkit.getServer().getName();
             int ping = player.getPing();
             int protocol = -1;
 
@@ -232,7 +243,7 @@ public class SpigotModule extends AbstractCoreModule {
 
 
             try {
-                sessionTracker.updateHeartbeat(uuid, serverName, ping, protocol);
+                sessionTracker.updateHeartbeat(uuid, finalServerName, ping, protocol);
             } catch (Exception e) {
                 logger.log(Level.WARNING, "[SpigotModule] Error sending heartbeat for " + player.getName() + " (UUID: " + uuid + ")", e);
             }
