@@ -12,7 +12,7 @@ import java.util.logging.Logger;
 
 public final class NicknameFormatter {
 
-    private static final Logger logger = Logger.getLogger(NicknameFormatter.class.getName());
+    public static final Logger logger = Logger.getLogger(NicknameFormatter.class.getName());
 
     private static final RoleService roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
     private static final SessionTrackerService sessionTrackerService = ServiceRegistry.getInstance().requireService(SessionTrackerService.class);
