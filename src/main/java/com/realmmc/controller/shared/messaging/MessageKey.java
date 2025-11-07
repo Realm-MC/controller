@@ -258,7 +258,27 @@ public enum MessageKey {
     HOLOGRAM_HELP_ADDLINE("hologram.help.addline"),
     HOLOGRAM_HELP_SETLINE("hologram.help.setline"),
     HOLOGRAM_HELP_REMOVELINE("hologram.help.removeline"),
-    HOLOGRAM_HELP_RELOAD("hologram.help.reload");
+    HOLOGRAM_HELP_RELOAD("hologram.help.reload"),
+
+    MAPMANAGER_HELP_HEADER("mapmanager.help.header"),
+    MAPMANAGER_HELP_SET_ACTIVE("mapmanager.help.setactive"),
+    MAPMANAGER_HELP_TOGGLE("mapmanager.help.toggle"),
+    MAPMANAGER_HELP_LIST("mapmanager.help.list"),
+    MAPMANAGER_HELP_RELOAD("mapmanager.help.reload"),
+    MAPMANAGER_HELP_TP("mapmanager.help.tp"),
+    MAPMANAGER_LIST_HEADER("mapmanager.list.header"),
+    MAPMANAGER_LIST_ITEM("mapmanager.list.item"),
+    MAPMANAGER_LIST_EMPTY("mapmanager.list.empty"),
+    MAPMANAGER_STATUS_ACTIVE("mapmanager.status.active"),
+    MAPMANAGER_STATUS_INACTIVE("mapmanager.status.inactive"),
+    MAPMANAGER_ERROR_NOT_FOUND("mapmanager.error.not_found"),
+    MAPMANAGER_ERROR_ALREADY_ACTIVE("mapmanager.error.already_active"),
+    MAPMANAGER_ERROR_TYPE_NOT_FOUND("mapmanager.error.type_not_found"),
+    MAPMANAGER_ERROR_NOT_ACTIVE("mapmanager.error.not_active"),
+    MAPMANAGER_TOGGLE_SUCCESS("mapmanager.toggle.success"),
+    MAPMANAGER_SET_ACTIVE_SUCCESS("mapmanager.setactive.success"),
+    MAPMANAGER_RELOAD_SUCCESS("mapmanager.reload.success"),
+    MAPMANAGER_TP_SUCCESS("mapmanager.tp.success");
 
     private final String key;
 
