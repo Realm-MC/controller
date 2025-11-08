@@ -286,9 +286,14 @@ public enum MessageKey {
     MAPMANAGER_TP_SUCCESS("mapmanager.tp.success"),
 
     MAPMANAGER_WORLD_LOADING("mapmanager.world.loading"),
+    MAPMANAGER_INFO_HEADER("mapmanager.info.header"),
     MAPMANAGER_HELP_HEADER_PROFILE("mapmanager.help.header.profile"),
     MAPMANAGER_HELP_HEADER_WORLD("mapmanager.help.header.world"),
+    MAPMANAGER_HELP_LIST("mapmanager.help.list"),
+    MAPMANAGER_HELP_INFO("mapmanager.help.info"),
     MAPMANAGER_HELP_SPAWN("mapmanager.help.spawn"),
+    MAPMANAGER_HELP_SETSPAWN("mapmanager.help.setspawn"),
+    MAPMANAGER_HELP_RESET("mapmanager.help.reset"),
     MAPMANAGER_HELP_RELOAD("mapmanager.help.reload"),
     MAPMANAGER_HELP_TOGGLE("mapmanager.help.toggle"),
     MAPMANAGER_HELP_GAMEMODE("mapmanager.help.gamemode"),
@@ -313,11 +318,28 @@ public enum MessageKey {
     MAPMANAGER_ERROR_WORLD_IN_USE("mapmanager.error.world_in_use"),
     MAPMANAGER_ERROR_DOWNLOAD_FAILED("mapmanager.error.download_failed"),
 
-    MAPMANAGER_HELP_INFO("mapmanager.help.info"),
-    MAPMANAGER_HELP_SETSPAWN("mapmanager.help.setspawn"),
-    MAPMANAGER_HELP_RESET("mapmanager.help.reset"),
-
-    MAPMANAGER_INFO_HEADER("mapmanager.info.header");
+    MAPMANAGER_HELP_CREATEPROFILE("mapmanager.help.createprofile"),
+    MAPMANAGER_HELP_SAVE("mapmanager.help.save"),
+    MAPMANAGER_HELP_WORLDINFO("mapmanager.help.worldinfo"),
+    MAPMANAGER_HELP_UPLOAD("mapmanager.help.upload"),
+    MAPMANAGER_LIST_ITEM_HOVER("mapmanager.list.item.hover"),
+    MAPMANAGER_WORLDINFO_HEADER("mapmanager.worldinfo.header"),
+    MAPMANAGER_WORLDINFO_LINE_PROFILE("mapmanager.worldinfo.line.profile"),
+    MAPMANAGER_PROFILE_CREATE_SUCCESS("mapmanager.profile.create.success"),
+    MAPMANAGER_ERROR_PROFILE_EXISTS("mapmanager.error.profile_exists"),
+    MAPMANAGER_SAVE_START("mapmanager.save.start"),
+    MAPMANAGER_SAVE_SUCCESS("mapmanager.save.success"),
+    MAPMANAGER_ERROR_NO_SELECTION("mapmanager.error.no_selection"),
+    MAPMANAGER_UPLOAD_START("mapmanager.upload.start"),
+    MAPMANAGER_UPLOAD_SUCCESS("mapmanager.upload.success"),
+    MAPMANAGER_ERROR_INVALID_URL("mapmanager.error.invalid_url"),
+    MAPMANAGER_DOWNLOAD_PATH("mapmanager.download.path"),
+    MAPMANAGER_DOWNLOAD_URL("mapmanager.download.url"),
+    MAPMANAGER_RELOAD_ALL_START("mapmanager.reload.all_start"),
+    MAPMANAGER_DOWNLOAD_URL_BUILT("mapmanager.download.url_built"),
+    MAPMANAGER_HELP_VISUALIZAR("mapmanager.help.visualizar"),
+    MAPMANAGER_VISUALIZAR_LINK("mapmanager.visualizar.link"),
+    MAPMANAGER_BLUEMAP_START("mapmanager.bluemap.start");
 
     private final String key;
 
