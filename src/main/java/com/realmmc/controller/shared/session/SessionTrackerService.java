@@ -20,6 +20,7 @@ public class SessionTrackerService {
     private static final String ONLINE_ALL_KEY = "controller:online:all";
     private static final String ONLINE_PROXY_PREFIX = "controller:online:proxy:";
     private static final String ONLINE_SERVER_PREFIX = "controller:online:server:";
+    private static final String IP_TRACKING_PREFIX = "controller:ip_tracking:";
     private static final int SESSION_HASH_TTL_SECONDS = 300;
     private static final int ONLINE_SET_TTL_SECONDS = 60;
 
@@ -30,11 +31,10 @@ public class SessionTrackerService {
                 .orElseThrow(() -> new IllegalStateException("ProfileService não encontrado para SessionTrackerService!"));
     }
 
-    // --- Métodos Privados Auxiliares ---
-
     private String getSessionKey(UUID uuid) { return SESSION_PREFIX + uuid.toString(); }
     private String getProxySetKey(String proxyId) { return ONLINE_PROXY_PREFIX + proxyId; }
     private String getServerSetKey(String serverName) { return ONLINE_SERVER_PREFIX + serverName; }
+    private String getIpSetKey(String ipAddress) { return IP_TRACKING_PREFIX + ipAddress; }
 
     private <T> Optional<T> executeJedis(JedisOperation<T> operation) {
         try (Jedis jedis = RedisManager.getResource()) {
@@ -68,13 +68,9 @@ public class SessionTrackerService {
         void apply(Jedis jedis);
     }
 
-    // (Este método não é mais necessário para o endSession)
-    // private Optional<String> getUsername(UUID uuid) { ... }
 
-
-    // --- Métodos Públicos ---
-
-    public void startSession(UUID uuid, String username, String proxyId, String initialServer, int protocol, int ping) {
+    public void startSession(UUID uuid, String username, String proxyId, String initialServer, int protocol, int ping,
+                             String ip, String clientVersion, String clientType, boolean isPremium) {
         if (uuid == null || username == null || proxyId == null) {
             LOGGER.warning("startSession chamado com parâmetros nulos.");
             return;
@@ -94,6 +90,11 @@ public class SessionTrackerService {
             sessionData.put("lastHeartbeat", String.valueOf(now));
             sessionData.put("username", username);
 
+            if (ip != null) sessionData.put("ip", ip);
+            if (clientVersion != null) sessionData.put("clientVersion", clientVersion);
+            if (clientType != null) sessionData.put("clientType", clientType);
+            sessionData.put("isPremium", String.valueOf(isPremium));
+
             Pipeline pipe = jedis.pipelined();
             pipe.hmset(sessionKey, sessionData);
             pipe.expire(sessionKey, SESSION_HASH_TTL_SECONDS);
@@ -104,6 +105,13 @@ public class SessionTrackerService {
                 pipe.sadd(serverSetKey, username);
                 pipe.expire(serverSetKey, ONLINE_SET_TTL_SECONDS);
             }
+
+            if (ip != null && !ip.isEmpty()) {
+                String ipSetKey = getIpSetKey(ip);
+                pipe.sadd(ipSetKey, uuid.toString());
+                pipe.expire(ipSetKey, SESSION_HASH_TTL_SECONDS);
+            }
+
             pipe.sync();
             LOGGER.log(Level.INFO, "Sessão iniciada no Redis para {0} (UUID: {1}) no proxy {2}", new Object[]{username, uuid, proxyId});
         });
@@ -155,12 +163,14 @@ public class SessionTrackerService {
             String existingServer = null;
             String username = null;
             String proxyId = null;
+            String ip = null;
 
             if (jedis.exists(sessionKey)) {
                 Map<String, String> sessionData = jedis.hgetAll(sessionKey);
                 existingServer = sessionData.get("currentServer");
                 username = sessionData.get("username");
                 proxyId = sessionData.get("proxyId");
+                ip = sessionData.get("ip");
             } else {
                 LOGGER.log(Level.FINER, "Heartbeat ignorado para UUID {0}: sessão não existe mais no Redis.", uuid);
                 return;
@@ -182,6 +192,10 @@ public class SessionTrackerService {
             if (!updates.isEmpty()) pipe.hmset(sessionKey, updates);
             if (removeCurrentServer) pipe.hdel(sessionKey, "currentServer");
             pipe.expire(sessionKey, SESSION_HASH_TTL_SECONDS);
+
+            if (ip != null && !ip.isEmpty()) {
+                pipe.expire(getIpSetKey(ip), SESSION_HASH_TTL_SECONDS);
+            }
 
             if (username != null && !username.isEmpty()) {
                 pipe.sadd(ONLINE_ALL_KEY, username);
@@ -224,11 +238,6 @@ public class SessionTrackerService {
         });
     }
 
-    /**
-     * Limpa os dados da sessão no Redis ao jogador sair. (Versão com 2 argumentos)
-     * @param uuid O UUID do jogador.
-     * @param username O username do jogador (para limpeza eficiente dos sets).
-     */
     public void endSession(UUID uuid, String username) {
         if (uuid == null) {
             LOGGER.warning("endSession chamado com UUID nulo.");
@@ -240,12 +249,12 @@ public class SessionTrackerService {
             Map<String, String> sessionData = jedis.hgetAll(sessionKey);
             String proxyId = sessionData.get("proxyId");
             String currentServer = sessionData.get("currentServer");
+            String ip = sessionData.get("ip");
 
-            // Se o username não foi passado, tenta pegar do hash
             String finalUsername = (username != null && !username.isEmpty()) ? username : sessionData.get("username");
 
             Pipeline pipe = jedis.pipelined();
-            pipe.del(sessionKey); // Deleta o hash da sessão
+            pipe.del(sessionKey);
 
             if (finalUsername != null && !finalUsername.isEmpty()) {
                 pipe.srem(ONLINE_ALL_KEY, finalUsername);
@@ -259,16 +268,15 @@ public class SessionTrackerService {
             } else {
                 LOGGER.log(Level.INFO, "Sessão finalizada no Redis para UUID: {0} (username não encontrado)", uuid);
             }
+
+            if (ip != null && !ip.isEmpty()) {
+                pipe.srem(getIpSetKey(ip), uuid.toString());
+            }
+
             pipe.sync();
         });
     }
 
-    /**
-     * <<< CORREÇÃO: Adicionar método endSession(UUID) sobrecarregado >>>
-     * Limpa os dados da sessão no Redis (Versão com 1 argumento).
-     * Tenta buscar o username no hash antes de limpar.
-     * @param uuid O UUID do jogador.
-     */
     public void endSession(UUID uuid) {
         if (uuid == null) {
             LOGGER.warning("endSession (1 arg) chamado com UUID nulo.");
@@ -276,7 +284,6 @@ public class SessionTrackerService {
         }
         String sessionKey = getSessionKey(uuid);
 
-        // Tenta buscar o username no hash ANTES de chamar a versão de 2 argumentos
         String username = null;
         try (Jedis jedis = RedisManager.getResource()) {
             username = jedis.hget(sessionKey, "username");
@@ -284,10 +291,17 @@ public class SessionTrackerService {
             LOGGER.log(Level.WARNING, "Erro ao buscar username em endSession(1 arg) para UUID: " + uuid, e);
         }
 
-        // Chama a versão de 2 argumentos (username pode ser nulo se não encontrado)
         endSession(uuid, username);
     }
-    // <<< FIM CORREÇÃO >>>
+
+    public long getActiveSessionsCountByIp(String ipAddress) {
+        if (ipAddress == null || ipAddress.isEmpty()) {
+            return 0;
+        }
+
+        String ipSetKey = getIpSetKey(ipAddress);
+        return executeJedis(jedis -> jedis.scard(ipSetKey)).orElse(0L);
+    }
 
 
     public Optional<String> getSessionField(UUID uuid, String fieldName) {
@@ -319,8 +333,6 @@ public class SessionTrackerService {
             }
         });
     }
-
-    // --- Métodos para Sets (contagem, listagem) ---
 
     public long getTotalOnlineCount() {
         return executeJedis(jedis -> jedis.scard(ONLINE_ALL_KEY)).orElse(0L);

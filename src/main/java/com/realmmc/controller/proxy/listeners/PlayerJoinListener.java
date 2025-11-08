@@ -83,9 +83,9 @@ public class PlayerJoinListener {
 
     @Subscribe(order = com.velocitypowered.api.event.PostOrder.EARLY)
     public void onLogin(LoginEvent event) {
-        Player player = event.getPlayer();
+        final Player player = event.getPlayer();
         if (player == null) return;
-        UUID uuid = player.getUniqueId();
+        final UUID uuid = player.getUniqueId();
 
         roleService.startPreLoadingPlayerData(uuid);
         logger.finer("[PlayerJoin] Role pre-loading started (LoginEvent) for " + player.getUsername());
@@ -94,77 +94,91 @@ public class PlayerJoinListener {
 
     @Subscribe(order = com.velocitypowered.api.event.PostOrder.NORMAL)
     public void onPostLogin(PostLoginEvent event) {
-        Player player = event.getPlayer();
-        String displayName = player.getUsername();
-        String usernameLower = displayName.toLowerCase();
-        UUID uuid = player.getUniqueId();
+        final Player player = event.getPlayer();
+        final String displayName = player.getUsername();
+        final String usernameLower = displayName.toLowerCase();
+        final UUID uuid = player.getUniqueId();
 
-        String ip = player.getRemoteAddress() instanceof InetSocketAddress isa ? isa.getAddress().getHostAddress() : null;
+        final String ip = player.getRemoteAddress() instanceof InetSocketAddress isa ? isa.getAddress().getHostAddress() : null;
 
-        boolean isPremium = Proxy.getInstance().getPremiumLoginStatus().getOrDefault(usernameLower, false);
+        final boolean isPremium = Proxy.getInstance().getPremiumLoginStatus().getOrDefault(usernameLower, false);
 
-        String clientVersion = "Unknown";
-        String clientType = "Java";
-        int protocolVersion = player.getProtocolVersion().getProtocol();
+        String tempClientVersion = "Unknown";
+        String tempClientType = "Java";
+        int tempProtocolVersion = player.getProtocolVersion().getProtocol();
 
         if (geyserApiAvailable) {
             try {
                 Object geyserApi = Class.forName("org.geysermc.geyser.api.GeyserApi").getMethod("api").invoke(null);
                 Object connection = geyserApi.getClass().getMethod("connectionByUuid", UUID.class).invoke(geyserApi, uuid);
                 if (connection != null) {
-                    clientType = "Bedrock";
-                    protocolVersion = (int) connection.getClass().getMethod("protocolVersion").invoke(connection);
-                    clientVersion = String.valueOf(protocolVersion);
+                    tempClientType = "Bedrock";
+                    tempProtocolVersion = (int) connection.getClass().getMethod("protocolVersion").invoke(connection);
+                    tempClientVersion = String.valueOf(tempProtocolVersion);
                     logger.finer("[PlayerJoin] Bedrock player detected: " + displayName);
                 }
             } catch (Exception | NoClassDefFoundError geyserEx) {
                 logger.log(Level.WARNING, "[PlayerJoin] Error accessing Geyser API for " + displayName + ". Assuming Java.", geyserEx);
-                clientType = "Java";
+                tempClientType = "Java";
             }
         }
 
-        if ("Java".equals(clientType)) {
+        if ("Java".equals(tempClientType)) {
             if (viaVersionApiAvailable) {
                 try {
-                    protocolVersion = Via.getAPI().getPlayerVersion(uuid);
-                    ProtocolVersion pv = ProtocolVersion.getProtocol(protocolVersion);
-                    clientVersion = (pv != null) ? pv.getName() : String.valueOf(protocolVersion);
+                    tempProtocolVersion = Via.getAPI().getPlayerVersion(uuid);
+                    ProtocolVersion pv = ProtocolVersion.getProtocol(tempProtocolVersion);
+                    tempClientVersion = (pv != null) ? pv.getName() : String.valueOf(tempProtocolVersion);
                 } catch (Exception | NoClassDefFoundError viaEx) {
                     logger.log(Level.FINER, "[PlayerJoin] Failed to get Java version via ViaVersion API for " + displayName + ". Using Velocity fallback.", viaEx);
-                    clientVersion = player.getProtocolVersion().getName();
-                    protocolVersion = player.getProtocolVersion().getProtocol();
+                    tempClientVersion = player.getProtocolVersion().getName();
+                    tempProtocolVersion = player.getProtocolVersion().getProtocol();
                 }
             } else {
-                clientVersion = player.getProtocolVersion().getName();
+                tempClientVersion = player.getProtocolVersion().getName();
             }
         }
+
+        final String clientVersion = tempClientVersion;
+        final String clientType = tempClientType;
+        final int protocolVersion = tempProtocolVersion;
 
         Proxy.getInstance().getLoginTimestamps().put(uuid, System.currentTimeMillis());
 
         try {
-            Profile profile = profileService.ensureProfile(uuid, displayName, usernameLower, ip, clientVersion, clientType, isPremium, player);
+            final Profile profile = profileService.ensureProfile(uuid, displayName, usernameLower, ip, clientVersion, clientType, isPremium, player);
 
             final int finalProtocol = protocolVersion;
+
             String determinedProxyId;
-            String proxyNameEnv = System.getenv("PROXY_NAME");
-            if (proxyNameEnv != null && !proxyNameEnv.isEmpty()) {
-                determinedProxyId = proxyNameEnv;
-            } else {
+            determinedProxyId = System.getProperty("controller.proxyId");
+
+            if (determinedProxyId == null || determinedProxyId.isEmpty()) {
+                determinedProxyId = System.getenv("PROXY_NAME");
+            }
+
+            if (determinedProxyId == null || determinedProxyId.isEmpty()) {
                 try {
                     determinedProxyId = proxyServer.getBoundAddress().getHostName();
+                    logger.warning("Aviso: 'controller.proxyId' (propriedade Java) ou 'PROXY_NAME' (variável de ambiente) não estão definidas! O proxyId está a ser reportado como: " + determinedProxyId);
                 } catch (Exception e) {
                     determinedProxyId = "proxy_unknown";
                 }
             }
+
             final String finalProxyId = determinedProxyId;
 
             sessionTrackerServiceOpt.ifPresent(service -> {
-                service.startSession(uuid, profile.getName(), finalProxyId, null, finalProtocol, (int)player.getPing());
+                service.startSession(uuid, profile.getName(), finalProxyId, null, finalProtocol, (int)player.getPing(),
+                        ip, clientVersion, clientType, isPremium);
+
                 service.setSessionState(uuid, AuthenticationGuard.STATE_CONNECTING);
                 logger.fine("[PlayerJoin] Session state set to CONNECTING for " + displayName);
             });
 
             roleService.clearSentWarnings(uuid);
+
+            roleService.checkAndSendLoginExpirationWarning(player);
 
         } catch (Exception e) {
             logger.log(Level.SEVERE, "[PlayerJoin] CRITICAL error during ensureProfile/startSession for " + displayName + " (" + uuid + ")", e);
@@ -182,10 +196,10 @@ public class PlayerJoinListener {
 
     @Subscribe(order = com.velocitypowered.api.event.PostOrder.LATE)
     public void onDisconnect(DisconnectEvent event) {
-        Player player = event.getPlayer();
+        final Player player = event.getPlayer();
         if (player == null) return;
-        UUID uuid = player.getUniqueId();
-        String username = player.getUsername();
+        final UUID uuid = player.getUniqueId();
+        final String username = player.getUsername();
 
         sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, username));
 
