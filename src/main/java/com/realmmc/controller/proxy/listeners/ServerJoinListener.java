@@ -6,6 +6,8 @@ import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.modules.server.ServerRegistryService;
 import com.realmmc.controller.modules.server.data.ServerInfo;
 import com.realmmc.controller.modules.server.data.ServerInfoRepository;
+import com.realmmc.controller.modules.server.data.ServerStatus; // Importar ServerStatus
+import com.realmmc.controller.modules.server.data.ServerType; // Importar ServerType
 import com.realmmc.controller.shared.annotations.Listeners;
 import com.realmmc.controller.shared.auth.AuthenticationGuard;
 import com.realmmc.controller.shared.messaging.Message;
@@ -45,17 +47,20 @@ public class ServerJoinListener {
     @Subscribe
     public void onServerPreConnect(ServerPreConnectEvent event) {
         Player player = event.getPlayer();
-
         RegisteredServer targetServer = event.getOriginalServer();
 
         if (!AuthenticationGuard.isAuthenticated(player.getUniqueId())) {
             if (AuthenticationGuard.isConnecting(player.getUniqueId())) {
-                return;
+                logger.finer("[ServerJoin] Denied connection for " + player.getUsername() + ": Still in CONNECTING state.");
+                // Opcional: Enviar mensagem se o jogador tentar mudar de servidor antes de estar autenticado
+                // Messages.send(player, Message.of(MessageKey.AUTH_STILL_CONNECTING));
+                // event.setResult(ServerPreConnectEvent.ServerResult.denied());
             }
             return;
         }
 
         if (targetServer == null) {
+            // Conexão inicial à rede, o Velocity vai tentar o 'try' (lobby-1)
             return;
         }
 
@@ -65,15 +70,17 @@ public class ServerJoinListener {
         Optional<ServerInfo> serverInfoOpt = serverRepo.findByName(targetName);
 
         if (serverInfoOpt.isEmpty()) {
+            // Servidor não gerido pelo Controller (ex: survival, rankup, build-1)
+            // A verificação de permissão para estes é feita pelo 'minGroup' no 'DefaultServer'
+            // Vamos assumir que 'rankup-1' e 'build-1' estão no DefaultServer e no DB
             return;
         }
 
         ServerInfo serverInfo = serverInfoOpt.get();
-
         Optional<PlayerSessionData> sessionDataOpt = roleService.getSessionDataFromCache(player.getUniqueId());
 
         if (sessionDataOpt.isEmpty()) {
-            logger.warning("[ServerJoin] Session Data not found for " + player.getUsername() + " when trying to connect to " + targetName);
+            logger.warning("[ServerJoin] Session Data not found for " + player.getUsername() + " when trying to connect to " + targetName + ". Denying.");
             event.setResult(ServerPreConnectEvent.ServerResult.denied());
             Messages.send(player, Message.of(MessageKey.AUTH_STILL_CONNECTING));
             return;
@@ -82,6 +89,7 @@ public class ServerJoinListener {
         PlayerSessionData sessionData = sessionDataOpt.get();
         int playerWeight = sessionData.getPrimaryRole().getWeight();
 
+        // 1. Verificação de Grupo Mínimo
         if (!serverInfo.getMinGroup().equalsIgnoreCase("default")) {
             Optional<Integer> minGroupWeightOpt = roleService.getRole(serverInfo.getMinGroup()).map(r -> r.getWeight());
 
@@ -97,36 +105,29 @@ public class ServerJoinListener {
             }
         }
 
+        // 2. Verificação de Lotação
         int currentPlayers = targetServer.getPlayersConnected().size();
-
         int maxNormalSlots = serverInfo.getMaxPlayers();
         int maxVipSlots = serverInfo.getMaxPlayersVip();
 
         if (currentPlayers >= maxNormalSlots) {
+            boolean hasVipSlot = sessionData.getPrimaryRole().getType() == com.realmmc.controller.shared.role.RoleType.VIP ||
+                    playerWeight > roleService.getRole("default").map(r->r.getWeight()).orElse(0);
 
-            if (sessionData.getPrimaryRole().getType() == com.realmmc.controller.shared.role.RoleType.VIP || playerWeight > roleService.getRole("default").map(r->r.getWeight()).orElse(0)) {
-
+            if (hasVipSlot) {
                 if (currentPlayers >= maxVipSlots) {
-                    Message msg = Message.of(MessageKey.SERVER_JOIN_FAIL_FULL_NO_VIP)
+                    Message msg = Message.of(MessageKey.SERVER_JOIN_FAIL_FULL_VIP_SLOT)
                             .with("server", serverInfo.getDisplayName())
-                            .with("max_slots", maxVipSlots);
-
+                            .with("max_players", maxVipSlots);
                     event.setResult(ServerPreConnectEvent.ServerResult.denied());
                     Messages.send(player, msg);
                     sendFailureSound(player);
                     return;
                 }
-                Messages.send(player,
-                        Message.of(MessageKey.SERVER_JOIN_FAIL_FULL_VIP_SLOT)
-                                .with("server", serverInfo.getDisplayName())
-                                .with("max_players", maxNormalSlots)
-                );
-
             } else {
                 Message msg = Message.of(MessageKey.SERVER_JOIN_FAIL_FULL_NO_VIP)
                         .with("server", serverInfo.getDisplayName())
                         .with("max_slots", maxNormalSlots);
-
                 event.setResult(ServerPreConnectEvent.ServerResult.denied());
                 Messages.send(player, msg);
                 sendFailureSound(player);
@@ -134,20 +135,30 @@ public class ServerJoinListener {
             }
         }
 
-        if (serverInfo.getType() == com.realmmc.controller.modules.server.data.ServerType.LOBBY_AUTO && serverInfo.getStatus() == com.realmmc.controller.modules.server.data.ServerStatus.STOPPING) {
+        // 3. Verificação de Lobby a Desligar (CORREÇÃO)
+
+        // Verifica se é um lobby DINÂMICO (tipo LOBBY e NÃO é estático)
+        boolean isDynamicLobby = serverInfo.getType() == ServerType.LOBBY &&
+                !serverRegistryService.isStaticDefault(serverInfo.getName());
+
+        // Se for um lobby dinâmico E estiver a desligar-se (STOPPING)
+        if (isDynamicLobby && serverInfo.getStatus() == ServerStatus.STOPPING) {
+
+            logger.fine("[ServerJoin] Player " + player.getUsername() + " tried to join dynamic lobby " + serverInfo.getName() + " which is STOPPING. Redirecting...");
+
             Optional<RegisteredServer> bestLobby = serverRegistryService.getBestLobby();
-            if (bestLobby.isPresent()) {
+
+            if (bestLobby.isPresent() && !bestLobby.get().getServerInfo().getName().equals(targetName)) {
                 event.setResult(ServerPreConnectEvent.ServerResult.allowed(bestLobby.get()));
                 Messages.send(player, MessageKey.SERVER_REDIRECT_LOBBY_CLOSED);
-                return;
             } else {
-
+                // Falha crítica: não há lobbies para onde o enviar
                 Message msg = Message.of(MessageKey.SERVER_JOIN_FAIL_NO_LOBBY);
-
                 event.setResult(ServerPreConnectEvent.ServerResult.denied());
                 Messages.send(player, msg);
                 sendFailureSound(player);
             }
+            return;
         }
     }
 
