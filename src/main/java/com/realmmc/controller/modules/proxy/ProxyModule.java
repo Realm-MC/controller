@@ -3,7 +3,6 @@ package com.realmmc.controller.modules.proxy;
 import com.realmmc.controller.core.modules.AbstractCoreModule;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.RoleService;
-// Removidas importações de ServerInfo/Repository (agora só no ServerManager)
 import com.realmmc.controller.proxy.commands.CommandManager;
 import com.realmmc.controller.proxy.listeners.ListenersManager;
 import com.realmmc.controller.proxy.permission.VelocityPermissionInjector;
@@ -52,19 +51,15 @@ public class ProxyModule extends AbstractCoreModule {
     @Override public String getName() { return "ProxyModule"; }
     @Override public String getVersion() { return "1.0.0"; }
     @Override public String getDescription() { return "Módulo específico para funcionalidades Velocity (v2)."; }
-
-    // Prioridade 50 (Carrega DEPOIS do ServerManager 40)
     @Override public int getPriority() { return 50; }
-
     @Override public String[] getDependencies() {
-        // <<< CORREÇÃO: ProxyModule depende do ServerManager >>>
         return new String[]{
                 "Profile",
                 "RoleModule",
                 "SchedulerModule",
                 "Command",
                 "Preferences",
-                "ServerManager" // Garante que ServerManager (40) carregue antes de ProxyModule (50)
+                "ServerManager"
         };
     }
 
@@ -84,7 +79,6 @@ public class ProxyModule extends AbstractCoreModule {
         try { CommandManager.registerAll(pluginInstance); }
         catch (Exception e) { logger.log(Level.SEVERE, "Falha ao registrar comandos Velocity!", e); }
 
-        // Esta chamada (linha 84) não deve mais falhar
         try { ListenersManager.registerAll(server, pluginInstance); }
         catch (Exception e) { logger.log(Level.SEVERE, "Falha ao registrar listeners Velocity!", e); }
 
@@ -106,7 +100,6 @@ public class ProxyModule extends AbstractCoreModule {
                 } catch (Exception e) { logger.log(Level.SEVERE, "Falha ao registrar VelocityPermissionRefresher!", e); }
             } else { logger.severe("VelocityPermissionRefresher não registrado porque o Injetor falhou."); }
 
-            // <<< CORREÇÃO: Esta linha agora será executada, inicializando o Kicker >>>
             try {
                 RoleKickHandler.PlatformKicker kicker = (uuid, formattedKickMessage) -> {
                     server.getPlayer(uuid).ifPresent(player -> {
@@ -156,10 +149,8 @@ public class ProxyModule extends AbstractCoreModule {
     // --- Métodos para Heartbeat Task (Velocity) ---
     private void startHeartbeatTask() {
         if (heartbeatTaskFuture != null && !heartbeatTaskFuture.isDone()) {
-            logger.fine("Tarefa de Heartbeat (Velocity) já está rodando.");
             return;
         }
-
         sessionTrackerServiceOpt.ifPresentOrElse(sessionTracker -> {
             try {
                 heartbeatTaskFuture = TaskScheduler.runAsyncTimer(() -> {
@@ -170,8 +161,6 @@ public class ProxyModule extends AbstractCoreModule {
                     }
                 }, 10, 15, TimeUnit.SECONDS);
                 logger.info("Tarefa de Heartbeat (Velocity) iniciada.");
-            } catch (IllegalStateException e) {
-                logger.log(Level.SEVERE, "Falha ao agendar Heartbeat Task (Velocity): TaskScheduler não inicializado?", e);
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Erro inesperado ao agendar Heartbeat Task (Velocity)", e);
             }
@@ -194,17 +183,13 @@ public class ProxyModule extends AbstractCoreModule {
     }
 
     private void runHeartbeat(SessionTrackerService sessionTracker) {
-        // 1. Atualiza contagem global de jogadores no Redis
         try (Jedis jedis = RedisManager.getResource()) {
             String playerCountStr = String.valueOf(server.getPlayerCount());
             jedis.setex(RedisChannel.GLOBAL_PLAYER_COUNT.getName(), 20, playerCountStr);
-            logger.finer("Contagem global de jogadores (" + playerCountStr + ") salva no Redis.");
-
         } catch (Exception e) {
             logger.log(Level.WARNING, "Falha ao salvar contagem global de jogadores no Redis.", e);
         }
 
-        // 2. Continua com o heartbeat individual
         for (Player player : server.getAllPlayers()) {
             if (!player.isActive()) continue;
             UUID uuid = player.getUniqueId();
@@ -225,16 +210,17 @@ public class ProxyModule extends AbstractCoreModule {
 
     // --- Métodos para Reaper Task (SOMENTE NO PROXY) ---
     private void startReaperTask() {
-        String runReaperEnv = System.getenv("RUN_SESSION_REAPER");
+        // <<< CORREÇÃO: Mudar de getenv para getProperty >>>
+        String runReaperEnv = System.getProperty("RUN_SESSION_REAPER"); // Era getenv
+        // <<< FIM CORREÇÃO >>>
         boolean shouldRunReaper = "true".equalsIgnoreCase(runReaperEnv);
 
         if (!shouldRunReaper) {
-            logger.info("Tarefa Reaper desativada nesta instância (RUN_SESSION_REAPER != true).");
+            logger.info("Tarefa Reaper desativada nesta instância (Flag -DRUN_SESSION_REAPER != true).");
             return;
         }
 
         if (reaperTaskFuture != null && !reaperTaskFuture.isDone()) {
-            logger.fine("Tarefa Reaper já está rodando.");
             return;
         }
 
@@ -248,8 +234,6 @@ public class ProxyModule extends AbstractCoreModule {
                     }
                 }, 30, 60, TimeUnit.SECONDS);
                 logger.info("Tarefa Reaper (Limpador de Sessões Inativas) iniciada.");
-            } catch (IllegalStateException e) {
-                logger.log(Level.SEVERE, "Falha ao agendar Reaper Task: TaskScheduler não inicializado?", e);
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Erro inesperado ao agendar Reaper Task", e);
             }
@@ -280,7 +264,6 @@ public class ProxyModule extends AbstractCoreModule {
 
         Set<String> onlineUsernames = sessionTracker.getOnlineUsernames();
         if (onlineUsernames.isEmpty()) {
-            logger.finest("Reaper: Nenhum usuário online encontrado no set.");
             return;
         }
 
@@ -316,11 +299,8 @@ public class ProxyModule extends AbstractCoreModule {
                         logger.log(Level.WARNING, "Reaper: Hash de sessão encontrado para {0} (UUID: {1}) mas sem timestamp ou em estado não ONLINE ({2}). Limpando.", new Object[]{username, uuid, state == null ? "N/A" : state});
                         sessionTracker.endSession(uuid, username);
                         cleanedCount++;
-                    } else {
-                        logger.log(Level.FINER, "Reaper: Hash de sessão ONLINE para {0} (UUID: {1}) sem timestamp de heartbeat. Aguardando próximo ciclo.", new Object[]{username, uuid});
                     }
                 }
-
             } catch (JedisConnectionException e) {
                 logger.log(Level.SEVERE, "Reaper: Erro de conexão Redis durante a verificação. Abortando ciclo.", e);
                 return;
@@ -331,8 +311,6 @@ public class ProxyModule extends AbstractCoreModule {
 
         if (cleanedCount > 0) {
             logger.log(Level.INFO, "Reaper Task concluída. {0} sessões inativas foram limpas.", cleanedCount);
-        } else {
-            logger.fine("Reaper Task concluída. Nenhuma sessão inativa encontrada.");
         }
     }
 
@@ -358,5 +336,4 @@ public class ProxyModule extends AbstractCoreModule {
 
         return Optional.empty();
     }
-    // --- Fim Métodos Reaper ---
 }
