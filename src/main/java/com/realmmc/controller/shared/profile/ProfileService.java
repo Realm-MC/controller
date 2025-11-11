@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mongodb.MongoException;
-import com.mongodb.client.model.Filters;
+import com.mongodb.client.FindIterable;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.model.*;
+import com.mongodb.client.result.UpdateResult;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.shared.preferences.Language;
 import com.realmmc.controller.shared.preferences.PreferencesService;
@@ -279,7 +282,6 @@ public class ProfileService {
 
             final Profile finalProfileForServices = profileToReturn;
             getStatsService().ifPresent(stats -> stats.ensureStatistics(finalProfileForServices));
-            // PASSANDO O IDIOMA INICIAL AQUI
             getPreferencesService().ifPresent(prefs -> prefs.ensurePreferences(finalProfileForServices, initialLang));
         }
 
@@ -306,8 +308,8 @@ public class ProfileService {
 
         final Profile finalProfileToReturn = profileToReturn;
         getPreferencesService().ifPresent(prefs -> {
-            prefs.loadAndCacheLanguage(finalProfileToReturn.getUuid());
-            LOGGER.finest("[ProfileService:Ensure] Language cache loaded/updated for " + finalProfileToReturn.getUuid());
+            prefs.loadAndCachePreferences(finalProfileToReturn.getUuid());
+            LOGGER.finest("[ProfileService:Ensure] Preferences cache loaded/updated for " + finalProfileToReturn.getUuid());
         });
 
         return finalProfileToReturn;
