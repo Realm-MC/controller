@@ -2,7 +2,15 @@ package com.realmmc.controller.shared.preferences;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.modules.role.RoleService;
+import com.realmmc.controller.shared.messaging.Message;
+import com.realmmc.controller.shared.messaging.MessageKey;
+import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.profile.Profile;
+import com.realmmc.controller.shared.role.RoleType;
+import com.realmmc.controller.shared.sounds.SoundKeys;
+import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
 
@@ -20,6 +28,7 @@ public class PreferencesService {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final Map<UUID, Language> languageCache = new ConcurrentHashMap<>();
+    private final Map<UUID, Boolean> staffChatCache = new ConcurrentHashMap<>();
 
     public Optional<Preferences> getPreferences(UUID uuid) {
         return repository.findByUuid(uuid);
@@ -32,14 +41,17 @@ public class PreferencesService {
         return repository.findById(profile.getId()).orElseGet(() -> {
             LOGGER.info("Creating default preferences for profile ID: " + profile.getId() + " (UUID: " + profile.getUuid() + ")");
             Language langToSet = (initialLanguage != null) ? initialLanguage : Language.getDefault();
+
             Preferences newPrefs = Preferences.builder()
                     .id(profile.getId())
                     .uuid(profile.getUuid())
                     .name(profile.getName())
                     .serverLanguage(langToSet)
+                    .staffChatEnabled(true)
                     .build();
+
             repository.upsert(newPrefs);
-            updateCachedLanguage(profile.getUuid(), langToSet);
+            updateCachedPreferences(profile.getUuid(), langToSet, true);
             return newPrefs;
         });
     }
@@ -74,7 +86,7 @@ public class PreferencesService {
 
     public void save(Preferences preferences) {
         repository.upsert(preferences);
-        updateCachedLanguage(preferences.getUuid(), preferences.getServerLanguage());
+        updateCachedPreferences(preferences.getUuid(), preferences.getServerLanguage(), preferences.isStaffChatEnabled());
         publishUpdate(preferences);
     }
 
@@ -83,6 +95,7 @@ public class PreferencesService {
             ObjectNode node = mapper.createObjectNode();
             node.put("uuid", preferences.getUuid().toString());
             node.put("language", preferences.getServerLanguage().name());
+            node.put("staffChatEnabled", preferences.isStaffChatEnabled());
 
             String json = node.toString();
             RedisPublisher.publish(RedisChannel.PREFERENCES_SYNC, json);
@@ -96,27 +109,60 @@ public class PreferencesService {
         return Optional.ofNullable(languageCache.get(uuid));
     }
 
-    public void updateCachedLanguage(UUID uuid, Language language) {
+    public Optional<Boolean> getCachedStaffChatEnabled(UUID uuid) {
+        return Optional.ofNullable(staffChatCache.get(uuid));
+    }
+
+    public void updateCachedPreferences(UUID uuid, Language language, boolean staffChatEnabled) {
+        if (uuid == null) return;
+
         if (language != null) {
             languageCache.put(uuid, language);
-            LOGGER.log(Level.FINEST, "Updated language cache for {0} to {1}", new Object[]{uuid, language});
         } else {
             languageCache.remove(uuid);
-            LOGGER.log(Level.FINEST, "Removed language cache for {0} due to null language", uuid);
+        }
+
+        staffChatCache.put(uuid, staffChatEnabled);
+        LOGGER.log(Level.FINEST, "Updated preferences cache for {0} (Lang: {1}, SC: {2})", new Object[]{uuid, language, staffChatEnabled});
+    }
+
+    public void removeCachedPreferences(UUID uuid) {
+        languageCache.remove(uuid);
+        staffChatCache.remove(uuid);
+        LOGGER.log(Level.FINEST, "Removed preferences cache for {0}", uuid);
+    }
+
+    public void loadAndCachePreferences(UUID uuid) {
+        Optional<Preferences> prefsOpt = getPreferences(uuid);
+
+        Language lang = prefsOpt.map(Preferences::getServerLanguage).orElse(Language.getDefault());
+        boolean staffChat = prefsOpt.map(Preferences::isStaffChatEnabled).orElse(true);
+
+        updateCachedPreferences(uuid, lang, staffChat);
+    }
+
+    public void checkAndSendStaffChatWarning(Object playerObject, UUID uuid) {
+        try {
+            boolean isEnabled = getCachedStaffChatEnabled(uuid).orElse(true);
+
+            if (isEnabled) {
+                return;
+            }
+
+            RoleService roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
+
+            roleService.getSessionDataFromCache(uuid).ifPresent(sessionData -> {
+                if (sessionData.getPrimaryRole().getType() == RoleType.STAFF) {
+
+                    Messages.send(playerObject, MessageKey.STAFFCHAT_WARN_DISABLED);
+
+                    ServiceRegistry.getInstance().getService(SoundPlayer.class)
+                            .ifPresent(sp -> sp.playSound(playerObject, SoundKeys.NOTIFICATION));
+                }
+            });
+
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Falha ao verificar ou enviar aviso de StaffChat para " + uuid, e);
         }
     }
-
-    public void removeCachedLanguage(UUID uuid) {
-        languageCache.remove(uuid);
-        LOGGER.log(Level.FINEST, "Removed language cache for {0}", uuid);
-    }
-
-    public Language loadAndCacheLanguage(UUID uuid) {
-        Language lang = getPreferences(uuid)
-                .map(Preferences::getServerLanguage)
-                .orElse(Language.getDefault());
-        updateCachedLanguage(uuid, lang);
-        return lang;
-    }
-
 }

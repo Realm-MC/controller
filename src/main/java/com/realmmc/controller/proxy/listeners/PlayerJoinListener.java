@@ -176,9 +176,11 @@ public class PlayerJoinListener {
                 logger.fine("[PlayerJoin] Session state set to CONNECTING for " + displayName);
             });
 
-            roleService.clearSentWarnings(uuid);
+            preferencesService.loadAndCachePreferences(uuid);
 
+            roleService.clearSentWarnings(uuid);
             roleService.checkAndSendLoginExpirationWarning(player);
+            preferencesService.checkAndSendStaffChatWarning(player, uuid);
 
         } catch (Exception e) {
             logger.log(Level.SEVERE, "[PlayerJoin] CRITICAL error during ensureProfile/startSession for " + displayName + " (" + uuid + ")", e);
@@ -215,7 +217,7 @@ public class PlayerJoinListener {
             }
         }
 
-        preferencesService.removeCachedLanguage(uuid);
+        preferencesService.removeCachedPreferences(uuid);
         roleService.clearSentWarnings(uuid);
 
         Proxy.getInstance().getPremiumLoginStatus().remove(player.getUsername().toLowerCase());

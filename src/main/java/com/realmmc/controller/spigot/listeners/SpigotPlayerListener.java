@@ -75,6 +75,8 @@ public class SpigotPlayerListener implements Listener {
 
         TaskScheduler.runAsync(() -> {
             try {
+                preferencesService.loadAndCachePreferences(uuid);
+
                 Optional<Profile> profileOpt = profileService.getByUuid(uuid);
                 if (profileOpt.isPresent()) {
                     Profile profile = profileOpt.get();
@@ -112,6 +114,8 @@ public class SpigotPlayerListener implements Listener {
         final UUID uuid = player.getUniqueId();
 
         this.roleService.clearSentWarnings(uuid);
+        this.roleService.checkAndSendLoginExpirationWarning(player);
+        this.preferencesService.checkAndSendStaffChatWarning(player, uuid);
 
         sessionTrackerServiceOpt.ifPresent(service -> {
             try {
@@ -146,7 +150,7 @@ public class SpigotPlayerListener implements Listener {
             }
         }
 
-        this.preferencesService.removeCachedLanguage(uuid);
+        this.preferencesService.removeCachedPreferences(uuid);
         this.roleService.clearSentWarnings(uuid);
     }
 }

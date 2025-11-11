@@ -16,6 +16,7 @@ import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.messaging.RawMessage;
+import com.realmmc.controller.shared.preferences.PreferencesService;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileResolver;
 import com.realmmc.controller.shared.profile.ProfileService;
@@ -52,6 +53,7 @@ public class RoleCommand implements CommandInterface {
     private final String requiredGroupName = "Gerente";
     private final RoleService roleService;
     private final ProfileService profileService;
+    private final PreferencesService preferencesService;
     private final Optional<SoundPlayer> soundPlayerOpt;
     private final Logger logger;
     private final ProxyServer proxyServer;
@@ -61,6 +63,7 @@ public class RoleCommand implements CommandInterface {
     public RoleCommand() {
         this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
         this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
+        this.preferencesService = ServiceRegistry.getInstance().requireService(PreferencesService.class);
         this.soundPlayerOpt = ServiceRegistry.getInstance().getService(SoundPlayer.class);
         this.proxyServer = ServiceRegistry.getInstance().requireService(ProxyServer.class);
         this.logger = Proxy.getInstance().getLogger();
@@ -397,6 +400,16 @@ public class RoleCommand implements CommandInterface {
 
                             if (successMessageKey.get() != null) { Messages.send(finalSender, Message.of(successMessageKey.get()).with("group_display", targetRole.getDisplayName()).with("group_name", targetRole.getName()).with("player", targetOriginalName).with("duration_msg", durationMsg)); }
                             playSound(finalSender, SoundKeys.SUCCESS);
+
+                            if ((finalType == RoleModificationType.ADD || finalType == RoleModificationType.SET) && targetRole.getType() == RoleType.STAFF) {
+                                preferencesService.getPreferences(targetUuid).ifPresent(prefs -> {
+                                    if (!prefs.isStaffChatEnabled()) {
+                                        prefs.setStaffChatEnabled(true);
+                                        preferencesService.save(prefs);
+                                        logger.info("[RoleCommand] Preferência StaffChat ativada automaticamente para " + targetUuid);
+                                    }
+                                });
+                            }
 
                             boolean isTargetOnline = proxyServer.getPlayer(targetUuid).isPresent();
                             if (!finalHidden && (finalType == RoleModificationType.ADD || finalType == RoleModificationType.SET)) {

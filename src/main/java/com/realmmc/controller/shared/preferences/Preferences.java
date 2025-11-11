@@ -21,4 +21,6 @@ public class Preferences {
     @Builder.Default
     private Language serverLanguage = Language.getDefault();
 
+    @Builder.Default
+    private boolean staffChatEnabled = true;
 }
