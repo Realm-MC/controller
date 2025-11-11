@@ -38,6 +38,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.AbstractMap;
+import java.util.NoSuchElementException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -125,22 +127,25 @@ public class RoleCommand implements CommandInterface {
         final String finalTargetInput = targetInput;
         final Locale senderLocale = Messages.determineLocale(finalSender);
 
-        resolveProfileAsync(finalTargetInput).thenAcceptAsync(targetProfileOpt -> {
+        resolveProfileAsync(finalTargetInput).thenComposeAsync(targetProfileOpt -> {
             if (targetProfileOpt.isEmpty()) {
                 Messages.send(finalSender, Message.of(MessageKey.COMMON_PLAYER_NEVER_JOINED).with("player", finalTargetInput));
                 playSound(finalSender, SoundKeys.ERROR);
-                return;
+                return CompletableFuture.failedFuture(new NoSuchElementException("Player not found: " + finalTargetInput));
             }
+
             final Profile targetProfile = targetProfileOpt.get();
             final UUID targetUuid = targetProfile.getUuid();
 
-            PlayerSessionData sessionData;
-            try {
-                sessionData = roleService.loadPlayerDataAsync(targetUuid).join();
-            } catch (Exception e) {
-                handleCommandError(finalSender, "obter dados sessão jogador (sync /info)", e);
-                return;
-            }
+            return roleService.loadPlayerDataAsync(targetUuid).thenApply(sessionData -> {
+                return new AbstractMap.SimpleImmutableEntry<>(targetProfile, sessionData);
+            });
+
+        }, roleService.getAsyncExecutor()).thenAcceptAsync(entry -> {
+
+            final Profile targetProfile = entry.getKey();
+            PlayerSessionData sessionData = entry.getValue();
+            final UUID targetUuid = targetProfile.getUuid();
 
             if (sessionData == null) {
                 sessionData = roleService.getSessionDataFromCache(targetUuid)
@@ -150,8 +155,22 @@ public class RoleCommand implements CommandInterface {
                         });
             }
 
+            String playerName = targetProfile.getName();
+            Role primaryRole = sessionData.getPrimaryRole();
+            String prefix = primaryRole.getPrefix();
+            String formattedNick;
 
-            String formattedNick = NicknameFormatter.getFullFormattedNick(targetUuid);
+            if (prefix != null && !prefix.isEmpty()) {
+                if (prefix.endsWith(" ")) {
+                    formattedNick = prefix + playerName;
+                } else {
+                    formattedNick = prefix + " " + playerName;
+                }
+            } else {
+                String color = primaryRole.getColor();
+                formattedNick = (color != null ? color : "<gray>") + playerName;
+            }
+
             Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_HEADER).with("subject", "Roles de " + formattedNick));
 
             Role primary = sessionData.getPrimaryRole();
@@ -206,7 +225,14 @@ public class RoleCommand implements CommandInterface {
             }
             Messages.send(finalSender, "<white>");
             playSound(finalSender, SoundKeys.NOTIFICATION);
-        }, roleService.getAsyncExecutor()).exceptionally(ex -> handleCommandError(sender, "obter info jogador", ex));
+
+        }, roleService.getAsyncExecutor()).exceptionally(ex -> {
+            if (ex.getCause() != null && ex.getCause() instanceof NoSuchElementException) {
+            } else {
+                handleCommandError(sender, "obter info jogador", ex);
+            }
+            return null;
+        });
     }
 
     private void displayGroupInfo(CommandSource sender, Role role) {
