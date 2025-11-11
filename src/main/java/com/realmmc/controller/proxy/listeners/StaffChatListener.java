@@ -57,11 +57,11 @@ public class StaffChatListener implements RedisMessageListener {
                     .map(ServerInfo::getDisplayName)
                     .orElse(serverName);
 
-            String format = "<dark_purple>[Staff] <dark_gray>[<server>] <reset><formattedName><dark_purple>: <white><message>";
+            String format = "<light_purple>[Staff] <dark_gray>[<server>] <reset><formatted_name><light_purple>: <white><message>";
 
             Component formattedMessage = miniMessage.deserialize(format,
                     Placeholder.component("server", Component.text(serverDisplayName)),
-                    Placeholder.component("formattedName", miniMessage.deserialize(formattedName)),
+                    Placeholder.component("formatted_name", miniMessage.deserialize(formattedName)),
                     Placeholder.component("message", Component.text(textMessage))
             );
 
