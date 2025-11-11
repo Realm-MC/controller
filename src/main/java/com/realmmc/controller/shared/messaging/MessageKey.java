@@ -339,7 +339,10 @@ public enum MessageKey {
     MAPMANAGER_DOWNLOAD_URL_BUILT("mapmanager.download.url_built"),
     MAPMANAGER_HELP_VISUALIZAR("mapmanager.help.visualizar"),
     MAPMANAGER_VISUALIZAR_LINK("mapmanager.visualizar.link"),
-    MAPMANAGER_BLUEMAP_START("mapmanager.bluemap.start");
+    MAPMANAGER_BLUEMAP_START("mapmanager.bluemap.start"),
+
+    STAFFCHAT_USAGE("staffchat.usage"),
+    STAFFCHAT_WARN_DISABLED("staffchat.warn_disabled");
 
     private final String key;
 
