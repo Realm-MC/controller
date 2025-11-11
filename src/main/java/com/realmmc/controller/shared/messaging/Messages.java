@@ -99,7 +99,10 @@ public class Messages {
                 if (cachedLang.isPresent()) {
                     return cachedLang.get().getLocale();
                 }
-                Language dbLang = prefsService.loadAndCacheLanguage(playerUuid);
+
+                prefsService.loadAndCachePreferences(playerUuid);
+
+                Language dbLang = prefsService.getCachedLanguage(playerUuid).orElse(Language.getDefault());
                 return dbLang.getLocale();
             }
         }
