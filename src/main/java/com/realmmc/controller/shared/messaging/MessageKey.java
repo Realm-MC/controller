@@ -341,8 +341,14 @@ public enum MessageKey {
     MAPMANAGER_VISUALIZAR_LINK("mapmanager.visualizar.link"),
     MAPMANAGER_BLUEMAP_START("mapmanager.bluemap.start"),
 
-    STAFFCHAT_USAGE("staffchat.usage"),
-    STAFFCHAT_WARN_DISABLED("staffchat.warn_disabled");
+    STAFFCHAT_WARN_DISABLED("staffchat.warn_disabled"),
+
+    STAFF_LIST_HEADER_EMPTY("stafflist.header_empty"),
+    STAFF_LIST_HEADER_EMPTY_WARNING("stafflist.header_empty_warning"),
+    STAFF_LIST_HEADER_ONE("stafflist.header_one"),
+    STAFF_LIST_HEADER_MULTIPLE("stafflist.header_multiple"),
+    STAFF_LIST_LINE("stafflist.line"),
+    STAFF_LIST_FOOTER("stafflist.footer");
 
     private final String key;
 
