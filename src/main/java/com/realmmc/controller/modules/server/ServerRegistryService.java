@@ -39,7 +39,7 @@ public class ServerRegistryService {
     private final ServerInfoRepository repository;
     private final PterodactylService pterodactylService;
 
-    private static final double LOBBY_SCALE_UP_THRESHOLD = 0.01; // <<< MANTIDO EM 1% PARA TESTES!
+    private static final double LOBBY_SCALE_UP_THRESHOLD = 0.70; // <<< MANTIDO EM 1% PARA TESTES!
     private static final long SERVER_EMPTY_SHUTDOWN_MS = TimeUnit.SECONDS.toMillis(30);
     private static final Pattern LOBBY_NAME_PATTERN = Pattern.compile("^lobby-(\\d+)$", Pattern.CASE_INSENSITIVE);
 
