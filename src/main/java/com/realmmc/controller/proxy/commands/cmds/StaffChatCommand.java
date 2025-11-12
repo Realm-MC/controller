@@ -16,7 +16,6 @@ import com.realmmc.controller.shared.utils.NicknameFormatter;
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ServerConnection;
-import com.velocitypowered.api.proxy.server.RegisteredServer;
 import com.velocitypowered.api.proxy.server.ServerInfo;
 
 import java.util.Collections;
@@ -30,6 +29,7 @@ import java.util.logging.Logger;
 public class StaffChatCommand implements CommandInterface {
 
     private final String requiredPermission = "controller.helper";
+    private final String requiredGroupName = "Ajudante";
     private final Optional<SoundPlayer> soundPlayerOpt;
     private final Logger logger;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -42,7 +42,7 @@ public class StaffChatCommand implements CommandInterface {
     @Override
     public void execute(CommandSource sender, String label, String[] args) {
         if (!sender.hasPermission(requiredPermission)) {
-            Messages.send(sender, Message.of(MessageKey.COMMON_NO_PERMISSION_GENERIC));
+            Messages.send(sender, Message.of(MessageKey.COMMON_NO_PERMISSION_GROUP).with("group", requiredGroupName));
             playSound(sender, SoundKeys.USAGE_ERROR);
             return;
         }
@@ -50,7 +50,7 @@ public class StaffChatCommand implements CommandInterface {
         Player player = (Player) sender;
 
         if (args.length == 0) {
-            sendUsage(sender);
+            sendUsage(sender, label, "<mensagem>");
             return;
         }
 
@@ -81,8 +81,8 @@ public class StaffChatCommand implements CommandInterface {
         }
     }
 
-    private void sendUsage(CommandSource sender) {
-        Messages.send(sender, Message.of(MessageKey.STAFFCHAT_USAGE));
+    private void sendUsage(CommandSource sender, String label, String usage) {
+        Messages.send(sender, Message.of(MessageKey.COMMON_USAGE).with("usage", "/" + label + " " + usage));
         playSound(sender, SoundKeys.USAGE_ERROR);
     }
 
