@@ -3,9 +3,11 @@ package com.realmmc.controller.proxy.listeners;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.modules.server.data.ServerInfo;
 import com.realmmc.controller.modules.server.data.ServerInfoRepository;
 import com.realmmc.controller.shared.preferences.PreferencesService;
+import com.realmmc.controller.shared.role.RoleType;
 import com.realmmc.controller.shared.sounds.SoundKeys;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
@@ -23,19 +25,20 @@ import java.util.logging.Logger;
 public class StaffChatListener implements RedisMessageListener {
 
     private static final Logger LOGGER = Logger.getLogger(StaffChatListener.class.getName());
-    private static final String STAFF_PERMISSION = "controller.helper";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
     private final ProxyServer proxyServer;
     private final ServerInfoRepository serverInfoRepository;
     private final PreferencesService preferencesService;
+    private final RoleService roleService;
     private final Optional<SoundPlayer> soundPlayerOpt;
 
     public StaffChatListener() {
         this.proxyServer = ServiceRegistry.getInstance().requireService(ProxyServer.class);
         this.serverInfoRepository = new ServerInfoRepository();
         this.preferencesService = ServiceRegistry.getInstance().requireService(PreferencesService.class);
+        this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
         this.soundPlayerOpt = ServiceRegistry.getInstance().getService(SoundPlayer.class);
     }
 
@@ -68,7 +71,9 @@ public class StaffChatListener implements RedisMessageListener {
             Component messageWithClick = formattedMessage.clickEvent(ClickEvent.suggestCommand("/btp " + playerName));
 
             proxyServer.getAllPlayers().stream()
-                    .filter(player -> player.hasPermission(STAFF_PERMISSION))
+                    .filter(player -> roleService.getSessionDataFromCache(player.getUniqueId())
+                            .map(session -> session.getPrimaryRole().getType() == RoleType.STAFF)
+                            .orElse(false))
                     .filter(player -> preferencesService.getCachedStaffChatEnabled(player.getUniqueId()).orElse(true))
                     .forEach(staff -> {
                         soundPlayerOpt.ifPresent(sp -> sp.playSound(staff, SoundKeys.NOTIFICATION));
