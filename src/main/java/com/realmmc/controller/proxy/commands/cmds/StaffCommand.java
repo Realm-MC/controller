@@ -86,14 +86,13 @@ public class StaffCommand implements CommandInterface {
                                                     .thenApply(sessionData -> {
                                                         if (sessionData != null && sessionData.getPrimaryRole().getType() == RoleType.STAFF) {
 
-                                                            String formattedName = NicknameFormatter.getFullFormattedNick(profile.getUuid());
-
                                                             String serverName = sessionTrackerService.getSessionField(profile.getUuid(), "currentServer")
-                                                                    .flatMap(id -> serverInfoRepository.findByName(id))
-                                                                    .map(ServerInfo::getDisplayName)
+                                                                    .map(id -> serverInfoRepository.findByName(id)
+                                                                            .map(ServerInfo::getDisplayName)
+                                                                            .orElse(id))
                                                                     .orElse("Desconhecido");
 
-                                                            return new StaffInfo(profile.getName(), formattedName, sessionData.getPrimaryRole().getWeight(), serverName);
+                                                            return new StaffInfo(profile.getUuid(), profile.getName(), sessionData.getPrimaryRole().getWeight(), serverName);
                                                         }
                                                         return null;
                                                     })
@@ -145,10 +144,11 @@ public class StaffCommand implements CommandInterface {
                 }
 
                 for (StaffInfo info : sortedStaff) {
+                    String formattedName = NicknameFormatter.getFullFormattedNick(info.getUuid());
 
                     String lineFormat = Messages.translate(
                             Message.of(MessageKey.STAFF_LIST_LINE)
-                                    .with("staff_member", info.getFormattedName())
+                                    .with("staff_member", formattedName)
                                     .with("server_name", info.getServerName())
                     );
 
@@ -181,19 +181,19 @@ public class StaffCommand implements CommandInterface {
     }
 
     private static class StaffInfo {
+        private final UUID uuid;
         private final String username;
-        private final String formattedName;
         private final int weight;
         private final String serverName;
 
-        public StaffInfo(String username, String formattedName, int weight, String serverName) {
+        public StaffInfo(UUID uuid, String username, int weight, String serverName) {
+            this.uuid = uuid;
             this.username = username;
-            this.formattedName = formattedName;
             this.weight = weight;
             this.serverName = serverName;
         }
+        public UUID getUuid() { return uuid; }
         public String getUsername() { return username; }
-        public String getFormattedName() { return formattedName; }
         public int getWeight() { return weight; }
         public String getServerName() { return serverName; }
     }
