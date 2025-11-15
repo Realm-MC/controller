@@ -203,27 +203,33 @@ public class PlayerJoinListener {
         final UUID uuid = player.getUniqueId();
         final String username = player.getUsername();
 
-        sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, username));
+        if (!player.isActive() || player.getCurrentServer().isEmpty()) {
+            sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, username));
+            logger.info("[PlayerJoin] Jogador " + username + " desconectou-se do PROXY. Encerrando sessão.");
 
-        Long loginTime = Proxy.getInstance().getLoginTimestamps().remove(uuid);
-        if (loginTime != null) {
-            long sessionDuration = System.currentTimeMillis() - loginTime;
-            if (statisticsService != null && sessionDuration > 0) {
-                try {
-                    statisticsService.addOnlineTime(uuid, sessionDuration);
-                } catch (Exception e) {
-                    logger.log(Level.WARNING, "[PlayerJoin] Error saving online time on disconnect for " + uuid, e);
+            Long loginTime = Proxy.getInstance().getLoginTimestamps().remove(uuid);
+            if (loginTime != null) {
+                long sessionDuration = System.currentTimeMillis() - loginTime;
+                if (statisticsService != null && sessionDuration > 0) {
+                    try {
+                        statisticsService.addOnlineTime(uuid, sessionDuration);
+                    } catch (Exception e) {
+                        logger.log(Level.WARNING, "[PlayerJoin] Error saving online time on disconnect for " + uuid, e);
+                    }
                 }
             }
+
+            preferencesService.removeCachedPreferences(uuid);
+            roleService.clearSentWarnings(uuid);
+
+            Proxy.getInstance().getPremiumLoginStatus().remove(player.getUsername().toLowerCase());
+            Proxy.getInstance().getOfflineUuids().remove(player.getUsername().toLowerCase());
+
+        } else {
+            logger.finer("[PlayerJoin] Jogador " + username + " desconectou-se de um servidor (troca), sessão mantida.");
         }
 
-        preferencesService.removeCachedPreferences(uuid);
-        roleService.clearSentWarnings(uuid);
-
-        Proxy.getInstance().getPremiumLoginStatus().remove(player.getUsername().toLowerCase());
-        Proxy.getInstance().getOfflineUuids().remove(player.getUsername().toLowerCase());
-
         roleService.invalidateSession(uuid);
-        logger.finer("[PlayerJoin] Session invalidated (local RoleService cache) for " + uuid + " on disconnect.");
+        logger.finer("[PlayerJoin] Session invalidated (local RoleService cache) for " + uuid + " on disconnect/switch.");
     }
 }

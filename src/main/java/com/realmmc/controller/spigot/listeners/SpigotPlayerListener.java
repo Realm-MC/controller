@@ -63,7 +63,6 @@ public class SpigotPlayerListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerLogin(PlayerLoginEvent event) {
         if (event.getResult() != PlayerLoginEvent.Result.ALLOWED) {
-            sessionTrackerServiceOpt.ifPresent(service -> service.endSession(event.getPlayer().getUniqueId(), event.getPlayer().getName()));
             return;
         }
 
@@ -132,9 +131,6 @@ public class SpigotPlayerListener implements Listener {
     public void onPlayerQuit(PlayerQuitEvent event) {
         final Player player = event.getPlayer();
         final UUID uuid = player.getUniqueId();
-        final String username = player.getName();
-
-        sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, username));
 
         roleService.invalidateSession(uuid);
 

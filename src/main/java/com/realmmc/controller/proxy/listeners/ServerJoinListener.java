@@ -6,18 +6,20 @@ import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.modules.server.ServerRegistryService;
 import com.realmmc.controller.modules.server.data.ServerInfo;
 import com.realmmc.controller.modules.server.data.ServerInfoRepository;
-import com.realmmc.controller.modules.server.data.ServerStatus; // Importar ServerStatus
-import com.realmmc.controller.modules.server.data.ServerType; // Importar ServerType
+import com.realmmc.controller.modules.server.data.ServerStatus;
+import com.realmmc.controller.modules.server.data.ServerType;
 import com.realmmc.controller.shared.annotations.Listeners;
 import com.realmmc.controller.shared.auth.AuthenticationGuard;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
+import com.realmmc.controller.shared.session.SessionTrackerService;
 import com.realmmc.controller.shared.sounds.SoundKeys;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.player.ServerPreConnectEvent;
 import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -33,6 +35,7 @@ public class ServerJoinListener {
     private final ServerInfoRepository serverRepo;
     private final Optional<SoundPlayer> soundPlayerOpt;
     private final ServerRegistryService serverRegistryService;
+    private final SessionTrackerService sessionTrackerService;
     private final Logger logger = Logger.getLogger(ServerJoinListener.class.getName());
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
 
@@ -42,6 +45,7 @@ public class ServerJoinListener {
         this.serverRepo = new ServerInfoRepository();
         this.soundPlayerOpt = ServiceRegistry.getInstance().getService(SoundPlayer.class);
         this.serverRegistryService = ServiceRegistry.getInstance().requireService(ServerRegistryService.class);
+        this.sessionTrackerService = ServiceRegistry.getInstance().requireService(SessionTrackerService.class);
     }
 
     @Subscribe
@@ -49,18 +53,22 @@ public class ServerJoinListener {
         Player player = event.getPlayer();
         RegisteredServer targetServer = event.getOriginalServer();
 
-        if (!AuthenticationGuard.isAuthenticated(player.getUniqueId())) {
-            if (AuthenticationGuard.isConnecting(player.getUniqueId())) {
-                logger.finer("[ServerJoin] Denied connection for " + player.getUsername() + ": Still in CONNECTING state.");
-                // Opcional: Enviar mensagem se o jogador tentar mudar de servidor antes de estar autenticado
-                // Messages.send(player, Message.of(MessageKey.AUTH_STILL_CONNECTING));
-                // event.setResult(ServerPreConnectEvent.ServerResult.denied());
-            }
+        if (targetServer == null) {
             return;
         }
 
-        if (targetServer == null) {
-            // Conexão inicial à rede, o Velocity vai tentar o 'try' (lobby-1)
+        String newServerName = targetServer.getServerInfo().getName();
+        String oldServerName = player.getCurrentServer()
+                .map(ServerConnection::getServerInfo)
+                .map(com.velocitypowered.api.proxy.server.ServerInfo::getName)
+                .orElse(null);
+
+        sessionTrackerService.updateServer(player.getUniqueId(), player.getUsername(), oldServerName, newServerName);
+
+        if (!AuthenticationGuard.isAuthenticated(player.getUniqueId())) {
+            if (AuthenticationGuard.isConnecting(player.getUniqueId())) {
+                logger.finer("[ServerJoin] Denied connection for " + player.getUsername() + ": Still in CONNECTING state.");
+            }
             return;
         }
 
@@ -70,9 +78,6 @@ public class ServerJoinListener {
         Optional<ServerInfo> serverInfoOpt = serverRepo.findByName(targetName);
 
         if (serverInfoOpt.isEmpty()) {
-            // Servidor não gerido pelo Controller (ex: survival, rankup, build-1)
-            // A verificação de permissão para estes é feita pelo 'minGroup' no 'DefaultServer'
-            // Vamos assumir que 'rankup-1' e 'build-1' estão no DefaultServer e no DB
             return;
         }
 
@@ -89,7 +94,6 @@ public class ServerJoinListener {
         PlayerSessionData sessionData = sessionDataOpt.get();
         int playerWeight = sessionData.getPrimaryRole().getWeight();
 
-        // 1. Verificação de Grupo Mínimo
         if (!serverInfo.getMinGroup().equalsIgnoreCase("default")) {
             Optional<Integer> minGroupWeightOpt = roleService.getRole(serverInfo.getMinGroup()).map(r -> r.getWeight());
 
@@ -105,7 +109,6 @@ public class ServerJoinListener {
             }
         }
 
-        // 2. Verificação de Lotação
         int currentPlayers = targetServer.getPlayersConnected().size();
         int maxNormalSlots = serverInfo.getMaxPlayers();
         int maxVipSlots = serverInfo.getMaxPlayersVip();
@@ -135,13 +138,9 @@ public class ServerJoinListener {
             }
         }
 
-        // 3. Verificação de Lobby a Desligar (CORREÇÃO)
-
-        // Verifica se é um lobby DINÂMICO (tipo LOBBY e NÃO é estático)
         boolean isDynamicLobby = serverInfo.getType() == ServerType.LOBBY &&
                 !serverRegistryService.isStaticDefault(serverInfo.getName());
 
-        // Se for um lobby dinâmico E estiver a desligar-se (STOPPING)
         if (isDynamicLobby && serverInfo.getStatus() == ServerStatus.STOPPING) {
 
             logger.fine("[ServerJoin] Player " + player.getUsername() + " tried to join dynamic lobby " + serverInfo.getName() + " which is STOPPING. Redirecting...");
@@ -152,7 +151,6 @@ public class ServerJoinListener {
                 event.setResult(ServerPreConnectEvent.ServerResult.allowed(bestLobby.get()));
                 Messages.send(player, MessageKey.SERVER_REDIRECT_LOBBY_CLOSED);
             } else {
-                // Falha crítica: não há lobbies para onde o enviar
                 Message msg = Message.of(MessageKey.SERVER_JOIN_FAIL_NO_LOBBY);
                 event.setResult(ServerPreConnectEvent.ServerResult.denied());
                 Messages.send(player, msg);
