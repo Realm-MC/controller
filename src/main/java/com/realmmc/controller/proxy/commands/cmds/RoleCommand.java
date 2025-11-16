@@ -334,6 +334,8 @@ public class RoleCommand implements CommandInterface {
                     final AtomicBoolean vipAffected = new AtomicBoolean(targetRole.getType() == RoleType.VIP);
                     final String finalPrimaryRoleName;
 
+                    final boolean isSelf = (finalSender instanceof Player p && p.getUniqueId().equals(targetUuid));
+
                     synchronized (targetUuid.toString().intern()) {
                         final Profile latestProfile = profileService.getByUuid(targetUuid).orElseThrow(() -> new IllegalStateException("Perfil desapareceu DENTRO do lock!"));
                         List<PlayerRole> currentRoles = new ArrayList<>(latestProfile.getRoles() != null ? latestProfile.getRoles() : Collections.emptyList());
@@ -343,7 +345,7 @@ public class RoleCommand implements CommandInterface {
                                 currentRoles.forEach(pr -> { if (pr != null && !pr.getRoleName().equalsIgnoreCase("default") && !pr.getRoleName().equalsIgnoreCase(roleNameInput) && pr.getStatus() == PlayerRole.Status.ACTIVE) { pr.setStatus(PlayerRole.Status.REMOVED); pr.setRemovedAt(System.currentTimeMillis()); pr.setPaused(false); pr.setPausedTimeRemaining(null); changed.set(true); roleService.getRole(pr.getRoleName()).ifPresent(r -> { if(r.getType() == RoleType.VIP) vipAffected.set(true); }); } });
                                 addOrUpdateRole(currentRoles, targetRole.getName(), expiresAt, changed, true);
                                 ensureDefaultActiveIfNeeded(currentRoles, targetRole.getName());
-                                successMessageKey.set(MessageKey.ROLE_SUCCESS_SET);
+                                successMessageKey.set(isSelf ? MessageKey.ROLE_SUCCESS_SET_SELF : MessageKey.ROLE_SUCCESS_SET);
                                 logger.log(Level.INFO, "[RoleCommand:Set] Attempting to set role {0} for {1}", new Object[]{roleNameInput, targetUuid});
                                 break;
                             case ADD:
@@ -351,12 +353,12 @@ public class RoleCommand implements CommandInterface {
                                 if (alreadyHasActivePermanent && expiresAt == null) { Messages.send(finalSender, Message.of(MessageKey.ROLE_WARN_ALREADY_HAS_PERMANENT).with("player", targetOriginalName).with("group_display", targetRole.getDisplayName())); playSound(finalSender, SoundKeys.NOTIFICATION); return; }
                                 addOrUpdateRole(currentRoles, targetRole.getName(), expiresAt, changed, false);
                                 ensureDefaultActiveIfNeeded(currentRoles, targetRole.getName());
-                                successMessageKey.set(MessageKey.ROLE_SUCCESS_ADD);
+                                successMessageKey.set(isSelf ? MessageKey.ROLE_SUCCESS_ADD_SELF : MessageKey.ROLE_SUCCESS_ADD);
                                 logger.log(Level.INFO, "[RoleCommand:Add] Attempting to add role {0} for {1}", new Object[]{roleNameInput, targetUuid});
                                 break;
                             case REMOVE:
                                 Optional<PlayerRole> activeRoleToRemove = currentRoles.stream().filter(pr -> pr != null && pr.getRoleName().equalsIgnoreCase(roleNameInput) && pr.getStatus() == PlayerRole.Status.ACTIVE).findFirst();
-                                if (activeRoleToRemove.isPresent()) { PlayerRole ex = activeRoleToRemove.get(); ex.setStatus(PlayerRole.Status.REMOVED); ex.setRemovedAt(System.currentTimeMillis()); ex.setPaused(false); ex.setPausedTimeRemaining(null); changed.set(true); successMessageKey.set(MessageKey.ROLE_SUCCESS_REMOVE); roleService.getRole(ex.getRoleName()).ifPresent(r -> { if(r.getType() == RoleType.VIP) vipAffected.set(true); }); ensureDefaultActiveIfNeeded(currentRoles, "dummy"); }
+                                if (activeRoleToRemove.isPresent()) { PlayerRole ex = activeRoleToRemove.get(); ex.setStatus(PlayerRole.Status.REMOVED); ex.setRemovedAt(System.currentTimeMillis()); ex.setPaused(false); ex.setPausedTimeRemaining(null); changed.set(true); successMessageKey.set(isSelf ? MessageKey.ROLE_SUCCESS_REMOVE_SELF : MessageKey.ROLE_SUCCESS_REMOVE); roleService.getRole(ex.getRoleName()).ifPresent(r -> { if(r.getType() == RoleType.VIP) vipAffected.set(true); }); ensureDefaultActiveIfNeeded(currentRoles, "dummy"); }
                                 else { Messages.send(finalSender, Message.of(MessageKey.ROLE_WARN_NOT_ACTIVE).with("player", targetOriginalName).with("group_display", targetRole.getDisplayName()).with("group_name", targetRole.getName())); playSound(finalSender, SoundKeys.NOTIFICATION); return; }
                                 logger.log(Level.INFO, "[RoleCommand:Remove] Attempting to remove role {0} of {1}", new Object[]{roleNameInput, targetUuid});
                                 break;
@@ -595,7 +597,12 @@ public class RoleCommand implements CommandInterface {
                     playSound(finalSender, SoundKeys.USAGE_ERROR); return;
                 }
 
-                try { final AtomicBoolean changed = new AtomicBoolean(false); final AtomicBoolean vipRemoved = new AtomicBoolean(false); final AtomicReference<Role> lastRemovedRole = new AtomicReference<>(null);
+                try {
+                    final AtomicBoolean changed = new AtomicBoolean(false);
+                    final AtomicBoolean vipRemoved = new AtomicBoolean(false);
+                    final AtomicReference<Role> lastRemovedRole = new AtomicReference<>(null);
+                    final boolean isSelf = (finalSender instanceof Player p && p.getUniqueId().equals(targetUuid));
+
                     synchronized (targetUuid.toString().intern()) {
                         final Profile latestProfile = profileService.getByUuid(targetUuid).orElseThrow(()->new IllegalStateException("Profile disappeared during clearRolesByPlayer"));
                         List<PlayerRole> currentRoles = latestProfile.getRoles(); if (currentRoles == null) currentRoles = new ArrayList<>();
@@ -611,7 +618,9 @@ public class RoleCommand implements CommandInterface {
                         catch (Exception e) { logger.log(Level.SEVERE, "[RoleCommand:ClearPlayer] FAILED TO SAVE PROFILE after clear", e); handleCommandError(finalSender, "salvar clear", e); return; }
                         roleService.publishSync(targetUuid);
                         logger.log(Level.INFO, "[RoleCommand:ClearPlayer] ROLE_SYNC published for {0}", targetUuid);
-                        Messages.send(finalSender, Message.of(MessageKey.ROLE_SUCCESS_CLEAR_PLAYER).with("player", targetOriginalName)); playSound(finalSender, SoundKeys.SUCCESS);
+
+                        Messages.send(finalSender, Message.of(isSelf ? MessageKey.ROLE_SUCCESS_CLEAR_PLAYER_SELF : MessageKey.ROLE_SUCCESS_CLEAR_PLAYER).with("player", targetOriginalName));
+                        playSound(finalSender, SoundKeys.SUCCESS);
 
                         boolean isTargetOnline = proxyServer.getPlayer(targetUuid).isPresent();
                         if (isTargetOnline && AuthenticationGuard.isAuthenticated(targetUuid)) {

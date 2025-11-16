@@ -147,7 +147,11 @@ public enum MessageKey {
     ROLE_SUCCESS_REMOVE("role.success.remove"),
     ROLE_SUCCESS_CLEAR_PLAYER("role.success.clear_player"),
     ROLE_SUCCESS_CLEAR_GROUP("role.success.clear_group"),
-
+    ROLE_SUCCESS_ADD_SELF("role.success.add.self"),
+    ROLE_SUCCESS_SET_SELF("role.success.set.self"),
+    ROLE_SUCCESS_REMOVE_SELF("role.success.remove.self"),
+    ROLE_SUCCESS_CLEAR_PLAYER_SELF("role.success.clear_player.self"),
+    
     ROLE_KICK_ADD_SET_VIP("role.kick.add_set_vip"),
     ROLE_KICK_REMOVED_VIP("role.kick.removed_vip"),
     ROLE_KICK_EXPIRED_VIP("role.kick.expired_vip"),
