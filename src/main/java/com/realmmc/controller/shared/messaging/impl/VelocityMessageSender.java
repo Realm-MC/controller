@@ -5,8 +5,11 @@ import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.MessageSender;
 import com.realmmc.controller.shared.messaging.MessageTranslator;
 import com.velocitypowered.api.command.CommandSource;
+import net.kyori.adventure.audience.Audience;
+import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.title.Title;
 
 public class VelocityMessageSender implements MessageSender {
 
@@ -20,16 +23,9 @@ public class VelocityMessageSender implements MessageSender {
 
     @Override
     public void sendMessage(Object recipient, Message message) {
-        if (!isValidRecipient(recipient)) {
-            return;
-        }
-
-        String translatedMessage = translator.translate(message);
-        Component component = miniMessage.deserialize(translatedMessage);
-
-        if (recipient instanceof CommandSource) {
-            ((CommandSource) recipient).sendMessage(component);
-        }
+        if (!isValidRecipient(recipient)) return;
+        String translated = translator.translate(message);
+        ((Audience) recipient).sendMessage(miniMessage.deserialize(translated));
     }
 
     @Override
@@ -39,25 +35,17 @@ public class VelocityMessageSender implements MessageSender {
 
     @Override
     public void sendRawMessage(Object recipient, String text) {
-        if (!isValidRecipient(recipient)) {
-            return;
-        }
-
-        Component component = miniMessage.deserialize(text);
-
-        if (recipient instanceof CommandSource) {
-            ((CommandSource) recipient).sendMessage(component);
-        }
+        if (!isValidRecipient(recipient)) return;
+        ((Audience) recipient).sendMessage(miniMessage.deserialize(text));
     }
 
     @Override
     public void broadcastMessage(Iterable<?> recipients, Message message) {
-        String translatedMessage = translator.translate(message);
-        Component component = miniMessage.deserialize(translatedMessage);
-
+        String translated = translator.translate(message);
+        Component component = miniMessage.deserialize(translated);
         for (Object recipient : recipients) {
-            if (isValidRecipient(recipient) && recipient instanceof CommandSource) {
-                ((CommandSource) recipient).sendMessage(component);
+            if (isValidRecipient(recipient)) {
+                ((Audience) recipient).sendMessage(component);
             }
         }
     }
@@ -65,6 +53,50 @@ public class VelocityMessageSender implements MessageSender {
     @Override
     public void broadcastMessage(Iterable<?> recipients, MessageKey key) {
         broadcastMessage(recipients, Message.of(key));
+    }
+
+
+    @Override
+    public void sendActionBar(Object recipient, Message message) {
+        if (!isValidRecipient(recipient)) return;
+        String translated = translator.translate(message);
+        ((Audience) recipient).sendActionBar(miniMessage.deserialize(translated));
+    }
+
+    @Override
+    public void sendTitle(Object recipient, Message titleMsg, Message subtitleMsg, Title.Times times) {
+        if (!isValidRecipient(recipient)) return;
+        String t = (titleMsg != null) ? translator.translate(titleMsg) : "";
+        String s = (subtitleMsg != null) ? translator.translate(subtitleMsg) : "";
+        sendTitle(recipient, t, s, times);
+    }
+
+
+    @Override
+    public void sendActionBar(Object recipient, String text) {
+        if (!isValidRecipient(recipient)) return;
+        ((Audience) recipient).sendActionBar(miniMessage.deserialize(text != null ? text : ""));
+    }
+
+    @Override
+    public void sendTitle(Object recipient, String title, String subtitle, Title.Times times) {
+        if (!isValidRecipient(recipient)) return;
+        Component tComp = (title != null) ? miniMessage.deserialize(title) : Component.empty();
+        Component sComp = (subtitle != null) ? miniMessage.deserialize(subtitle) : Component.empty();
+        Title t = Title.title(tComp, sComp, times);
+        ((Audience) recipient).showTitle(t);
+    }
+
+    @Override
+    public void showBossBar(Object recipient, BossBar bar) {
+        if (!isValidRecipient(recipient)) return;
+        ((Audience) recipient).showBossBar(bar);
+    }
+
+    @Override
+    public void hideBossBar(Object recipient, BossBar bar) {
+        if (!isValidRecipient(recipient)) return;
+        ((Audience) recipient).hideBossBar(bar);
     }
 
     @Override

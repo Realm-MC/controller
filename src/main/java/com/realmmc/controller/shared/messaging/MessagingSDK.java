@@ -3,6 +3,8 @@ package com.realmmc.controller.shared.messaging;
 import com.realmmc.controller.shared.messaging.impl.FileBasedMessageTranslator;
 import com.realmmc.controller.shared.messaging.impl.SpigotMessageSender;
 import com.realmmc.controller.shared.messaging.impl.VelocityMessageSender;
+import net.kyori.adventure.bossbar.BossBar;
+import net.kyori.adventure.title.Title;
 
 import java.io.File;
 import java.util.logging.Logger;
@@ -34,7 +36,6 @@ public class MessagingSDK {
         return initialized;
     }
 
-
     public void initializeForSpigot(File messagesDirectory) {
         if (initialized) {
             LOGGER.warning("MessagingSDK already initialized!");
@@ -61,9 +62,6 @@ public class MessagingSDK {
         LOGGER.info("MessagingSDK initialized for Velocity platform");
     }
 
-    /**
-     * Inicializa o SDK com implementações customizadas.
-     */
     public void initialize(MessageTranslator translator, MessageSender sender) {
         if (initialized) {
             LOGGER.warning("MessagingSDK already initialized!");
@@ -77,70 +75,69 @@ public class MessagingSDK {
         LOGGER.info("MessagingSDK initialized with custom implementations");
     }
 
-    /**
-     * Obtém o translator atual.
-     */
     public MessageTranslator getTranslator() {
         ensureInitialized();
         return translator;
     }
 
-    /**
-     * Obtém o sender atual.
-     */
     public MessageSender getSender() {
         ensureInitialized();
         return sender;
     }
 
-    /**
-     * Envia uma mensagem para um destinatário.
-     */
+
     public void sendMessage(Object recipient, Message message) {
         getSender().sendMessage(recipient, message);
     }
 
-    /**
-     * Envia uma mensagem simples para um destinatário.
-     */
     public void sendMessage(Object recipient, MessageKey key) {
         getSender().sendMessage(recipient, key);
     }
 
-    /**
-     * Envia uma mensagem de texto puro para um destinatário.
-     */
     public void sendRawMessage(Object recipient, String text) {
         getSender().sendRawMessage(recipient, text);
     }
 
-    /**
-     * Envia uma mensagem de texto direto para um destinatário.
-     */
     public void sendRawMessage(Object recipient, RawMessage rawMessage) {
-        String processedText = rawMessage.getText();
-
-        if (rawMessage.hasPlaceholders()) {
-            for (var entry : rawMessage.getPlaceholders().entrySet()) {
-                String placeholder = "{" + entry.getKey() + "}";
-                String value = String.valueOf(entry.getValue());
-                processedText = processedText.replace(placeholder, value);
-            }
-        }
-
-        getSender().sendRawMessage(recipient, processedText);
+        getSender().sendRawMessage(recipient, processRaw(rawMessage));
     }
 
-    /**
-     * Traduz uma mensagem.
-     */
+
+    public void sendActionBar(Object recipient, Message message) {
+        getSender().sendActionBar(recipient, message);
+    }
+
+    public void sendActionBar(Object recipient, MessageKey key) {
+        getSender().sendActionBar(recipient, Message.of(key));
+    }
+
+    public void sendActionBar(Object recipient, RawMessage message) {
+        getSender().sendActionBar(recipient, processRaw(message));
+    }
+
+    public void sendTitle(Object recipient, Message title, Message subtitle, Title.Times times) {
+        getSender().sendTitle(recipient, title, subtitle, times);
+    }
+
+    public void sendTitle(Object recipient, RawMessage title, RawMessage subtitle, Title.Times times) {
+        String titleText = processRaw(title);
+        String subtitleText = processRaw(subtitle);
+        getSender().sendTitle(recipient, titleText, subtitleText, times);
+    }
+
+    public void showBossBar(Object recipient, BossBar bar) {
+        getSender().showBossBar(recipient, bar);
+    }
+
+    public void hideBossBar(Object recipient, BossBar bar) {
+        getSender().hideBossBar(recipient, bar);
+    }
+
+
     public String translate(Message message) {
         return getTranslator().translate(message);
     }
 
-    /**
-     * Traduz uma mensagem simples.
-     */
     public String translate(MessageKey key) {
         return getTranslator().translate(key);
     }
@@ -164,5 +161,19 @@ public class MessagingSDK {
         if (!initialized) {
             throw new IllegalStateException("MessagingSDK not initialized! Call initialize() first.");
         }
+    }
+
+    private String processRaw(RawMessage raw) {
+        if (raw == null) return null;
+        String processedText = raw.getText();
+
+        if (raw.hasPlaceholders()) {
+            for (var entry : raw.getPlaceholders().entrySet()) {
+                String placeholder = "{" + entry.getKey() + "}";
+                String value = String.valueOf(entry.getValue());
+                processedText = processedText.replace(placeholder, value);
+            }
+        }
+        return processedText;
     }
 }
