@@ -7,9 +7,8 @@ public enum RedisChannel {
     ROLE_SYNC("controller:roles:sync"),
     ROLE_BROADCAST("controller:roles:broadcast"),
     ROLES_UPDATE("controller:roles:update"),
-
     STAFF_CHAT("controller:staffchat"),
-
+    SERVER_STATUS_UPDATE("controller:server:status"),
     GLOBAL_PLAYER_COUNT("controller:global:playercount"),
     GLOBAL_NETWORK_MAX_PLAYERS("controller:global:networkmaxplayers");
 

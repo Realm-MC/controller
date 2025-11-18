@@ -39,7 +39,7 @@ public class ServerRegistryService {
     private final ServerInfoRepository repository;
     private final PterodactylService pterodactylService;
 
-    private static final double LOBBY_SCALE_UP_THRESHOLD = 0.70; // <<< MANTIDO EM 1% PARA TESTES!
+    private static final double LOBBY_SCALE_UP_THRESHOLD = 0.70;
     private static final long SERVER_EMPTY_SHUTDOWN_MS = TimeUnit.SECONDS.toMillis(30);
     private static final Pattern LOBBY_NAME_PATTERN = Pattern.compile("^lobby-(\\d+)$", Pattern.CASE_INSENSITIVE);
 
@@ -140,6 +140,29 @@ public class ServerRegistryService {
         logger.info("[ServerRegistry] Health Check & Scaling Task (Pterodactyl <-> DB) started.");
     }
 
+    public void handleServerReadySignal(String serverName) {
+        TaskScheduler.runAsync(() -> {
+            try {
+                Optional<ServerInfo> opt = repository.findByName(serverName);
+                if (opt.isPresent()) {
+                    ServerInfo server = opt.get();
+
+                    if (server.getStatus() == ServerStatus.ONLINE) return;
+
+                    logger.info("[ServerRegistry] Servidor '" + serverName + "' confirmou inicialização completa via Redis. Marcando como ONLINE.");
+
+                    server.setStatus(ServerStatus.ONLINE);
+                    server.setPlayerCount(0);
+                    repository.save(server);
+
+                    registerServerWithVelocity(server);
+                }
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Erro ao processar sinal READY para " + serverName, e);
+            }
+        });
+    }
+
     private void runHealthCheck() {
         logger.fine("[ServerRegistry] Executing Health Check (Pterodactyl -> DB)...");
         List<ServerInfo> allDbServers;
@@ -182,11 +205,18 @@ public class ServerRegistryService {
                         }
 
                         ServerStatus pteroStatus = parsePteroState(detailsOpt.get());
-                        ServerStatus oldStatus = server.getStatus();
+                        ServerStatus dbStatus = server.getStatus();
 
-                        if (pteroStatus == ServerStatus.OFFLINE && oldStatus == ServerStatus.STOPPING) {
-                            // --- LÓGICA DE DELETE (Para Servidores Dinâmicos) ---
-                            if (!isStaticDefault(server.getName())) {
+                        if (pteroStatus == ServerStatus.OFFLINE || pteroStatus == ServerStatus.STOPPING) {
+                            if (dbStatus != ServerStatus.OFFLINE) {
+                                logger.info("[ServerRegistry] " + server.getName() + " morreu/parou no Pterodactyl. Marcando OFFLINE.");
+                                server.setStatus(ServerStatus.OFFLINE);
+                                server.setPlayerCount(0);
+                                repository.save(server);
+                                unregisterServerFromVelocity(server.getName());
+                            }
+
+                            if (!isStaticDefault(server.getName()) && dbStatus == ServerStatus.STOPPING) {
                                 logger.info("[ServerRegistry] [Health Check] Dynamic server '" + server.getName() + "' is OFFLINE (was STOPPING). Deleting from Pterodactyl and MongoDB...");
 
                                 pterodactylService.deletePterodactylServer(server.getInternalPteroId())
@@ -198,41 +228,25 @@ public class ServerRegistryService {
                                                 logger.severe("[ServerRegistry] [Health Check] Failed to delete server '" + server.getName() + "' from Pterodactyl. Will retry later.");
                                             }
                                         });
-                            } else {
-                                // É estático (lobby-1)
-                                server.setStatus(ServerStatus.OFFLINE);
-                                server.setPlayerCount(0);
-                                repository.save(server);
-                                unregisterServerFromVelocity(server.getName());
                             }
                             return;
                         }
 
-                        if (pteroStatus != oldStatus) {
-                            logger.info("[ServerRegistry] [Health Check] Discrepancy detected for '" + server.getName() + "'. DB: " + oldStatus + ", Ptero: " + pteroStatus + ". Updating DB.");
-
-                            server.setStatus(pteroStatus);
-                            if (pteroStatus == ServerStatus.OFFLINE) {
-                                server.setPlayerCount(0);
-                                unregisterServerFromVelocity(server.getName());
+                        if (pteroStatus == ServerStatus.ONLINE) {
+                            if (dbStatus == ServerStatus.OFFLINE) {
+                                logger.info("[ServerRegistry] " + server.getName() + " detetado como 'running' no Pterodactyl. Marcando como STARTING (aguardando Redis).");
+                                server.setStatus(ServerStatus.STARTING);
+                                repository.save(server);
                             }
-                            repository.save(server);
 
-                            if (pteroStatus == ServerStatus.ONLINE) {
-                                // --- CORREÇÃO DO ERRO #2 ---
-                                // O servidor está ONLINE. O IP/Porta dele já está no DB (foi definido
-                                // durante o setupDefaultServers ou o createPterodactylServer).
-                                // Nós NÃO precisamos atualizar o IP/Porta, apenas registá-lo no Velocity.
+                            if (dbStatus == ServerStatus.ONLINE && proxyServer.getServer(server.getName()).isEmpty()) {
+                                logger.info("[ServerRegistry] " + server.getName() + " está ONLINE no DB mas falta no Proxy. Registrando.");
                                 registerServerWithVelocity(server);
-                                logger.info("[ServerRegistry] [Health Check] Registering server '" + server.getName() + "' (now ONLINE) in Velocity.");
-                                // ----------------------------
                             }
                         }
                     });
         }
     }
-
-    // MÉTODO REMOVIDO: updateAllocationAndRegister (não é mais necessário/correto)
 
     private ServerStatus parsePteroState(JsonNode details) {
         String pteroState = details.path("attributes").path("current_state").asText("offline").toLowerCase();
@@ -248,7 +262,6 @@ public class ServerRegistryService {
         try {
             List<ServerInfo> allDbServers = repository.collection().find().into(new ArrayList<>());
 
-            // --- Atualização de Contagens Globais ---
             int totalMaxPlayers = allDbServers.stream()
                     .filter(s -> s.getStatus() == ServerStatus.ONLINE || s.getStatus() == ServerStatus.STARTING)
                     .mapToInt(ServerInfo::getMaxPlayersVip)
@@ -261,7 +274,6 @@ public class ServerRegistryService {
                 logger.log(Level.WARNING, "[ServerRegistry] Failed to save global network max players to Redis.", e);
             }
 
-            // --- Atualização de Player Count Individual ---
             Map<String, Integer> onlinePlayerCounts = proxyServer.getAllPlayers().stream()
                     .filter(p -> p.getCurrentServer().isPresent())
                     .collect(Collectors.groupingBy(
@@ -288,7 +300,6 @@ public class ServerRegistryService {
                 }
             }
 
-            // --- Lógica de Static Servers (Garantir que estão ligados) ---
             List<ServerInfo> staticServers = allDbServers.stream()
                     .filter(s -> isStaticDefault(s.getName()))
                     .toList();
@@ -299,7 +310,6 @@ public class ServerRegistryService {
                 }
             }
 
-            // --- Lógica de Scale Down (Desligar servidores dinâmicos vazios) ---
             for (ServerInfo server : allDbServers) {
                 if (isStaticDefault(server.getName()) || server.getType() != ServerType.LOBBY) {
                     continue;
@@ -321,7 +331,6 @@ public class ServerRegistryService {
                 }
             }
 
-            // --- Lógica de Scale Up (Ligar novos Lobbies) ---
             List<ServerInfo> allLobbyServers = allDbServers.stream()
                     .filter(s -> s.getType() == ServerType.LOBBY)
                     .toList();
@@ -368,12 +377,6 @@ public class ServerRegistryService {
         }
     }
 
-    /**
-     * Verifica se um nome de servidor é estático (baseado no DefaultServer enum)
-     * e não deve ser apagado dinamicamente.
-     * @param serverName O nome (_id) do servidor.
-     * @return true se for um servidor estático (default).
-     */
     public boolean isStaticDefault(String serverName) {
         if (serverName == null) return false;
         for (DefaultServer ds : DefaultServer.values()) {
@@ -384,15 +387,10 @@ public class ServerRegistryService {
         return false;
     }
 
-    /**
-     * Encontra o próximo nome disponível para um lobby dinâmico (ex: lobby-2, lobby-3).
-     * @return O nome (ex: "lobby-2") ou null se ocorrer um erro.
-     */
     private String findNextAvailableLobbyName() {
         try {
             Set<Integer> existingNumbers = new HashSet<>();
 
-            // Busca todos os servidores no DB que correspondem ao padrão "lobby-N"
             repository.collection().find(Filters.regex("_id", "^lobby-(\\d+)$", "i"))
                     .projection(Projections.include("_id"))
                     .forEach(doc -> {
@@ -401,17 +399,15 @@ public class ServerRegistryService {
                             try {
                                 existingNumbers.add(Integer.parseInt(matcher.group(1)));
                             } catch (NumberFormatException e) {
-                                // Ignora nomes mal formados
                             }
                         }
                     });
 
-            // Adiciona o lobby-1 (estático) para garantir que não o sobrepomos
             existingNumbers.add(1);
 
-            int i = 1; // Começa a procurar a partir do 1
+            int i = 1;
             while (existingNumbers.contains(i)) {
-                i++; // Continua a incrementar até encontrar um número livre
+                i++;
             }
 
             String newName = "lobby-" + i;
@@ -420,14 +416,11 @@ public class ServerRegistryService {
 
         } catch (Exception e) {
             logger.log(Level.SEVERE, "[ServerRegistry] Failed to find next available lobby name", e);
-            return null; // Retorna null para sinalizar falha
+            return null;
         }
     }
 
 
-    /**
-     * CRIA, REGISTA, e INICIA um novo servidor dinâmico.
-     */
     private void scaleUpNewServer(ServerType type) {
         String serverName = findNextAvailableLobbyName();
         if (serverName == null) {
@@ -473,9 +466,6 @@ public class ServerRegistryService {
                 });
     }
 
-    /**
-     * Apenas LIGA um servidor ESTÁTICO que está offline.
-     */
     private void scaleUpStaticServer(ServerInfo server) {
         if (!isStaticDefault(server.getName())) {
             logger.warning("scaleUpStaticServer called for a non-static server: " + server.getName());
@@ -499,9 +489,6 @@ public class ServerRegistryService {
                 });
     }
 
-    /**
-     * Apenas DESLIGA um servidor dinâmico. (O Health Check trata de apagar).
-     */
     private void scaleDownDynamicServer(ServerInfo server) {
         if (isStaticDefault(server.getName())) {
             logger.warning("scaleDownDynamicServer called for static server: " + server.getName() + ". Ignoring.");
@@ -535,10 +522,6 @@ public class ServerRegistryService {
                 });
     }
 
-
-    /**
-     * Regista ou atualiza um servidor no Velocity.
-     */
     private void registerServerWithVelocity(ServerInfo serverInfo) {
         if (serverInfo.getIp() == null || serverInfo.getIp().isEmpty() || serverInfo.getIp().equals("0.0.0.0") || serverInfo.getPort() == 0) {
             logger.warning("[ServerRegistry] Attempted to register server '" + serverInfo.getName() + "' but IP/Port is invalid. Waiting for Health Check.");
@@ -558,9 +541,6 @@ public class ServerRegistryService {
         logger.info("[ServerRegistry] Server '" + serverInfo.getName() + "' added to Velocity runtime at " + address);
     }
 
-    /**
-     * Remove um servidor do Velocity (mas não do DB).
-     */
     public void unregisterServerFromVelocity(String serverName) {
         Optional<RegisteredServer> server = proxyServer.getServer(serverName);
         if (server.isPresent()) {
@@ -569,9 +549,6 @@ public class ServerRegistryService {
         }
     }
 
-    /**
-     * Encontra o melhor lobby para um jogador entrar.
-     */
     public Optional<RegisteredServer> getBestLobby() {
         List<ServerInfo> onlineLobbies;
         try {
@@ -629,9 +606,6 @@ public class ServerRegistryService {
         return Optional.of(bestChoice);
     }
 
-    /**
-     * Pára o loop de Health Check e Scaling.
-     */
     public void shutdown() {
         stopHealthCheckAndScalingTask();
         logger.info("[ServerRegistry] ServerRegistryService finalized.");

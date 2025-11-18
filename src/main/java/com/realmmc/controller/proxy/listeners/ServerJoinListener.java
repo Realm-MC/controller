@@ -21,11 +21,9 @@ import com.velocitypowered.api.event.player.ServerPreConnectEvent;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
-import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import java.util.Optional;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 @Listeners
@@ -141,20 +139,38 @@ public class ServerJoinListener {
         boolean isDynamicLobby = serverInfo.getType() == ServerType.LOBBY &&
                 !serverRegistryService.isStaticDefault(serverInfo.getName());
 
-        if (isDynamicLobby && serverInfo.getStatus() == ServerStatus.STOPPING) {
+        if ((isDynamicLobby && serverInfo.getStatus() == ServerStatus.STOPPING) || serverInfo.getStatus() != ServerStatus.ONLINE) {
 
-            logger.fine("[ServerJoin] Player " + player.getUsername() + " tried to join dynamic lobby " + serverInfo.getName() + " which is STOPPING. Redirecting...");
+            if (player.getCurrentServer().isPresent()) {
+                event.setResult(ServerPreConnectEvent.ServerResult.denied());
+
+                MessageKey msgKey;
+                if (serverInfo.getStatus() == ServerStatus.OFFLINE) {
+                    msgKey = MessageKey.SERVER_CONNECT_OFFLINE;
+                } else {
+                    msgKey = MessageKey.SERVER_CONNECT_STARTING;
+                }
+
+                Messages.send(player, Message.of(msgKey).with("server", serverInfo.getDisplayName()));
+                sendFailureSound(player);
+                return;
+            }
+
+            logger.fine("[ServerJoin] Player " + player.getUsername() + " tried to join server " + serverInfo.getName() + " which is NOT ONLINE. Redirecting...");
 
             Optional<RegisteredServer> bestLobby = serverRegistryService.getBestLobby();
 
             if (bestLobby.isPresent() && !bestLobby.get().getServerInfo().getName().equals(targetName)) {
                 event.setResult(ServerPreConnectEvent.ServerResult.allowed(bestLobby.get()));
-                Messages.send(player, MessageKey.SERVER_REDIRECT_LOBBY_CLOSED);
+                Messages.send(player, Message.of(MessageKey.SERVER_FALLBACK_REDIRECT)
+                        .with("server", bestLobby.get().getServerInfo().getName()));
             } else {
-                Message msg = Message.of(MessageKey.SERVER_JOIN_FAIL_NO_LOBBY);
+                String kickMsg = Messages.translate(Message.of(MessageKey.SERVER_KICK_NETWORK_RESTARTING)
+                        .with("server", serverInfo.getDisplayName())
+                        .with("status", serverInfo.getStatus()));
+
                 event.setResult(ServerPreConnectEvent.ServerResult.denied());
-                Messages.send(player, msg);
-                sendFailureSound(player);
+                player.disconnect(miniMessage.deserialize(kickMsg));
             }
             return;
         }

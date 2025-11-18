@@ -27,17 +27,14 @@ public class PterodactylService {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
-    // --- Configs de Auto-Scaling ---
     private final int lobbyEggId;
     private final int lobbyNestId;
     private final int ownerUserId;
+    private final int defaultLocationId;
 
-    // --- Constantes do Egg 5 (Lobby) ---
-    // (Valores baseados nas tuas screenshots e no Egg 5)
-    private final String eggDockerImage = "ghcr.io/pterodactyl/yolks:java_17"; // ATENÇÃO: Muda para java_21 se o teu JAR for JDK 21
+    private final String eggDockerImage = "ghcr.io/pterodactyl/yolks:java_21";
     private final String eggStartupCommand = "java -Dfile.encoding=UTF-8 -Xms1536M -XX:MaxRAMPercentage=90.0 -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.newgen.generation=1 -Dcontroller.serverId=${CONTROLLER_SERVER_ID} -Dmap.type=${MAP_TYPE} -DMONGO_URI=${MONGO_URI} -DMONGO_DB=${MONGO_DB} -DREDIS_HOST=${REDIS_HOST} -DREDIS_PORT=${REDIS_PORT} -DREDIS_PASSWORD=${REDIS_PASSWORD} -DREDIS_DATABASE=${REDIS_DATABASE} -DREDIS_SSL=${REDIS_SSL} -jar ${SERVER_JARFILE}";
 
-    // --- Variáveis de Ambiente para Passar ---
     private final String mongoUri;
     private final String mongoDb;
     private final String redisHost;
@@ -55,25 +52,29 @@ public class PterodactylService {
         this.appApiKey = System.getProperty("PTERODACTYL_APP_KEY");
         this.ownerUserId = Integer.parseInt(System.getProperty("PTERODACTYL_OWNER_USER_ID", "1"));
 
-        int tempLobbyEggId = 0, tempLobbyNestId = 0;
+        int tempLobbyEggId = 0, tempLobbyNestId = 0, tempDefaultLocationId = 0;
         try {
             String lobbyEggIdStr = System.getProperty("PTERODACTYL_LOBBY_EGG_ID");
             String lobbyNestIdStr = System.getProperty("PTERODACTYL_LOBBY_NEST_ID");
+            String defaultLocationIdStr = System.getProperty("PTERODACTYL_DEFAULT_LOCATION_ID");
 
             if (lobbyEggIdStr == null) throw new NullPointerException("Flag -DPTERODACTYL_LOBBY_EGG_ID não definida.");
             if (lobbyNestIdStr == null) throw new NullPointerException("Flag -DPTERODACTYL_LOBBY_NEST_ID não definida.");
+            if (defaultLocationIdStr == null) throw new NullPointerException("Flag -DPTERODACTYL_DEFAULT_LOCATION_ID não definida.");
 
             tempLobbyEggId = Integer.parseInt(lobbyEggIdStr);
             tempLobbyNestId = Integer.parseInt(lobbyNestIdStr);
+            tempDefaultLocationId = Integer.parseInt(defaultLocationIdStr);
+
         } catch (NumberFormatException e) {
-            logger.severe("IDs do Egg/Nest de Lobby não são números válidos!");
+            logger.severe("IDs do Egg/Nest/Location de Lobby não são números válidos!");
         } catch (NullPointerException e) {
             logger.severe(e.getMessage());
         }
         this.lobbyEggId = tempLobbyEggId;
         this.lobbyNestId = tempLobbyNestId;
+        this.defaultLocationId = tempDefaultLocationId;
 
-        // Carrega as variáveis de DB (lidas das flags -D do Proxy)
         this.mongoUri = System.getProperty("MONGO_URI");
         this.mongoDb = System.getProperty("MONGO_DB");
         this.redisHost = System.getProperty("REDIS_HOST");
@@ -82,14 +83,13 @@ public class PterodactylService {
         this.redisDatabase = System.getProperty("REDIS_DATABASE");
         this.redisSsl = System.getProperty("REDIS_SSL");
 
-        // Validações
         if (this.panelUrl == null) throw new IllegalStateException("Flag -DPTERODACTYL_PANEL_URL não definida.");
         if (this.clientApiKey == null) throw new IllegalStateException("Flag -DPTERODACTYL_API_KEY (Cliente) não definida.");
         if (this.appApiKey == null) {
             logger.severe("CRÍTICO: Flag -DPTERODACTYL_APP_KEY (Aplicação) não definida. O Auto-Scaling VAI FALHAR.");
         }
-        if (this.lobbyEggId == 0 || this.lobbyNestId == 0) {
-            throw new IllegalStateException("IDs do Egg/Nest de Lobby não definidos ou inválidos.");
+        if (this.lobbyEggId == 0 || this.lobbyNestId == 0 || this.defaultLocationId == 0) {
+            throw new IllegalStateException("IDs do Egg/Nest/Location de Lobby não definidos ou inválidos.");
         }
         if (this.mongoUri == null || this.redisHost == null) {
             throw new IllegalStateException("Flags de DB (MONGO_URI, REDIS_HOST) não definidas no Proxy. Não é possível passá-las para novos servidores.");
@@ -102,7 +102,6 @@ public class PterodactylService {
         this.objectMapper = new ObjectMapper();
     }
 
-    // --- Métodos da API de CLIENTE (Ligar/Desligar) ---
 
     private CompletableFuture<Boolean> sendPowerCommand(String pterodactylId, String command) {
         String url = String.format("%s/api/client/servers/%s/power", panelUrl, pterodactylId);
@@ -121,7 +120,7 @@ public class PterodactylService {
                 .thenApply(response -> {
                     int status = response.statusCode();
                     if (status == 204) {
-                        return true; // Sucesso silencioso
+                        return true;
                     }
                     if (status == 401) {
                         logger.log(Level.SEVERE, "ERRO 401 (NÃO AUTORIZADO) [CLIENT API] ao enviar comando '" + command + "' para {0}.", pterodactylId);
@@ -168,7 +167,6 @@ public class PterodactylService {
                     if (response.statusCode() == 401) {
                         logger.log(Level.SEVERE, "ERRO 401 (NÃO AUTORIZADO) [CLIENT API] ao buscar detalhes para {0}.", pterodactylId);
                     } else {
-                        // Não loga como erro se for 404 (servidor não encontrado, ex: foi apagado)
                         if (response.statusCode() != 404) {
                             logger.warning("Erro ao buscar detalhes do servidor " + pterodactylId + ". Status: " + response.statusCode() + ", Body: " + response.body());
                         }
@@ -182,7 +180,6 @@ public class PterodactylService {
     }
 
 
-    // --- Métodos da API de APLICAÇÃO (Criar/Apagar) ---
 
     public CompletableFuture<Optional<ServerInfo>> createPterodactylServer(String serverName, ServerType serverType) {
         if (this.appApiKey == null) {
@@ -204,7 +201,6 @@ public class PterodactylService {
             return CompletableFuture.completedFuture(Optional.empty());
         }
 
-        // 1. Construir o JSON Payload
         String jsonPayload;
         try {
             ObjectNode payload = objectMapper.createObjectNode();
@@ -214,34 +210,29 @@ public class PterodactylService {
             payload.put("egg", eggId);
             payload.put("nest", nestId);
 
-            // --- CORREÇÃO DO ERRO 422 ---
-            // A API v1.x requer que estes campos sejam enviados
-            payload.put("docker_image", this.eggDockerImage); // 1. Docker Image
-            payload.put("startup", this.eggStartupCommand); // 2. Startup Command
+            payload.put("location", this.defaultLocationId);
 
-            // 3. Feature Limits (Define limites padrão)
+            payload.put("docker_image", this.eggDockerImage);
+            payload.put("startup", this.eggStartupCommand);
+
             payload.putObject("feature_limits")
-                    .put("databases", 0) // 0 bancos de dados
-                    .put("allocations", 1) // 1 alocação de porta
-                    .put("backups", 0); // 0 backups
-            // --- FIM DA CORREÇÃO ---
+                    .put("databases", 0)
+                    .put("allocations", 1)
+                    .put("backups", 0);
 
-            // Limites (Memória, Disco, etc.)
             payload.putObject("limits")
-                    .put("memory", 1536) // 1.5 GB para Lobby
+                    .put("memory", 1536)
                     .put("swap", 0)
-                    .put("disk", 5120) // 5 GB
+                    .put("disk", 10120)
                     .put("io", 500)
                     .put("cpu", 100);
 
-            // Variáveis de Ambiente (A "Ligação Mágica")
             ObjectNode environment = payload.putObject("environment");
-            environment.put("SERVER_JARFILE", "server.jar"); // Pega o default do Egg
-            environment.put("MEMORY_ALLOCATION", "1536"); // Pega o default do Egg
+            environment.put("SERVER_JARFILE", "server.jar");
+            environment.put("MEMORY_ALLOCATION", "1536");
             environment.put("EULA", "true");
 
-            // Variáveis Customizadas que o Egg espera
-            environment.put("CONTROLLER_SERVER_ID", serverName); // <--- A CHAVE!
+            environment.put("CONTROLLER_SERVER_ID", serverName);
             environment.put("MAP_TYPE", mapType);
             environment.put("MONGO_URI", this.mongoUri);
             environment.put("MONGO_DB", this.mongoDb);
@@ -251,7 +242,6 @@ public class PterodactylService {
             environment.put("REDIS_DATABASE", this.redisDatabase);
             environment.put("REDIS_SSL", this.redisSsl);
 
-            // Alocação de porta automática
             payload.putObject("allocation")
                     .put("default", 1);
 
@@ -265,7 +255,6 @@ public class PterodactylService {
             return CompletableFuture.completedFuture(Optional.empty());
         }
 
-        // 2. Fazer o Pedido POST
         String url = String.format("%s/api/application/servers", panelUrl);
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -277,7 +266,6 @@ public class PterodactylService {
                 .timeout(Duration.ofSeconds(15))
                 .build();
 
-        // 3. Processar a Resposta
         return httpClient.sendAsync(request, BodyHandlers.ofString())
                 .thenApply(response -> {
                     int status = response.statusCode();
