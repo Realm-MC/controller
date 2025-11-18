@@ -102,6 +102,7 @@ public enum MessageKey {
     PARTICLE_INFO_LONGDISTANCE("particle.info.longdistance"),
     PARTICLE_INFO_ANIM_NONE("particle.info.anim.none"),
     PARTICLE_INFO_DATA_NONE("particle.info.data.none"),
+    PARTICLE_INVALID_ANIM_OPTION("particle.invalid_animation_option"),
 
     ROLE_INFO_PRIMARY_ACTIVE("role.info.primary_active"),
     ROLE_INFO_HISTORY_HEADER("role.info.history_header"),
@@ -141,17 +142,19 @@ public enum MessageKey {
     ROLE_WARN_ALREADY_DEFAULT("role.warn.already_default"),
     ROLE_WARN_CLEAR_GROUP_NO_ELIGIBLE("role.warn.clear_group.no_eligible"),
     ROLE_WARN_CLEAR_GROUP_IN_PROGRESS("role.warn.clear_group.in_progress"),
+    ROLE_WARN_CLEAR_GROUP_FAIL_COUNT("role.warn.clear_group.fail_count"),
 
     ROLE_SUCCESS_ADD("role.success.add"),
     ROLE_SUCCESS_SET("role.success.set"),
     ROLE_SUCCESS_REMOVE("role.success.remove"),
     ROLE_SUCCESS_CLEAR_PLAYER("role.success.clear_player"),
     ROLE_SUCCESS_CLEAR_GROUP("role.success.clear_group"),
+
     ROLE_SUCCESS_ADD_SELF("role.success.add.self"),
     ROLE_SUCCESS_SET_SELF("role.success.set.self"),
     ROLE_SUCCESS_REMOVE_SELF("role.success.remove.self"),
     ROLE_SUCCESS_CLEAR_PLAYER_SELF("role.success.clear_player.self"),
-    
+
     ROLE_KICK_ADD_SET_VIP("role.kick.add_set_vip"),
     ROLE_KICK_REMOVED_VIP("role.kick.removed_vip"),
     ROLE_KICK_EXPIRED_VIP("role.kick.expired_vip"),
@@ -182,6 +185,11 @@ public enum MessageKey {
     SERVER_REDIRECT_LOBBY_CLOSED("server.redirect.lobby_closed"),
     SERVER_JOIN_FAIL_NO_LOBBY("server.join.fail.no_lobby"),
 
+    SERVER_CONNECT_STARTING("server.connect.starting"),
+    SERVER_CONNECT_OFFLINE("server.connect.offline"),
+    SERVER_FALLBACK_REDIRECT("server.fallback.redirect"),
+    SERVER_KICK_NETWORK_RESTARTING("server.kick.network_restarting"),
+
     PROFILE_LOADED("profile.loaded"),
     PROFILE_SAVED("profile.saved"),
     PROFILE_ERROR("profile.error"),
@@ -203,10 +211,6 @@ public enum MessageKey {
     KICK_GENERIC_PROFILE_ERROR("kick.generic_profile_error"),
     KICK_PREMIUM_AUTH_FAILED("kick.premium_auth_failed"),
     KICK_IP_LIMIT("kick.ip_limit"),
-
-    ROLE_WARN_CLEAR_GROUP_FAIL_COUNT("role.warn.clear_group.fail_count"),
-
-    PARTICLE_INVALID_ANIM_OPTION("particle.invalid_animation_option"),
 
     SCONFIG_NOT_FOUND("sconfig.not_found"),
     SCONFIG_ALREADY_EXISTS("sconfig.already_exists"),
@@ -345,6 +349,7 @@ public enum MessageKey {
     MAPMANAGER_VISUALIZAR_LINK("mapmanager.visualizar.link"),
     MAPMANAGER_BLUEMAP_START("mapmanager.bluemap.start"),
 
+    STAFFCHAT_USAGE("staffchat.usage"),
     STAFFCHAT_WARN_DISABLED("staffchat.warn_disabled"),
 
     STAFF_LIST_HEADER_EMPTY("stafflist.header_empty"),
@@ -352,7 +357,42 @@ public enum MessageKey {
     STAFF_LIST_HEADER_ONE("stafflist.header_one"),
     STAFF_LIST_HEADER_MULTIPLE("stafflist.header_multiple"),
     STAFF_LIST_LINE("stafflist.line"),
-    STAFF_LIST_FOOTER("stafflist.footer");
+    STAFF_LIST_FOOTER("stafflist.footer"),
+
+    CASH_VIEW_SELF("cash.view.self"),
+    CASH_VIEW_OTHER("cash.view.other"),
+    CASH_SUCCESS_ADD("cash.success.add"),
+    CASH_SUCCESS_ADD_SELF("cash.success.add_self"),
+    CASH_SUCCESS_REMOVE("cash.success.remove"),
+    CASH_SUCCESS_REMOVE_SELF("cash.success.remove_self"),
+    CASH_SUCCESS_SET("cash.success.set"),
+    CASH_SUCCESS_SET_SELF("cash.success.set_self"),
+    CASH_SUCCESS_CLEAR("cash.success.clear"),
+    CASH_SUCCESS_CLEAR_SELF("cash.success.clear_self"),
+    CASH_ERROR_INVALID_AMOUNT("cash.error.invalid_amount"),
+    CASH_ERROR_NEGATIVE_RESULT("cash.error.negative_result"),
+    CASH_TOP_HEADER("cash.top.header"),
+    CASH_TOP_LINE("cash.top.line"),
+    CASH_TOP_LINE_SELF("cash.top.line_self"),
+    CASH_TOP_FOOTER("cash.top.footer"),
+    CASH_HELP_VIEW("cash.help.view"),
+    CASH_HELP_TOP("cash.help.top"),
+    CASH_HELP_ADD("cash.help.add"),
+    CASH_HELP_REMOVE("cash.help.remove"),
+    CASH_HELP_SET("cash.help.set"),
+    CASH_HELP_CLEAR("cash.help.clear"),
+
+    CASH_INFO_HEADER("cash.info.header"),
+    CASH_INFO_LINE_CASH("cash.info.line_cash"),
+    CASH_INFO_ACTIONS_HEADER("cash.info.actions_header"),
+    CASH_INFO_ACTIONS_LINE_ADD("cash.info.actions_line_add"),
+    CASH_INFO_ACTIONS_LINE_REMOVE("cash.info.actions_line_remove"),
+    CASH_INFO_ACTIONS_LINE_SET("cash.info.actions_line_set"),
+    CASH_INFO_ACTIONS_LINE_CLEAR("cash.info.actions_line_clear"),
+    CASH_INFO_ACTIONS_NONE("cash.info.actions_none"),
+    CASH_INFO_HOVER_ACTION("cash.info.hover.action"),
+    CASH_INFO_HOVER_SOURCE("cash.info.hover.source"),
+    CASH_INFO_HOVER_DATE("cash.info.hover.date");
 
     private final String key;
 
