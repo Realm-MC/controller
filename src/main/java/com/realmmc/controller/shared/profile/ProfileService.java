@@ -4,14 +4,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mongodb.MongoException;
-import com.mongodb.client.FindIterable;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.model.*;
+import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.UpdateResult;
 import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.shared.cash.CashLog;
+import com.realmmc.controller.shared.cash.CashLogRepository;
 import com.realmmc.controller.shared.preferences.Language;
 import com.realmmc.controller.shared.preferences.PreferencesService;
 import com.realmmc.controller.shared.role.PlayerRole;
+import com.realmmc.controller.shared.session.SessionTrackerService;
 import com.realmmc.controller.shared.stats.StatisticsService;
 import com.realmmc.controller.shared.storage.mongodb.MongoSequences;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
@@ -20,6 +22,7 @@ import com.realmmc.controller.shared.messaging.Messages;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -27,6 +30,7 @@ public class ProfileService {
 
     private static final Logger LOGGER = Logger.getLogger(ProfileService.class.getName());
     private final ProfileRepository repository = new ProfileRepository();
+    private final CashLogRepository cashLogRepository = new CashLogRepository();
     private final ObjectMapper mapper = new ObjectMapper();
 
     private Optional<StatisticsService> getStatsService() {
@@ -35,6 +39,10 @@ public class ProfileService {
 
     private Optional<PreferencesService> getPreferencesService() {
         return Optional.ofNullable(ServiceRegistry.getInstance().getService(PreferencesService.class).orElse(null));
+    }
+
+    private Optional<SessionTrackerService> getSessionTracker() {
+        return ServiceRegistry.getInstance().getService(SessionTrackerService.class);
     }
 
     public Optional<Profile> getByUuid(UUID uuid) {
@@ -47,7 +55,7 @@ public class ProfileService {
                 } catch (InterruptedException ignored) {}
                 profileOpt = repository.findByUuid(uuid);
                 if (profileOpt.isEmpty()) {
-                    LOGGER.log(Level.FINER, "[ProfileService:Search] Profile not found in DB for {0} (even after retry)", uuid);
+                    LOGGER.log(Level.FINER, "[ProfileService:Search] Profile not found in DB for {0}", uuid);
                 }
             }
             return profileOpt;
@@ -132,6 +140,8 @@ public class ProfileService {
 
             repository.upsert(profile);
             publish("upsert", profile);
+            updateSessionCash(profile.getUuid(), profile.getCash());
+
             LOGGER.log(Level.INFO, "[ProfileService:Save] Profile {0} (UUID: {1}) saved/updated successfully. ID: {2}",
                     new Object[]{profile.getName(), profile.getUuid(), profile.getId()});
 
@@ -142,6 +152,16 @@ public class ProfileService {
             LOGGER.log(Level.SEVERE, "[ProfileService:Save] Unexpected error saving (upsert) profile for UUID: " + profile.getUuid() + ", ID: " + profile.getId(), e);
             throw new RuntimeException("Unexpected failure saving profile", e);
         }
+    }
+
+    private void updateSessionCash(UUID uuid, int cash) {
+        getSessionTracker().ifPresent(session -> {
+            try {
+                session.setSessionField(uuid, "cash", String.valueOf(cash));
+            } catch (Exception e) {
+                LOGGER.warning("[ProfileService] Falha ao atualizar cash na sessão Redis para " + uuid);
+            }
+        });
     }
 
     public void delete(UUID uuid) {
@@ -340,29 +360,92 @@ public class ProfileService {
             return false;
         }, "set_username");
     }
-    public void incrementCash(UUID uuid, int delta) {
-        if (uuid == null || delta == 0) return;
-        update(uuid, p -> {
-            long currentCash = p.getCash();
-            long newCashLong = Math.max(0L, currentCash + delta);
-            int finalCash = (int) Math.min(Integer.MAX_VALUE, newCashLong);
-            if (p.getCash() != finalCash) {
-                p.setCash(finalCash);
-                return true;
-            }
-            return false;
-        }, "cash_increment");
+
+    private void createLog(UUID targetUuid, int amount, CashLog.Action action, UUID sourceUuid, String sourceName) {
+        try {
+            CashLog log = CashLog.builder()
+                    .targetUuid(targetUuid)
+                    .amount(amount)
+                    .action(action)
+                    .sourceUuid(sourceUuid)
+                    .sourceName(sourceName != null ? sourceName : "CONSOLE")
+                    .timestamp(System.currentTimeMillis())
+                    .build();
+            cashLogRepository.log(log);
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Falha ao registrar log de cash para " + targetUuid, e);
+        }
     }
-    public void setCash(UUID uuid, int amount) {
-        if (uuid == null) return;
-        int finalAmount = Math.max(0, amount);
-        update(uuid, p -> {
-            if (p.getCash() != finalAmount) {
-                p.setCash(finalAmount);
+
+    public void addCash(UUID targetUuid, int amount, UUID sourceUuid, String sourceName) {
+        if (targetUuid == null || amount <= 0) return;
+
+        if (repository.atomicAddCash(targetUuid, amount)) {
+            createLog(targetUuid, amount, CashLog.Action.ADD, sourceUuid, sourceName);
+            updateLocalAndPublish(targetUuid, p -> p.setCash(p.getCash() + amount));
+        } else {
+            LOGGER.warning("Tentativa de adicionar cash a UUID inexistente: " + targetUuid);
+        }
+    }
+
+    public boolean removeCash(UUID targetUuid, int amount, UUID sourceUuid, String sourceName) {
+        if (targetUuid == null || amount <= 0) return false;
+
+        com.mongodb.client.MongoCollection<Profile> col = repository.collection();
+        long now = System.currentTimeMillis();
+
+        org.bson.conversions.Bson filter = Filters.and(
+                Filters.eq("uuid", targetUuid),
+                Filters.gte("cash", amount)
+        );
+        org.bson.conversions.Bson update = Updates.combine(
+                Updates.inc("cash", -amount),
+                Updates.set("updatedAt", now)
+        );
+
+        UpdateResult result = col.updateOne(filter, update);
+
+        if (result.getModifiedCount() > 0) {
+            createLog(targetUuid, -amount, CashLog.Action.REMOVE, sourceUuid, sourceName);
+            updateLocalAndPublish(targetUuid, p -> p.setCash(p.getCash() - amount));
+            return true;
+        }
+
+        return false;
+    }
+
+    public void setCash(UUID targetUuid, int amount, UUID sourceUuid, String sourceName) {
+        if (targetUuid == null || amount < 0) return;
+
+        update(targetUuid, p -> {
+            if (p.getCash() != amount) {
+                p.setCash(amount);
                 return true;
             }
             return false;
         }, "cash_set");
+        createLog(targetUuid, amount, CashLog.Action.SET, sourceUuid, sourceName);
+    }
+
+    public void clearCash(UUID targetUuid, UUID sourceUuid, String sourceName) {
+        if (targetUuid == null) return;
+        update(targetUuid, p -> {
+            p.setCash(0);
+            return true;
+        }, "cash_clear");
+        createLog(targetUuid, 0, CashLog.Action.CLEAR, sourceUuid, sourceName);
+    }
+
+    private void updateLocalAndPublish(UUID uuid, Consumer<Profile> action) {
+        Optional<Profile> localOpt = getByUuid(uuid);
+        if (localOpt.isPresent()) {
+            Profile p = localOpt.get();
+            action.accept(p);
+            p.setUpdatedAt(System.currentTimeMillis());
+
+            publish("upsert", p);
+            updateSessionCash(uuid, p.getCash());
+        }
     }
 
     private void update(UUID uuid, ProfileModifier modifier, String actionContext) {
@@ -399,7 +482,6 @@ public class ProfileService {
     private interface ProfileModifier {
         boolean modify(Profile profile);
     }
-
 
     private void publish(String action, Profile profile) {
         if (profile == null || profile.getUuid() == null || action == null) {
@@ -471,6 +553,24 @@ public class ProfileService {
     public void invalidateProfileCache(UUID uuid) {
         if (uuid != null) {
             LOGGER.finest("[ProfileService:Cache] Invalidation requested for Profile UUID: " + uuid + " (no local cache in ProfileService)");
+        }
+    }
+
+    public List<Profile> getTopCash(int limit) {
+        try {
+            return repository.findTopByCash(limit);
+        } catch (MongoException e) {
+            LOGGER.log(Level.SEVERE, "[ProfileService:Top] MongoDB error fetching top cash", e);
+            return Collections.emptyList();
+        }
+    }
+
+    public long getPlayerRank(int playerCash) {
+        try {
+            return repository.countByCashGreaterThan(playerCash) + 1;
+        } catch (MongoException e) {
+            LOGGER.log(Level.SEVERE, "[ProfileService:Rank] MongoDB error fetching player cash rank", e);
+            return -1;
         }
     }
 }
