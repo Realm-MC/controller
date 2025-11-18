@@ -1,0 +1,43 @@
+package com.realmmc.controller.shared.cash;
+
+import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.shared.profile.Profile;
+import com.realmmc.controller.shared.profile.ProfileService;
+import com.realmmc.controller.shared.utils.TaskScheduler;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+public class CashService {
+
+    private static final Logger LOGGER = Logger.getLogger(CashService.class.getName());
+    private final ProfileService profileService;
+    private volatile List<Profile> cachedTop10 = new ArrayList<>();
+
+    public CashService() {
+        this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
+    }
+
+    public void startCacheTask() {
+        TaskScheduler.runAsyncTimer(this::updateCache, 1, 5, TimeUnit.MINUTES);
+        LOGGER.info("Tarefa de cache do Top 10 Cash iniciada.");
+    }
+
+    public void updateCache() {
+        try {
+            LOGGER.fine("Atualizando cache do Top 10 Cash...");
+            this.cachedTop10 = profileService.getTopCash(10);
+            LOGGER.fine("Cache do Top 10 Cash atualizado.");
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Falha ao atualizar o cache do Top 10 Cash", e);
+        }
+    }
+
+    public List<Profile> getCachedTop10() {
+        return Collections.unmodifiableList(this.cachedTop10);
+    }
+}

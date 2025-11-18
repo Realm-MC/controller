@@ -7,6 +7,10 @@ import com.realmmc.controller.services.SessionService;
 import com.realmmc.controller.shared.role.PermissionRefresher;
 import com.realmmc.controller.shared.role.RoleKickHandler;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
+import com.realmmc.controller.shared.storage.redis.RedisChannel;
+import com.realmmc.controller.shared.storage.redis.RedisPublisher;
+import com.realmmc.controller.shared.storage.redis.RedisSubscriber;
+import com.realmmc.controller.spigot.cash.SpigotCashCache;
 import com.realmmc.controller.spigot.commands.CommandManager;
 import com.realmmc.controller.spigot.listeners.ListenersManager;
 import com.realmmc.controller.spigot.permission.SpigotPermissionInjector;
@@ -17,6 +21,7 @@ import com.realmmc.controller.shared.utils.TaskScheduler;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import org.bukkit.plugin.Plugin;
@@ -24,7 +29,6 @@ import org.bukkit.event.HandlerList;
 
 import com.viaversion.viaversion.api.Via;
 
-import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -35,6 +39,8 @@ public class SpigotModule extends AbstractCoreModule {
     private Optional<SessionTrackerService> sessionTrackerServiceOpt;
     private ScheduledFuture<?> heartbeatTaskFuture = null;
     private final boolean viaVersionApiAvailable;
+
+    private SpigotCashCache spigotCashCacheInstance;
 
     public SpigotModule(Plugin plugin, Logger logger) {
         super(logger);
@@ -94,6 +100,20 @@ public class SpigotModule extends AbstractCoreModule {
             logger.severe("[SpigotModule] SpigotPermissionInjector not registered because SessionService failed to initialize.");
         }
 
+        try {
+            this.spigotCashCacheInstance = new SpigotCashCache();
+            ServiceRegistry.getInstance().registerService(SpigotCashCache.class, this.spigotCashCacheInstance);
+            Bukkit.getServer().getPluginManager().registerEvents(this.spigotCashCacheInstance, plugin);
+
+            RedisSubscriber redisSubscriber = ServiceRegistry.getInstance().requireService(RedisSubscriber.class);
+            redisSubscriber.registerListener(RedisChannel.PROFILES_SYNC, this.spigotCashCacheInstance);
+
+            logger.info("[SpigotModule] SpigotCashCache (para cache de cash e PAPI) registrado e ouvindo Redis.");
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "[SpigotModule] Falha ao registrar SpigotCashCache!", e);
+            this.spigotCashCacheInstance = null;
+        }
+
         ServiceRegistry.getInstance().getService(RoleService.class).ifPresentOrElse(roleService -> {
             if (this.permissionInjectorInstance != null) {
                 try {
@@ -126,7 +146,30 @@ public class SpigotModule extends AbstractCoreModule {
 
         startHeartbeatTask();
 
+        sendServerReadySignal();
+
         logger.info("[SpigotModule] SpigotModule enabled successfully.");
+    }
+
+    private void sendServerReadySignal() {
+        String serverName = System.getProperty("controller.serverId");
+        if (serverName == null || serverName.isEmpty()) {
+            serverName = System.getenv("CONTROLLER_SERVER_ID");
+        }
+
+        if (serverName != null && !serverName.isEmpty()) {
+            try {
+                String json = String.format("{\"server\":\"%s\",\"status\":\"ONLINE\"}", serverName);
+
+                RedisPublisher.publish(
+                        RedisChannel.SERVER_STATUS_UPDATE,
+                        json
+                );
+                logger.info("[SpigotModule] Sinal de 'SERVER READY' enviado para o Redis (" + serverName + ").");
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Falha ao enviar sinal de servidor pronto.", e);
+            }
+        }
     }
 
     @Override
@@ -137,6 +180,7 @@ public class SpigotModule extends AbstractCoreModule {
 
         ServiceRegistry.getInstance().unregisterService(SoundPlayer.class);
         ServiceRegistry.getInstance().unregisterService(PermissionRefresher.class);
+        ServiceRegistry.getInstance().unregisterService(SpigotCashCache.class);
         logger.info("[SpigotModule] Spigot services unregistered.");
 
         if (sessionServiceInstance != null) {
@@ -151,6 +195,17 @@ public class SpigotModule extends AbstractCoreModule {
             }
             catch (Exception e) { logger.log(Level.WARNING, "[SpigotModule] Error unregistering SpigotPermissionInjector.", e); }
             permissionInjectorInstance = null;
+        }
+
+        if (spigotCashCacheInstance != null) {
+            try {
+                HandlerList.unregisterAll(spigotCashCacheInstance);
+                ServiceRegistry.getInstance().getService(RedisSubscriber.class)
+                        .ifPresent(sub -> sub.unregisterListener(RedisChannel.PROFILES_SYNC));
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "[SpigotModule] Error unregistering SpigotCashCache.", e);
+            }
+            spigotCashCacheInstance = null;
         }
 
         try { HandlerList.unregisterAll(plugin); logger.info("[SpigotModule] Other Spigot listeners unregistered."); }
