@@ -16,7 +16,11 @@ import com.realmmc.controller.shared.messaging.MessagingSDK;
 // Spigot specific entity services imports
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
 import com.realmmc.controller.spigot.entities.holograms.HologramService;
+import com.realmmc.controller.spigot.entities.nametag.NametagService;
 import com.realmmc.controller.spigot.entities.npcs.NPCService;
+
+// PacketEvents
+import com.github.retrooper.packetevents.PacketEvents;
 
 // Lombok import
 import lombok.Getter;
@@ -24,7 +28,7 @@ import lombok.Getter;
 // Bukkit imports
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.Plugin; // Import Plugin interface
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 // Java IO and NIO imports
@@ -40,8 +44,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class Main extends JavaPlugin {
+
     @Getter
-    private static Main instance; // Static instance for easy access
+    private static Main instance;
 
     // Spigot Entity Services
     @Getter
@@ -50,6 +55,8 @@ public class Main extends JavaPlugin {
     private HologramService hologramService;
     @Getter
     private NPCService npcService;
+    @Getter
+    private NametagService nametagService;
 
     // Core Controller Components
     private ModuleManager moduleManager;
@@ -71,6 +78,12 @@ public class Main extends JavaPlugin {
     @Override
     public void onEnable() {
         try {
+            if (PacketEvents.getAPI() == null) {
+                logger.severe("PacketEvents não encontrado! O plugin PacketEvents é obrigatório.");
+                getServer().getPluginManager().disablePlugin(this);
+                return;
+            }
+
             logger.info("Inicializando Controller Core (Spigot - v2)...");
 
             // --- Criação de Pastas e Cópia de Arquivos Padrão ---
@@ -88,13 +101,12 @@ public class Main extends JavaPlugin {
             saveDefaultConfigResource("holograms.yml");
             saveDefaultConfigResource("npcs.yml");
             saveDefaultConfigResource("particles.yml");
-            // saveDefaultConfig();
 
             // --- Inicialização de Serviços Core ---
             serviceRegistry = new ServiceRegistry(logger);
 
             // <<< REGISTRO DA INSTÂNCIA DO PLUGIN >>>
-            serviceRegistry.registerService(Plugin.class, this); // Registra a própria instância do plugin
+            serviceRegistry.registerService(Plugin.class, this);
             logger.info("Instância do Plugin (Main) registrada no ServiceRegistry.");
 
             // GeoIP
@@ -102,7 +114,7 @@ public class Main extends JavaPlugin {
             serviceRegistry.registerService(GeoIPService.class, geoIPService);
             logger.info("GeoIPService registrado.");
 
-            // Messaging
+            // Messaging (Chat, Title, ActionBar)
             if (!MessagingSDK.getInstance().isInitialized()) {
                 MessagingSDK.getInstance().initializeForSpigot(messagesDir);
                 logger.info("MessagingSDK inicializado para Spigot.");
@@ -110,16 +122,22 @@ public class Main extends JavaPlugin {
                 logger.warning("Tentativa de reinicializar MessagingSDK ignorada.");
             }
 
-            // --- Inicialização de Serviços de Entidades (Spigot) ---
-            displayItemService = new DisplayItemService();
-            hologramService = new HologramService();
-            npcService = new NPCService(); // O construtor NÃO chama mais o loadSavedNPCs()
+            // --- Serviços Independentes (DEVEM vir ANTES dos módulos) ---
 
-            // <<< REGISTRO DOS SERVIÇOS DE ENTIDADES >>>
+            // 1. Display Items
+            displayItemService = new DisplayItemService();
             serviceRegistry.registerService(DisplayItemService.class, displayItemService);
+
+            // 2. Hologramas
+            hologramService = new HologramService();
             serviceRegistry.registerService(HologramService.class, hologramService);
+
+            // 3. NPCs (Movido para cá, pois SpigotModule precisa dele para o comando /npc)
+            npcService = new NPCService();
             serviceRegistry.registerService(NPCService.class, npcService);
-            logger.info("Serviços de Entidades (Display, Hologram, NPC) inicializados e registrados no ServiceRegistry.");
+            getServer().getPluginManager().registerEvents(npcService, this);
+
+            logger.info("Serviços de Entidades Base (Display, Hologram, NPC) inicializados.");
 
             // --- Inicialização do ModuleManager e Módulos ---
             moduleManager = new ModuleManager(logger);
@@ -127,25 +145,31 @@ public class Main extends JavaPlugin {
             // Auto-registro de módulos gerais e SPIGOT
             moduleManager.autoRegisterModules(AutoRegister.Platform.SPIGOT, getClass());
 
-            // Registro manual de módulos específicos da plataforma
-            moduleManager.registerModule(new SchedulerModule(null, this, logger)); // Passa 'this' (Plugin)
+            // Registro manual de módulos específicos
+            moduleManager.registerModule(new SchedulerModule(null, this, logger));
             moduleManager.registerModule(new SpigotModule(this, logger));
 
-            // Habilita todos os módulos registrados
+            // Habilita todos os módulos (SpigotModule -> CommandManager -> NpcCommand -> Pega NPCService)
             moduleManager.enableAllModules();
 
-            // --- Registros Finais ---
-            getServer().getPluginManager().registerEvents(npcService, this);
-            logger.info("NPCService registrado como Listener do Bukkit.");
+            // --- Serviços Dependentes de Módulos (DEVEM vir DEPOIS dos módulos) ---
 
-            // A chamada npcService.loadSavedNPCs() foi movida para SpigotModule.onEnable()
+            // 4. Nametags (Depende de RoleService, que é criado dentro dos módulos)
+            nametagService = new NametagService();
+            serviceRegistry.registerService(NametagService.class, nametagService);
+            getServer().getPluginManager().registerEvents(nametagService, this);
 
-            // Reenvia NPCs para jogadores já online (em caso de /reload)
+            logger.info("Serviços dependentes (Nametag) inicializados após módulos.");
+
+            // --- Pós-Inicialização ---
+
+            // Reenvia NPCs e Tags para jogadores já online (em caso de /reload)
             for (Player p : Bukkit.getOnlinePlayers()) {
                 try {
                     npcService.resendAllTo(p);
+                    nametagService.updateTag(p);
                 } catch (Exception e) {
-                    logger.log(Level.WARNING, "Erro ao reenviar NPCs para " + p.getName() + " no onEnable.", e);
+                    logger.log(Level.WARNING, "Erro ao atualizar entidades para " + p.getName() + " no onEnable.", e);
                 }
             }
 
@@ -185,14 +209,17 @@ public class Main extends JavaPlugin {
             }
             MessagingSDK.getInstance().shutdown();
 
+            // Não terminamos PacketEvents aqui pois é plugin externo
+
             // --- Desregistra Serviços do Registry ---
-            ServiceRegistry currentRegistry = ServiceRegistry.getInstance(); // Pega instância atual
+            ServiceRegistry currentRegistry = ServiceRegistry.getInstance();
             if (currentRegistry != null) {
-                try { currentRegistry.unregisterService(NPCService.class); } catch (Exception e) { /* Log */ }
-                try { currentRegistry.unregisterService(HologramService.class); } catch (Exception e) { /* Log */ }
-                try { currentRegistry.unregisterService(DisplayItemService.class); } catch (Exception e) { /* Log */ }
-                try { currentRegistry.unregisterService(GeoIPService.class); } catch (Exception e) { /* Log */ }
-                try { currentRegistry.unregisterService(Plugin.class); } catch (Exception e) { /* Log */ }
+                try { currentRegistry.unregisterService(NametagService.class); } catch (Exception e) {}
+                try { currentRegistry.unregisterService(NPCService.class); } catch (Exception e) {}
+                try { currentRegistry.unregisterService(HologramService.class); } catch (Exception e) {}
+                try { currentRegistry.unregisterService(DisplayItemService.class); } catch (Exception e) {}
+                try { currentRegistry.unregisterService(GeoIPService.class); } catch (Exception e) {}
+                try { currentRegistry.unregisterService(Plugin.class); } catch (Exception e) {}
                 logger.info("Serviços desregistrados do ServiceRegistry.");
             }
 
@@ -202,18 +229,15 @@ public class Main extends JavaPlugin {
             displayItemService = null;
             hologramService = null;
             npcService = null;
+            nametagService = null;
             geoIPService = null;
 
-            instance = null; // Limpa instância estática
+            instance = null;
 
             logger.info("Controller Core (Spigot - v2) finalizado.");
         }
     }
 
-    /**
-     * Salva um recurso da pasta 'resources' para a pasta de dados do plugin,
-     * apenas se ele não existir.
-     */
     private void saveDefaultConfigResource(String resourceName) {
         File file = new File(getDataFolder(), resourceName);
         if (!file.exists()) {
@@ -226,9 +250,6 @@ public class Main extends JavaPlugin {
         }
     }
 
-    /**
-     * Copia um recurso interno para um local específico se não existir.
-     */
     private void copyResourceIfNotExists(String resourcePath, Path targetPath) throws IOException {
         if (Files.notExists(targetPath)) {
             Path parentDir = targetPath.getParent();
