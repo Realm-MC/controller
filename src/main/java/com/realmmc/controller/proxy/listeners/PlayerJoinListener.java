@@ -4,29 +4,22 @@ import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.proxy.Proxy;
 import com.realmmc.controller.shared.annotations.Listeners;
-import com.realmmc.controller.shared.auth.AuthenticationGuard;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.preferences.PreferencesService;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileService;
-import com.realmmc.controller.shared.stats.StatisticsService;
 import com.realmmc.controller.shared.session.SessionTrackerService;
-
+import com.realmmc.controller.shared.stats.StatisticsService;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.LoginEvent;
 import com.velocitypowered.api.event.connection.PostLoginEvent;
 import com.velocitypowered.api.event.connection.PreLoginEvent;
-import com.velocitypowered.api.plugin.PluginContainer;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import com.viaversion.viaversion.api.Via;
-import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 
-
-import java.net.InetSocketAddress;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -40,196 +33,105 @@ public class PlayerJoinListener {
     private final RoleService roleService;
     private final StatisticsService statisticsService;
     private final Optional<SessionTrackerService> sessionTrackerServiceOpt;
-    private final boolean geyserApiAvailable;
-    private final boolean viaVersionApiAvailable;
     private final Logger logger;
     private final ProxyServer proxyServer;
 
     public PlayerJoinListener() {
-        this.proxyServer = ServiceRegistry.getInstance().getService(ProxyServer.class)
-                .orElseThrow(() -> new IllegalStateException("ProxyServer not found in ServiceRegistry!"));
-        this.profileService = ServiceRegistry.getInstance().getService(ProfileService.class)
-                .orElseThrow(() -> new IllegalStateException("ProfileService not found!"));
-        this.preferencesService = ServiceRegistry.getInstance().getService(PreferencesService.class)
-                .orElseThrow(() -> new IllegalStateException("PreferencesService not found!"));
-        this.roleService = ServiceRegistry.getInstance().getService(RoleService.class)
-                .orElseThrow(() -> new IllegalStateException("RoleService not found for PlayerListener (Velocity)!"));
-        this.statisticsService = ServiceRegistry.getInstance().getService(StatisticsService.class)
-                .orElseThrow(() -> new IllegalStateException("StatisticsService not found for PlayerListener (Velocity)!"));
+        this.proxyServer = ServiceRegistry.getInstance().requireService(ProxyServer.class);
+        this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
+        this.preferencesService = ServiceRegistry.getInstance().requireService(PreferencesService.class);
+        this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
+        this.statisticsService = ServiceRegistry.getInstance().requireService(StatisticsService.class);
         this.sessionTrackerServiceOpt = ServiceRegistry.getInstance().getService(SessionTrackerService.class);
         this.logger = Proxy.getInstance().getLogger();
-
-        Optional<PluginContainer> geyserPlugin = proxyServer.getPluginManager().getPlugin("geyser");
-        this.geyserApiAvailable = geyserPlugin.isPresent();
-        this.viaVersionApiAvailable = proxyServer.getPluginManager().isLoaded("viaversion");
-
-
-        if (sessionTrackerServiceOpt.isEmpty()) {
-            logger.warning("[PlayerJoin] SessionTrackerService not found! Session tracking will not work.");
-        }
-        if(geyserApiAvailable) logger.info("[PlayerJoin] Geyser detected.");
-        else logger.info("[PlayerJoin] Geyser not detected.");
-        if(viaVersionApiAvailable) logger.info("[PlayerJoin] ViaVersion detected.");
-        else logger.info("[PlayerJoin] ViaVersion not detected.");
     }
 
-    @Subscribe(order = com.velocitypowered.api.event.PostOrder.EARLY)
+    @Subscribe
     public void onPreLogin(PreLoginEvent event) {
         if (!event.getResult().isAllowed()) {
             sessionTrackerServiceOpt.ifPresent(service -> service.endSession(event.getUniqueId(), event.getUsername()));
-            return;
         }
     }
 
-    @Subscribe(order = com.velocitypowered.api.event.PostOrder.EARLY)
+    @Subscribe
     public void onLogin(LoginEvent event) {
-        final Player player = event.getPlayer();
-        if (player == null) return;
-        final UUID uuid = player.getUniqueId();
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        String username = player.getUsername();
 
         roleService.startPreLoadingPlayerData(uuid);
-        logger.finer("[PlayerJoin] Role pre-loading started (LoginEvent) for " + player.getUsername());
+
+        sessionTrackerServiceOpt.ifPresent(service -> {
+            String proxyId = System.getProperty("controller.proxyId");
+            if (proxyId == null || proxyId.isEmpty()) {
+                proxyId = System.getenv("PROXY_NAME");
+            }
+            if (proxyId == null || proxyId.isEmpty()) {
+                proxyId = "proxy_unknown";
+            }
+
+            String ip = player.getRemoteAddress().getAddress().getHostAddress();
+            int protocol = player.getProtocolVersion().getProtocol();
+            boolean isPremium = Proxy.getInstance().getPremiumLoginStatus().getOrDefault(username.toLowerCase(), false);
+
+            service.startSession(uuid, username, proxyId, null, protocol, -1, ip, null, null, isPremium);
+        });
+
+        logger.info("[PlayerJoin] Session created (CONNECTING) for " + username);
     }
 
-
-    @Subscribe(order = com.velocitypowered.api.event.PostOrder.NORMAL)
+    @Subscribe
     public void onPostLogin(PostLoginEvent event) {
         final Player player = event.getPlayer();
-        final String displayName = player.getUsername();
-        final String usernameLower = displayName.toLowerCase();
         final UUID uuid = player.getUniqueId();
-
-        final String ip = player.getRemoteAddress() instanceof InetSocketAddress isa ? isa.getAddress().getHostAddress() : null;
-
-        final boolean isPremium = Proxy.getInstance().getPremiumLoginStatus().getOrDefault(usernameLower, false);
-
-        String tempClientVersion = "Unknown";
-        String tempClientType = "Java";
-        int tempProtocolVersion = player.getProtocolVersion().getProtocol();
-
-        if (geyserApiAvailable) {
-            try {
-                Object geyserApi = Class.forName("org.geysermc.geyser.api.GeyserApi").getMethod("api").invoke(null);
-                Object connection = geyserApi.getClass().getMethod("connectionByUuid", UUID.class).invoke(geyserApi, uuid);
-                if (connection != null) {
-                    tempClientType = "Bedrock";
-                    tempProtocolVersion = (int) connection.getClass().getMethod("protocolVersion").invoke(connection);
-                    tempClientVersion = String.valueOf(tempProtocolVersion);
-                    logger.finer("[PlayerJoin] Bedrock player detected: " + displayName);
-                }
-            } catch (Exception | NoClassDefFoundError geyserEx) {
-                logger.log(Level.WARNING, "[PlayerJoin] Error accessing Geyser API for " + displayName + ". Assuming Java.", geyserEx);
-                tempClientType = "Java";
-            }
-        }
-
-        if ("Java".equals(tempClientType)) {
-            if (viaVersionApiAvailable) {
-                try {
-                    tempProtocolVersion = Via.getAPI().getPlayerVersion(uuid);
-                    ProtocolVersion pv = ProtocolVersion.getProtocol(tempProtocolVersion);
-                    tempClientVersion = (pv != null) ? pv.getName() : String.valueOf(tempProtocolVersion);
-                } catch (Exception | NoClassDefFoundError viaEx) {
-                    logger.log(Level.FINER, "[PlayerJoin] Failed to get Java version via ViaVersion API for " + displayName + ". Using Velocity fallback.", viaEx);
-                    tempClientVersion = player.getProtocolVersion().getName();
-                    tempProtocolVersion = player.getProtocolVersion().getProtocol();
-                }
-            } else {
-                tempClientVersion = player.getProtocolVersion().getName();
-            }
-        }
-
-        final String clientVersion = tempClientVersion;
-        final String clientType = tempClientType;
-        final int protocolVersion = tempProtocolVersion;
+        final String username = player.getUsername();
+        final String ip = player.getRemoteAddress().getAddress().getHostAddress();
 
         Proxy.getInstance().getLoginTimestamps().put(uuid, System.currentTimeMillis());
 
         try {
-            final Profile profile = profileService.ensureProfile(uuid, displayName, usernameLower, ip, clientVersion, clientType, isPremium, player);
+            boolean isPremium = Proxy.getInstance().getPremiumLoginStatus().getOrDefault(username.toLowerCase(), false);
+            String clientVersion = player.getProtocolVersion().getName();
 
-            final int finalProtocol = protocolVersion;
-
-            String determinedProxyId;
-            determinedProxyId = System.getProperty("controller.proxyId");
-
-            if (determinedProxyId == null || determinedProxyId.isEmpty()) {
-                determinedProxyId = System.getenv("PROXY_NAME");
-            }
-
-            if (determinedProxyId == null || determinedProxyId.isEmpty()) {
-                try {
-                    determinedProxyId = proxyServer.getBoundAddress().getHostName();
-                    logger.warning("Aviso: 'controller.proxyId' (propriedade Java) ou 'PROXY_NAME' (variável de ambiente) não estão definidas! O proxyId está a ser reportado como: " + determinedProxyId);
-                } catch (Exception e) {
-                    determinedProxyId = "proxy_unknown";
-                }
-            }
-
-            final String finalProxyId = determinedProxyId;
+            Profile profile = profileService.ensureProfile(uuid, username, username.toLowerCase(), ip, clientVersion, "Java", isPremium, player);
 
             sessionTrackerServiceOpt.ifPresent(service -> {
-                service.startSession(uuid, profile.getName(), finalProxyId, null, finalProtocol, (int)player.getPing(),
-                        ip, clientVersion, clientType, isPremium);
-
-                service.setSessionState(uuid, AuthenticationGuard.STATE_CONNECTING);
-                logger.fine("[PlayerJoin] Session state set to CONNECTING for " + displayName);
+                service.setSessionField(uuid, "username", profile.getName());
+                service.setSessionField(uuid, "clientVersion", clientVersion);
+                service.setSessionField(uuid, "role", profile.getPrimaryRoleName());
+                service.setSessionField(uuid, "cash", String.valueOf(profile.getCash()));
             });
 
             preferencesService.loadAndCachePreferences(uuid);
-
             roleService.clearSentWarnings(uuid);
-            roleService.checkAndSendLoginExpirationWarning(player);
-            preferencesService.checkAndSendStaffChatWarning(player, uuid);
+
+            Proxy.getInstance().getPremiumLoginStatus().remove(username.toLowerCase());
+            Proxy.getInstance().getOfflineUuids().remove(username.toLowerCase());
 
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "[PlayerJoin] CRITICAL error during ensureProfile/startSession for " + displayName + " (" + uuid + ")", e);
-            String translatedKick = Messages.translate(MessageKey.KICK_GENERIC_PROFILE_ERROR);
-            player.disconnect(MiniMessage.miniMessage().deserialize(translatedKick));
-            Proxy.getInstance().getLoginTimestamps().remove(uuid);
-            sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, displayName));
-            roleService.removePreLoginFuture(uuid);
-            return;
+            logger.log(Level.SEVERE, "[PlayerJoin] Critical error in PostLogin for " + username, e);
+            player.disconnect(MiniMessage.miniMessage().deserialize(Messages.translate(MessageKey.KICK_GENERIC_PROFILE_ERROR)));
+            sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid));
         }
-
-        Proxy.getInstance().getPremiumLoginStatus().remove(usernameLower);
-        Proxy.getInstance().getOfflineUuids().remove(usernameLower);
     }
 
-    @Subscribe(order = com.velocitypowered.api.event.PostOrder.LATE)
+    @Subscribe
     public void onDisconnect(DisconnectEvent event) {
         final Player player = event.getPlayer();
-        if (player == null) return;
         final UUID uuid = player.getUniqueId();
-        final String username = player.getUsername();
 
-        if (!player.isActive() || player.getCurrentServer().isEmpty()) {
-            sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, username));
-            logger.info("[PlayerJoin] Jogador " + username + " desconectou-se do PROXY. Encerrando sessão.");
+        sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, player.getUsername()));
+        logger.info("[PlayerJoin] Session ended for " + player.getUsername());
 
-            Long loginTime = Proxy.getInstance().getLoginTimestamps().remove(uuid);
-            if (loginTime != null) {
-                long sessionDuration = System.currentTimeMillis() - loginTime;
-                if (statisticsService != null && sessionDuration > 0) {
-                    try {
-                        statisticsService.addOnlineTime(uuid, sessionDuration);
-                    } catch (Exception e) {
-                        logger.log(Level.WARNING, "[PlayerJoin] Error saving online time on disconnect for " + uuid, e);
-                    }
-                }
+        Long loginTime = Proxy.getInstance().getLoginTimestamps().remove(uuid);
+        if (loginTime != null) {
+            long duration = System.currentTimeMillis() - loginTime;
+            if (duration > 0) {
+                try { statisticsService.addOnlineTime(uuid, duration); } catch (Exception ignored) {}
             }
-
-            preferencesService.removeCachedPreferences(uuid);
-            roleService.clearSentWarnings(uuid);
-
-            Proxy.getInstance().getPremiumLoginStatus().remove(player.getUsername().toLowerCase());
-            Proxy.getInstance().getOfflineUuids().remove(player.getUsername().toLowerCase());
-
-        } else {
-            logger.finer("[PlayerJoin] Jogador " + username + " desconectou-se de um servidor (troca), sessão mantida.");
         }
 
+        preferencesService.removeCachedPreferences(uuid);
         roleService.invalidateSession(uuid);
-        logger.finer("[PlayerJoin] Session invalidated (local RoleService cache) for " + uuid + " on disconnect/switch.");
     }
 }
