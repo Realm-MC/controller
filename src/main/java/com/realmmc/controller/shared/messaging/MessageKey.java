@@ -302,6 +302,7 @@ public enum MessageKey {
     MAPMANAGER_BLUEMAP_START("mapmanager.bluemap.start"),
 
     STAFFCHAT_WARN_DISABLED("staffchat.warn_disabled"),
+    STAFFCHAT_ERROR_DISABLED("staffchat.error_disabled"),
     STAFF_LIST_HEADER_EMPTY("stafflist.header_empty"),
     STAFF_LIST_HEADER_EMPTY_WARNING("stafflist.header_empty_warning"),
     STAFF_LIST_HEADER_ONE("stafflist.header_one"),

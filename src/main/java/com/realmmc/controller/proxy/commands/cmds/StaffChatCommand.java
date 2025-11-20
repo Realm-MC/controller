@@ -8,6 +8,7 @@ import com.realmmc.controller.shared.annotations.Cmd;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
+import com.realmmc.controller.shared.preferences.PreferencesService;
 import com.realmmc.controller.shared.sounds.SoundKeys;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
@@ -33,10 +34,12 @@ public class StaffChatCommand implements CommandInterface {
     private final Optional<SoundPlayer> soundPlayerOpt;
     private final Logger logger;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final PreferencesService preferencesService;
 
     public StaffChatCommand() {
         this.soundPlayerOpt = ServiceRegistry.getInstance().getService(SoundPlayer.class);
         this.logger = Logger.getLogger(StaffChatCommand.class.getName());
+        this.preferencesService = ServiceRegistry.getInstance().requireService(PreferencesService.class);
     }
 
     @Override
@@ -54,8 +57,17 @@ public class StaffChatCommand implements CommandInterface {
             return;
         }
 
-        String message = String.join(" ", args);
         UUID uuid = player.getUniqueId();
+
+        boolean isStaffChatEnabled = preferencesService.getCachedStaffChatEnabled(uuid).orElse(true);
+
+        if (!isStaffChatEnabled) {
+            Messages.send(player, MessageKey.STAFFCHAT_ERROR_DISABLED);
+            playSound(player, SoundKeys.ERROR);
+            return;
+        }
+
+        String message = String.join(" ", args);
         String playerName = player.getUsername();
 
         String serverName = player.getCurrentServer()
