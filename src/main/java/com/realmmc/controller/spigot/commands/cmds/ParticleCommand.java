@@ -29,7 +29,7 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-@Cmd(cmd = "particle", aliases = {"particles"})
+@Cmd(cmd = "particle", aliases = {"particles", "particula", "particulas"})
 public class ParticleCommand implements CommandInterface {
 
     private final String permission = "controller.manager";

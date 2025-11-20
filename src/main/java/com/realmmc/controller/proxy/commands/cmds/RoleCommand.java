@@ -44,7 +44,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-@Cmd(cmd = "role", aliases = {"group", "rank"}, onlyPlayer = false)
+@Cmd(cmd = "role", aliases = {"group", "grupo"}, onlyPlayer = false)
 public class RoleCommand implements CommandInterface {
 
     private final String requiredPermission = "controller.manager";
