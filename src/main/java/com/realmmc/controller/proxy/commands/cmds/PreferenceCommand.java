@@ -30,7 +30,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-@Cmd(cmd = "preference", aliases = {"preferences", "preferencia", "toggle"}, onlyPlayer = false)
+@Cmd(cmd = "preferencia", aliases = {"pref", "config", "settings"}, onlyPlayer = false)
 public class PreferenceCommand implements CommandInterface {
 
     private final Logger logger;
@@ -45,6 +45,11 @@ public class PreferenceCommand implements CommandInterface {
     private final String groupManager = "Gerente";
     private final String groupAdmin = "Administrador";
     private final String groupHelper = "Ajudante";
+
+    private final MessageKey KEY_ENABLED = MessageKey.COMMON_ENABLED;
+    private final MessageKey KEY_DISABLED = MessageKey.COMMON_DISABLED;
+    private final MessageKey KEY_LANG_PT = MessageKey.LANG_PT;
+    private final MessageKey KEY_LANG_EN = MessageKey.LANG_EN;
 
     public PreferenceCommand() {
         this.logger = Proxy.getInstance().getLogger();
@@ -98,39 +103,31 @@ public class PreferenceCommand implements CommandInterface {
             }
 
             Profile profile = targetProfileOpt.get();
-
             return roleService.loadPlayerDataAsync(profile.getUuid())
                     .thenApply(sessionData -> new AbstractMap.SimpleImmutableEntry<>(profile, sessionData));
-
         }).thenAccept(entry -> {
             if (entry == null) return;
-
             Profile profile = entry.getKey();
             PlayerSessionData sessionData = entry.getValue();
-
             if (sessionData == null) sessionData = roleService.getDefaultSessionData(profile.getUuid());
 
             Preferences prefs = preferencesService.ensurePreferences(profile);
-
             String formattedName = NicknameFormatter.format(profile.getName(), sessionData.getPrimaryRole());
 
             Messages.send(sender, Message.of(MessageKey.PREF_INFO_HEADER).with("player", formattedName));
 
-            // Tradução dos valores baseada no idioma de quem executa o comando (sender)
             Locale senderLocale = Messages.determineLocale(sender);
-
             String langVal = translateLanguage(prefs.getServerLanguage(), senderLocale);
+
             String staffChatVal = Messages.translate(
-                    prefs.isStaffChatEnabled() ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE,
+                    prefs.isStaffChatEnabled() ? KEY_ENABLED : KEY_DISABLED,
                     senderLocale
             );
 
             Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Linguagem").with("value", langVal));
             Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "StaffChat").with("value", staffChatVal));
 
-            // Adiciona linha em branco no final
             sender.sendMessage(Component.empty());
-
             playSound(sender, SoundKeys.NOTIFICATION);
 
         }).exceptionally(ex -> {
@@ -166,34 +163,26 @@ public class PreferenceCommand implements CommandInterface {
             Profile profile = targetProfileOpt.get();
             return roleService.loadPlayerDataAsync(profile.getUuid())
                     .thenApply(sessionData -> new AbstractMap.SimpleImmutableEntry<>(profile, sessionData));
-
         }).thenAccept(entry -> {
             if (entry == null) return;
-
             Profile profile = entry.getKey();
             PlayerSessionData sessionData = entry.getValue();
             if (sessionData == null) sessionData = roleService.getDefaultSessionData(profile.getUuid());
 
             Preferences prefs = preferencesService.ensurePreferences(profile);
             boolean changed = false;
-            String valTranslated = "";
 
-            // Locale do Sender (Admin) para ver a mensagem de confirmação
+            MessageKey valKey = null;
+
             Locale senderLocale = Messages.determineLocale(sender);
 
             if (prefKey.equals("linguagem") || prefKey.equals("language")) {
-                Language current = prefs.getServerLanguage();
-                Language next = (current == Language.PORTUGUESE) ? Language.ENGLISH : Language.PORTUGUESE;
-                prefs.setServerLanguage(next);
-                valTranslated = translateLanguage(next, senderLocale);
+                Language newLang = preferencesService.toggleLanguage(profile.getUuid());
+                valKey = (newLang == Language.PORTUGUESE) ? KEY_LANG_PT : KEY_LANG_EN;
                 changed = true;
             } else if (prefKey.equals("staffchat") || prefKey.equals("chatstaff")) {
-                boolean current = prefs.isStaffChatEnabled();
-                prefs.setStaffChatEnabled(!current);
-                valTranslated = Messages.translate(
-                        !current ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE,
-                        senderLocale
-                );
+                boolean newState = preferencesService.toggleStaffChat(profile.getUuid());
+                valKey = newState ? KEY_ENABLED : KEY_DISABLED;
                 changed = true;
             } else {
                 Messages.send(sender, Message.of(MessageKey.PREF_UNKNOWN).with("pref", prefKey));
@@ -201,12 +190,10 @@ public class PreferenceCommand implements CommandInterface {
                 return;
             }
 
-            if (changed) {
-                preferencesService.save(prefs);
-                // Atualiza cache
-                preferencesService.updateCachedPreferences(profile.getUuid(), prefs.getServerLanguage(), prefs.isStaffChatEnabled());
-
+            if (changed && valKey != null) {
                 String formattedName = NicknameFormatter.format(profile.getName(), sessionData.getPrimaryRole());
+
+                String valTranslated = Messages.translate(valKey, senderLocale);
 
                 Messages.send(sender, Message.of(MessageKey.PREF_UPDATED_OTHER)
                         .with("player", formattedName)
@@ -228,38 +215,19 @@ public class PreferenceCommand implements CommandInterface {
 
         TaskScheduler.runAsync(() -> {
             try {
-                Optional<Preferences> prefsOpt = preferencesService.getPreferences(uuid);
-                if (prefsOpt.isEmpty()) {
-                    preferencesService.loadAndCachePreferences(uuid);
-                    prefsOpt = preferencesService.getPreferences(uuid);
-                }
-
-                if (prefsOpt.isEmpty()) {
+                if (preferencesService.getOrLoadPreferences(uuid).isEmpty()) {
                     Messages.send(sender, MessageKey.KICK_GENERIC_PROFILE_ERROR);
-                    playSound(sender, SoundKeys.ERROR);
                     return;
                 }
 
-                Preferences prefs = prefsOpt.get();
                 boolean changed = false;
-
-                // Variável para guardar o valor traduzido
-                String valTranslated = "";
+                MessageKey valKey = null;
 
                 if (key.equals("linguagem") || key.equals("language")) {
-                    Language current = prefs.getServerLanguage();
-                    Language next = (current == Language.PORTUGUESE) ? Language.ENGLISH : Language.PORTUGUESE;
+                    Language newLang = preferencesService.toggleLanguage(uuid);
+                    valKey = (newLang == Language.PORTUGUESE) ? KEY_LANG_PT : KEY_LANG_EN;
 
-                    // 1. Atualiza objeto local
-                    prefs.setServerLanguage(next);
-
-                    // 2. Salva e Atualiza Cache IMEDIATAMENTE
-                    // Isso é crucial para que o 'Messages.determineLocale' e 'translate' peguem a mudança
-                    preferencesService.save(prefs);
-                    preferencesService.updateCachedPreferences(uuid, next, prefs.isStaffChatEnabled());
-
-                    // 3. Gera o valor traduzido JÁ COM O NOVO LOCALE
-                    valTranslated = translateLanguage(next, next.getLocale());
+                    preferencesService.updateCachedPreferences(uuid, newLang, preferencesService.getCachedStaffChatEnabled(uuid).orElse(true));
                     changed = true;
 
                 } else if (key.equals("staffchat") || key.equals("chatstaff")) {
@@ -268,16 +236,8 @@ public class PreferenceCommand implements CommandInterface {
                         playSound(sender, SoundKeys.ERROR);
                         return;
                     }
-                    boolean current = prefs.isStaffChatEnabled();
-                    prefs.setStaffChatEnabled(!current);
-
-                    preferencesService.save(prefs);
-                    preferencesService.updateCachedPreferences(uuid, prefs.getServerLanguage(), !current);
-
-                    valTranslated = Messages.translate(
-                            !current ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE,
-                            prefs.getServerLanguage().getLocale()
-                    );
+                    boolean newState = preferencesService.toggleStaffChat(uuid);
+                    valKey = newState ? KEY_ENABLED : KEY_DISABLED;
                     changed = true;
                 } else {
                     Messages.send(sender, Message.of(MessageKey.PREF_UNKNOWN).with("pref", key));
@@ -285,13 +245,13 @@ public class PreferenceCommand implements CommandInterface {
                     return;
                 }
 
-                if (changed) {
-                    // Nota: save() já foi chamado dentro dos ifs para garantir a ordem com a tradução
-                    Message msg = Message.of(MessageKey.PREF_UPDATED_SELF)
-                            .with("pref", key)
-                            .with("value", valTranslated);
+                if (changed && valKey != null) {
+                    Locale newLocale = Messages.determineLocale(sender);
+                    String valTranslated = Messages.translate(valKey, newLocale);
 
-                    Messages.send(sender, msg);
+                    Messages.send(sender, Message.of(MessageKey.PREF_UPDATED_SELF)
+                            .with("pref", key)
+                            .with("value", valTranslated));
                     playSound(sender, SoundKeys.SUCCESS);
                 }
             } catch (Exception e) {
@@ -301,17 +261,8 @@ public class PreferenceCommand implements CommandInterface {
         });
     }
 
-    // Método auxiliar para traduzir nomes de linguagem manualmente ou via chave se tiver
     private String translateLanguage(Language lang, Locale locale) {
-        // Idealmente você teria MessageKey.LANG_PORTUGUESE e MessageKey.LANG_ENGLISH
-        // Se não tiver, retornamos o nome. Se tiver, usamos Messages.translate.
-        // Exemplo assumindo que você vai criar as chaves:
-        // return Messages.translate(lang == Language.PORTUGUESE ? MessageKey.LANG_PORTUGUESE : MessageKey.LANG_ENGLISH, locale);
-
-        // Fallback hardcoded temporário se as chaves não existirem (Ajuste conforme seu MessageKey)
-        if (lang == Language.PORTUGUESE) return "PORTUGUESE";
-        if (lang == Language.ENGLISH) return "ENGLISH";
-        return lang.name();
+        return Messages.translate(lang == Language.PORTUGUESE ? KEY_LANG_PT : KEY_LANG_EN, locale);
     }
 
     private CompletableFuture<Optional<Profile>> resolveProfileAsync(String input) {
@@ -335,56 +286,47 @@ public class PreferenceCommand implements CommandInterface {
     @Override
     public List<String> tabComplete(CommandSource sender, String[] args) {
         List<String> suggestions = new ArrayList<>();
+        String current = args.length > 0 ? args[args.length - 1].toLowerCase() : "";
 
         if (args.length == 1) {
-            String current = args[0].toLowerCase();
             suggestions.add("linguagem");
-            if (sender.hasPermission(permHelper)) suggestions.add("staffchat");
-            if (sender.hasPermission(permAdmin)) suggestions.add("info");
 
-            // Sugere jogadores para admin mode se tiver permissão
+            if (sender.hasPermission(permHelper)) {
+                suggestions.add("staffchat");
+            }
+
+            if (sender.hasPermission(permAdmin)) {
+                suggestions.add("info");
+            }
+
             if (sender.hasPermission(permManager)) {
-                Proxy.getInstance().getServer().getAllPlayers().stream()
-                        .map(p -> p.getUsername() + ":") // Sugere o início do formato
-                        .filter(s -> s.toLowerCase().startsWith(current))
-                        .forEach(suggestions::add);
+                if (!current.contains(":")) {
+                    Proxy.getInstance().getServer().getAllPlayers().forEach(p -> {
+                        if (p.getUsername().toLowerCase().startsWith(current)) {
+                            suggestions.add(p.getUsername() + ":");
+                        }
+                    });
+                }
+                else {
+                    String[] parts = current.split(":");
+                    String namePart = parts[0];
+                    suggestions.add(namePart + ":linguagem");
+                    suggestions.add(namePart + ":staffchat");
+                }
             }
-
-            // Filtra as opções normais
-            List<String> filtered = suggestions.stream()
-                    .filter(s -> s.startsWith(current))
-                    .collect(Collectors.toList());
-
-            return filtered;
-        }
-
-        // Sugestão para a segunda parte do formato user:pref
-        if (args.length == 1 && args[0].contains(":") && sender.hasPermission(permManager)) {
-            String current = args[0].toLowerCase();
-            String[] parts = current.split(":");
-            if (parts.length > 0) {
-                String prefix = parts[0] + ":";
-                String subCurrent = parts.length > 1 ? parts[1] : "";
-
-                List<String> subs = new ArrayList<>();
-                subs.add("linguagem");
-                subs.add("staffchat");
-
-                return subs.stream()
-                        .map(s -> prefix + s)
-                        .filter(s -> s.startsWith(current))
-                        .collect(Collectors.toList());
+        } else if (args.length == 2) {
+            if (args[0].equalsIgnoreCase("info") && sender.hasPermission(permAdmin)) {
+                Proxy.getInstance().getServer().getAllPlayers().forEach(p -> {
+                    if (p.getUsername().toLowerCase().startsWith(current)) {
+                        suggestions.add(p.getUsername());
+                    }
+                });
             }
         }
 
-        if (args.length == 2 && args[0].equalsIgnoreCase("info") && sender.hasPermission(permAdmin)) {
-            String current = args[1].toLowerCase();
-            return Proxy.getInstance().getServer().getAllPlayers().stream()
-                    .map(Player::getUsername)
-                    .filter(s -> s.toLowerCase().startsWith(current))
-                    .collect(Collectors.toList());
-        }
-
-        return Collections.emptyList();
+        return suggestions.stream()
+                .filter(s -> s.toLowerCase().startsWith(current))
+                .sorted()
+                .collect(Collectors.toList());
     }
 }

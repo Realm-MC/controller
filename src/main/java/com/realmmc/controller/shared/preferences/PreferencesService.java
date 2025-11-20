@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.RoleService;
-import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.profile.Profile;
@@ -34,6 +33,15 @@ public class PreferencesService {
         return repository.findByUuid(uuid);
     }
 
+    public Optional<Preferences> getOrLoadPreferences(UUID uuid) {
+        Optional<Preferences> cached = getPreferences(uuid);
+        if (cached.isEmpty()) {
+            loadAndCachePreferences(uuid);
+            return getPreferences(uuid);
+        }
+        return cached;
+    }
+
     public Preferences ensurePreferences(Profile profile, Language initialLanguage) {
         if (profile == null) {
             throw new IllegalArgumentException("Profile cannot be null for ensurePreferences");
@@ -60,6 +68,43 @@ public class PreferencesService {
         return ensurePreferences(profile, null);
     }
 
+    public Language toggleLanguage(UUID uuid) {
+        Optional<Preferences> prefsOpt = getOrLoadPreferences(uuid);
+        if (prefsOpt.isEmpty()) throw new IllegalStateException("Preferences not found for " + uuid);
+
+        Preferences prefs = prefsOpt.get();
+        Language current = prefs.getServerLanguage();
+        Language next = (current == Language.PORTUGUESE) ? Language.ENGLISH : Language.PORTUGUESE;
+
+        prefs.setServerLanguage(next);
+        save(prefs);
+
+        return next;
+    }
+
+    public boolean toggleStaffChat(UUID uuid) {
+        Optional<Preferences> prefsOpt = getOrLoadPreferences(uuid);
+        if (prefsOpt.isEmpty()) throw new IllegalStateException("Preferences not found for " + uuid);
+
+        Preferences prefs = prefsOpt.get();
+        boolean newState = !prefs.isStaffChatEnabled();
+
+        prefs.setStaffChatEnabled(newState);
+        save(prefs);
+
+        return newState;
+    }
+
+    public void setStaffChat(UUID uuid, boolean state) {
+        Optional<Preferences> prefsOpt = getOrLoadPreferences(uuid);
+        if (prefsOpt.isPresent()) {
+            Preferences prefs = prefsOpt.get();
+            if (prefs.isStaffChatEnabled() != state) {
+                prefs.setStaffChatEnabled(state);
+                save(prefs);
+            }
+        }
+    }
 
     public void updateIdentification(Profile profile) {
         if (profile == null) return;
@@ -99,7 +144,6 @@ public class PreferencesService {
 
             String json = node.toString();
             RedisPublisher.publish(RedisChannel.PREFERENCES_SYNC, json);
-            LOGGER.log(Level.FINER, "Published preferences sync message: {0}", json);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Failed to publish preferences sync message for " + preferences.getUuid(), e);
         }
@@ -123,13 +167,11 @@ public class PreferencesService {
         }
 
         staffChatCache.put(uuid, staffChatEnabled);
-        LOGGER.log(Level.FINEST, "Updated preferences cache for {0} (Lang: {1}, SC: {2})", new Object[]{uuid, language, staffChatEnabled});
     }
 
     public void removeCachedPreferences(UUID uuid) {
         languageCache.remove(uuid);
         staffChatCache.remove(uuid);
-        LOGGER.log(Level.FINEST, "Removed preferences cache for {0}", uuid);
     }
 
     public void loadAndCachePreferences(UUID uuid) {
@@ -153,9 +195,7 @@ public class PreferencesService {
 
             roleService.getSessionDataFromCache(uuid).ifPresent(sessionData -> {
                 if (sessionData.getPrimaryRole().getType() == RoleType.STAFF) {
-
                     Messages.send(playerObject, MessageKey.STAFFCHAT_WARN_DISABLED);
-
                     ServiceRegistry.getInstance().getService(SoundPlayer.class)
                             .ifPresent(sp -> sp.playSound(playerObject, SoundKeys.NOTIFICATION));
                 }
