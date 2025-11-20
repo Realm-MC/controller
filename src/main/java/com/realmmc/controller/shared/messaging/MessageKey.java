@@ -392,7 +392,16 @@ public enum MessageKey {
     CASH_INFO_ACTIONS_NONE("cash.info.actions_none"),
     CASH_INFO_HOVER_ACTION("cash.info.hover.action"),
     CASH_INFO_HOVER_SOURCE("cash.info.hover.source"),
-    CASH_INFO_HOVER_DATE("cash.info.hover.date");
+    CASH_INFO_HOVER_DATE("cash.info.hover.date"),
+
+    PREF_HELP("pref.help"),
+    PREF_INFO_HEADER("pref.info.header"),
+    PREF_UPDATED_SELF("pref.updated.self"),
+    PREF_UPDATED_OTHER("pref.updated.other"),
+    PREF_UNKNOWN("pref.unknown"),
+    PREF_NO_PERM_STAFFCHAT("pref.no_perm_staffchat"),
+    PREF_NOT_FOUND("pref.not_found"),
+    PREF_INVALID_FORMAT("pref.invalid_format");
 
     private final String key;
 
