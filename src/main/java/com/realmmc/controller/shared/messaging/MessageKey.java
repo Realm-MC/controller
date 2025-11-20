@@ -3,7 +3,11 @@ package com.realmmc.controller.shared.messaging;
 public enum MessageKey {
     ONLY_PLAYERS("only_players"),
     KICK_PERMISSION_SYSTEM_ERROR("kick.permission_system_error"),
+    LANG_PT("lang.portuguese"),
+    LANG_EN("lang.english"),
     COMMAND_ERROR("command_error"),
+    COMMON_ENABLED("common.enabled"),
+    COMMON_DISABLED("common.disabled"),
     COMMON_PLAYER_NOT_ONLINE("common.player.not_online"),
     COMMON_PLAYER_NEVER_JOINED("common.player.never_joined"),
     COMMON_USAGE("common.usage"),

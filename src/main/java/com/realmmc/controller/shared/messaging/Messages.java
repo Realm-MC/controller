@@ -96,13 +96,17 @@ public class Messages {
             Optional<PreferencesService> prefsOpt = ServiceRegistry.getInstance().getService(PreferencesService.class);
             if (prefsOpt.isPresent()) {
                 PreferencesService prefsService = prefsOpt.get();
+
                 Optional<Language> cachedLang = prefsService.getCachedLanguage(playerUuid);
+
                 if (cachedLang.isPresent()) {
                     return cachedLang.get().getLocale();
                 }
+
                 prefsService.loadAndCachePreferences(playerUuid);
-                Language dbLang = prefsService.getCachedLanguage(playerUuid).orElse(Language.getDefault());
-                return dbLang.getLocale();
+                return prefsService.getCachedLanguage(playerUuid)
+                        .orElse(Language.getDefault())
+                        .getLocale();
             }
         }
 
@@ -188,7 +192,7 @@ public class Messages {
     }
 
     public static void sendTitle(Object recipient, Message title, Message subtitle) {
-        SDK.sendTitle(recipient, title, subtitle, null);
+        SDK.sendTitle(recipient, title, subtitle, null); // Padrão do Minecraft
     }
 
     public static void sendTitle(Object recipient, MessageKey titleKey, MessageKey subtitleKey) {
