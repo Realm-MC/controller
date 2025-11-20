@@ -63,7 +63,7 @@ public class StaffChatCommand implements CommandInterface {
                 .map(ServerInfo::getName)
                 .orElse("Unknown");
 
-        String formattedName = NicknameFormatter.getFullFormattedNick(uuid);
+        String formattedName = NicknameFormatter.getFullFormattedNick(uuid, playerName);
 
         try {
             ObjectNode payload = objectMapper.createObjectNode();
