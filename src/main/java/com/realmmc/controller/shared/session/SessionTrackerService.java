@@ -60,7 +60,7 @@ public class SessionTrackerService {
     }
 
     public void startSession(UUID uuid, String username, String proxyId, String initialServer, int protocol, int ping,
-                             String ip, String clientVersion, String clientType, boolean isPremium) {
+                             String ip, String clientVersion, String clientType, boolean isPremium, String currentMedal) {
         if (uuid == null || username == null || proxyId == null) return;
 
         String sessionKey = getSessionKey(uuid);
@@ -83,6 +83,7 @@ public class SessionTrackerService {
             if (clientVersion != null) sessionData.put("clientVersion", clientVersion);
             if (clientType != null) sessionData.put("clientType", clientType);
             sessionData.put("isPremium", String.valueOf(isPremium));
+            sessionData.put("medal", currentMedal != null ? currentMedal : "none");
 
             Pipeline pipe = jedis.pipelined();
 

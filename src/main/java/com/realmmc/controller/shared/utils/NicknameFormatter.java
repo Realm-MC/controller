@@ -3,6 +3,7 @@ package com.realmmc.controller.shared.utils;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.PlayerSessionData;
 import com.realmmc.controller.modules.role.RoleService;
+import com.realmmc.controller.shared.cosmetics.medals.Medal;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileService;
 import com.realmmc.controller.shared.role.Role;
@@ -10,6 +11,7 @@ import com.realmmc.controller.shared.session.SessionTrackerService;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -51,7 +53,7 @@ public final class NicknameFormatter {
         }
     }
 
-    public static String getName(UUID uuid) {
+    private static String resolveName(UUID uuid) {
         ensureServices();
         if (uuid == null) return "Unknown";
 
@@ -72,97 +74,82 @@ public final class NicknameFormatter {
         return "Unknown";
     }
 
-    public static String getUsername(UUID uuid) {
-        String name = getName(uuid);
-        return name.equals("Unknown") ? "unknown" : name.toLowerCase();
-    }
-
-    public static String getNick(UUID uuid, boolean withPrefix) {
-        String originalName = getName(uuid);
-        if (originalName.equals("Unknown")) return originalName;
-
-        Optional<PlayerSessionData> sessionDataOpt = getSessionDataOrLoad(uuid);
-
-        if (sessionDataOpt.isEmpty()) {
-            return originalName;
+    private static String resolveMedalId(UUID uuid) {
+        String medalId = "none";
+        if (sessionTrackerService != null) {
+            medalId = sessionTrackerService.getSessionField(uuid, "medal").orElse("none");
         }
 
-        Role primaryRole = sessionDataOpt.get().getPrimaryRole();
-
-        if (withPrefix) {
-            String prefix = primaryRole.getPrefix();
-            if (prefix != null && !prefix.isEmpty()) {
-                if (!prefix.endsWith(" ") && !prefix.matches(".*<[^>]+>$")) {
-                    return prefix + " " + originalName;
-                }
-                return prefix + originalName;
-            }
-            return originalName;
-
-        } else {
-            String color = primaryRole.getColor();
-            return (color != null && !color.isEmpty()) ? color + originalName : originalName;
+        if ("none".equals(medalId) && profileService != null) {
+            try {
+                Optional<Profile> p = profileService.getByUuid(uuid);
+                if (p.isPresent()) medalId = p.get().getEquippedMedal();
+            } catch (Exception ignored) {}
         }
+        return medalId;
     }
 
-    public static String getTagsGroup(UUID uuid) {
-        Optional<PlayerSessionData> sessionDataOpt = getSessionDataOrLoad(uuid);
+    public static String getName(UUID uuid, boolean colored) {
+        String name = resolveName(uuid);
+        if (name.equals("Unknown")) return name;
+        if (!colored) return name;
 
-        if (sessionDataOpt.isEmpty()) return "";
+        Optional<PlayerSessionData> data = getSessionDataOrLoad(uuid);
+        if (data.isEmpty()) return name;
 
-        Role primaryRole = sessionDataOpt.get().getPrimaryRole();
-        String prefix = primaryRole.getPrefix();
-        String suffix = primaryRole.getSuffix();
-
-        StringBuilder tags = new StringBuilder();
-        boolean hasPrefix = prefix != null && !prefix.isEmpty();
-        boolean hasSuffix = suffix != null && !suffix.isEmpty();
-
-        if (hasPrefix) tags.append(prefix.trim());
-        if (hasPrefix && hasSuffix) tags.append(" ");
-        if (hasSuffix) tags.append(suffix.trim());
-
-        return tags.toString();
-    }
-
-    public static String getFullFormattedNick(UUID uuid) {
-        return getFullFormattedNick(uuid, getName(uuid));
-    }
-
-    public static String getFullFormattedNick(UUID uuid, String fallbackName) {
-        String originalName = (fallbackName != null && !fallbackName.isEmpty()) ? fallbackName : getName(uuid);
-        if (originalName.equals("Unknown")) return originalName;
-
-        Optional<PlayerSessionData> sessionDataOpt = getSessionDataOrLoad(uuid);
-
-        if (sessionDataOpt.isEmpty()) {
-            return originalName;
-        }
-
-        return format(originalName, sessionDataOpt.get().getPrimaryRole());
-    }
-
-    public static String format(String rawName, Role role) {
-        if (role == null) return rawName;
-
-        String prefix = role.getPrefix();
-        String color = role.getColor();
-        String suffix = role.getSuffix();
-
-        if (prefix == null) prefix = "";
+        String color = data.get().getPrimaryRole().getColor();
         if (color == null) color = "<gray>";
-        if (suffix == null) suffix = "";
+
+        return color + name + "<reset>";
+    }
+
+    public static String getPrefix(UUID uuid, boolean includeMedal) {
+        Optional<PlayerSessionData> data = getSessionDataOrLoad(uuid);
+        if (data.isEmpty()) return "";
+
+        Role role = data.get().getPrimaryRole();
+        String rolePrefix = role.getPrefix() != null ? role.getPrefix() : "";
 
         StringBuilder sb = new StringBuilder();
 
-        if (!prefix.isEmpty()) {
-            sb.append(prefix);
-            if (!prefix.endsWith(" ") && !prefix.matches(".*<[^>]+>$")) {
+        if (includeMedal) {
+            String medalId = resolveMedalId(uuid);
+            Medal medal = Medal.fromId(medalId).orElse(Medal.NONE);
+            if (medal != Medal.NONE) {
+                sb.append(medal.getPrefix());
+            }
+        }
+
+        if (!rolePrefix.isEmpty()) {
+            sb.append(rolePrefix);
+            if (!rolePrefix.endsWith(" ") && !rolePrefix.matches(".*<[^>]+>$")) {
                 sb.append(" ");
             }
         }
 
-        sb.append(color).append(rawName).append("<reset>");
+        return sb.toString();
+    }
+
+    public static String getNickname(UUID uuid, boolean includeMedal) {
+        return getNickname(uuid, includeMedal, null);
+    }
+
+    public static String getNickname(UUID uuid, boolean includeMedal, String fallbackName) {
+        String name = (fallbackName != null) ? fallbackName : resolveName(uuid);
+        if (name.equals("Unknown")) return name;
+
+        Optional<PlayerSessionData> data = getSessionDataOrLoad(uuid);
+        if (data.isEmpty()) return name;
+
+        Role role = data.get().getPrimaryRole();
+        String prefix = getPrefix(uuid, includeMedal);
+        String color = role.getColor() != null ? role.getColor() : "<gray>";
+        String suffix = role.getSuffix() != null ? role.getSuffix() : "";
+
+        StringBuilder sb = new StringBuilder();
+
+        sb.append(prefix);
+        sb.append(color).append(name).append("<reset>");
 
         if (!suffix.isEmpty()) {
             if (!suffix.startsWith(" ")) {

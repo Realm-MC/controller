@@ -128,7 +128,7 @@ public class StaffCommand implements CommandInterface {
             }
 
             for (StaffInfo info : sortedStaff) {
-                String formattedName = NicknameFormatter.getFullFormattedNick(info.getUuid(), info.getUsername());
+                String formattedName = NicknameFormatter.getNickname(info.getUuid(), false, info.getUsername());
 
                 String lineFormat = Messages.translate(
                         Message.of(MessageKey.STAFF_LIST_LINE)

@@ -5,6 +5,9 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTe
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.PlayerSessionData;
 import com.realmmc.controller.modules.role.RoleService;
+import com.realmmc.controller.shared.cosmetics.medals.Medal;
+import com.realmmc.controller.shared.profile.Profile;
+import com.realmmc.controller.shared.profile.ProfileService;
 import com.realmmc.controller.shared.role.Role;
 import com.realmmc.controller.spigot.Main;
 import net.kyori.adventure.text.Component;
@@ -27,12 +30,14 @@ public class NametagService implements Listener {
 
     private final Logger logger;
     private final RoleService roleService;
+    private final ProfileService profileService;
     private final MiniMessage miniMessage;
     private final Map<UUID, String> playerTeams = new ConcurrentHashMap<>();
 
     public NametagService() {
         this.logger = Main.getInstance().getLogger();
         this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
+        this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
         this.miniMessage = MiniMessage.miniMessage();
     }
 
@@ -58,28 +63,41 @@ public class NametagService implements Listener {
         roleService.loadPlayerDataAsync(player.getUniqueId()).thenAccept(session -> {
             if (session == null) return;
 
-            Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
-                applyTag(player, session);
+            profileService.getByUuid(player.getUniqueId()).ifPresent(profile -> {
+                Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
+                    applyTag(player, session, profile);
+                });
             });
         });
     }
 
-    private void applyTag(Player player, PlayerSessionData session) {
+    private void applyTag(Player player, PlayerSessionData session, Profile profile) {
         Role role = session.getPrimaryRole();
         String teamName = getTeamName(role);
+        String medalId = profile.getEquippedMedal();
 
         playerTeams.put(player.getUniqueId(), teamName);
 
-        String prefixStr = role.getPrefix() != null ? role.getPrefix() : "";
+        String medalPrefix = "";
+        if (medalId != null && !medalId.equalsIgnoreCase("none")) {
+            Optional<Medal> medalOpt = Medal.fromId(medalId);
+            if (medalOpt.isPresent()) {
+                medalPrefix = medalOpt.get().getPrefix();
+            }
+        }
+
+        String rolePrefix = role.getPrefix() != null ? role.getPrefix() : "";
         String colorStr = role.getColor() != null ? role.getColor() : "<gray>";
 
-        Component prefix = miniMessage.deserialize(prefixStr);
-        Component displayName = miniMessage.deserialize(prefixStr + colorStr + player.getName());
+        String fullPrefixStr = medalPrefix + rolePrefix;
+
+        Component prefixComponent = miniMessage.deserialize(fullPrefixStr);
+        Component displayName = miniMessage.deserialize(fullPrefixStr + colorStr + player.getName());
 
         player.playerListName(displayName);
 
         for (Player viewer : Bukkit.getOnlinePlayers()) {
-            sendTeamPacket(viewer, player, teamName, prefix, role.getColor());
+            sendTeamPacket(viewer, player, teamName, prefixComponent, role.getColor());
         }
     }
 
@@ -88,10 +106,24 @@ public class NametagService implements Listener {
         if (teamName == null) return;
 
         roleService.getSessionDataFromCache(target.getUniqueId()).ifPresent(session -> {
-            Role role = session.getPrimaryRole();
-            String prefixStr = role.getPrefix() != null ? role.getPrefix() : "";
-            Component prefix = miniMessage.deserialize(prefixStr);
-            sendTeamPacket(viewer, target, teamName, prefix, role.getColor());
+            profileService.getByUuid(target.getUniqueId()).ifPresent(profile -> {
+                Role role = session.getPrimaryRole();
+                String medalId = profile.getEquippedMedal();
+
+                String medalPrefix = "";
+                if (medalId != null && !medalId.equalsIgnoreCase("none")) {
+                    Optional<Medal> medalOpt = Medal.fromId(medalId);
+                    if (medalOpt.isPresent()) {
+                        medalPrefix = medalOpt.get().getPrefix();
+                    }
+                }
+
+                String rolePrefix = role.getPrefix() != null ? role.getPrefix() : "";
+                String fullPrefixStr = medalPrefix + rolePrefix;
+
+                Component prefixComponent = miniMessage.deserialize(fullPrefixStr);
+                sendTeamPacket(viewer, target, teamName, prefixComponent, role.getColor());
+            });
         });
     }
 

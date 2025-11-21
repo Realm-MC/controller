@@ -128,7 +128,7 @@ public class CashCommand implements CommandInterface {
                 String formattedCash = formatCash(targetProfile.getCash());
                 boolean viewingSelf = (sender instanceof Player p && p.getUniqueId().equals(targetProfile.getUuid()));
 
-                String formattedName = NicknameFormatter.getFullFormattedNick(targetProfile.getUuid(), targetProfile.getName());
+                String formattedName = NicknameFormatter.getNickname(targetProfile.getUuid(), true, targetProfile.getName());
 
                 Messages.send(sender, viewingSelf
                         ? Message.of(MessageKey.CASH_VIEW_SELF).with("cash", formattedCash)
@@ -200,7 +200,7 @@ public class CashCommand implements CommandInterface {
 
                 boolean isSelf = (sourceUuid != null && sourceUuid.equals(targetUuid));
 
-                String formattedName = NicknameFormatter.getFullFormattedNick(targetUuid, targetProfile.getName());
+                String formattedName = NicknameFormatter.getNickname(targetUuid, true, targetProfile.getName());
 
                 MessageKey successKey = MessageKey.COMMAND_ERROR;
 
@@ -284,7 +284,7 @@ public class CashCommand implements CommandInterface {
 
                     int position = 1;
                     for (Profile p : top10) {
-                        String formattedName = NicknameFormatter.getFullFormattedNick(p.getUuid(), p.getName());
+                        String formattedName = NicknameFormatter.getNickname(p.getUuid(), true, p.getName());
                         String formattedCash = formatCash(p.getCash());
 
                         String lineFormat = Messages.translate(Message.of(MessageKey.CASH_TOP_LINE)
@@ -300,7 +300,7 @@ public class CashCommand implements CommandInterface {
                     }
 
                     if (finalSelfProfile != null && !finalSelfInTop10 && finalSelfRank > 10) {
-                        String formattedName = NicknameFormatter.getFullFormattedNick(finalSelfProfile.getUuid(), finalSelfProfile.getName());
+                        String formattedName = NicknameFormatter.getNickname(finalSelfProfile.getUuid(), true, finalSelfProfile.getName());
                         String formattedCash = formatCash(finalSelfProfile.getCash());
 
                         String lineFormat = Messages.translate(Message.of(MessageKey.CASH_TOP_LINE_SELF)
@@ -352,7 +352,7 @@ public class CashCommand implements CommandInterface {
                 Profile targetProfile = targetProfileOpt.get();
                 List<CashLog> history = cashLogRepository.findByUuid(targetProfile.getUuid(), 10);
 
-                String formattedName = NicknameFormatter.getFullFormattedNick(targetProfile.getUuid(), targetProfile.getName());
+                String formattedName = NicknameFormatter.getNickname(targetProfile.getUuid(), true, targetProfile.getName());
 
                 Messages.send(sender, Message.of(MessageKey.CASH_INFO_HEADER).with("player_name", formattedName));
                 Messages.send(sender, Message.of(MessageKey.CASH_INFO_LINE_CASH).with("cash", formatCash(targetProfile.getCash())));
@@ -364,7 +364,7 @@ public class CashCommand implements CommandInterface {
                     for (CashLog log : history) {
                         String sourceName;
                         if (log.getSourceUuid() != null) {
-                            sourceName = NicknameFormatter.getFullFormattedNick(log.getSourceUuid(), log.getSourceName());
+                            sourceName = NicknameFormatter.getNickname(log.getSourceUuid(), true, log.getSourceName());
                         } else {
                             sourceName = "<gray>CONSOLE";
                         }
