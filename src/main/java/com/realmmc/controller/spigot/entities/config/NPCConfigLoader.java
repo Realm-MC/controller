@@ -26,12 +26,7 @@ public class NPCConfigLoader {
                 logger.info("Arquivo npcs.yml criado.");
                 YamlConfiguration created = new YamlConfiguration();
                 created.options().header(String.join("\n",
-                        "# RealmMC Controller - NPCs",
-                        "# Somente sintaxe de actions por labels é suportada.",
-                        "# Exemplos:",
-                        "#   actions:",
-                        "#     - author={player}; action=openmenu(\"loja_principal\"); delay=1.5s",
-                        "#     - action=message(\"<green>Olá {player}!\"); delay=500ms"
+                        "# RealmMC Controller - NPCs"
                 ));
                 created.options().copyHeader(true);
                 created.save(configFile);
@@ -46,8 +41,9 @@ public class NPCConfigLoader {
 
         ConfigurationSection entriesSection = config.getConfigurationSection("entries");
         if (entriesSection != null) {
-            for (String id : entriesSection.getKeys(false)) {
-                ConfigurationSection entrySection = entriesSection.getConfigurationSection(id);
+            for (String rawId : entriesSection.getKeys(false)) {
+                String id = rawId.toLowerCase();
+                ConfigurationSection entrySection = entriesSection.getConfigurationSection(rawId);
                 if (entrySection != null) {
                     String type = entrySection.getString("type", "NPC");
                     if (!"NPC".equalsIgnoreCase(type)) {
@@ -71,6 +67,7 @@ public class NPCConfigLoader {
                     entry.setLines(entrySection.getStringList("lines"));
                     entry.setIsMovible(entrySection.getBoolean("isMovible", false));
                     entry.setHologramVisible(entrySection.getBoolean("hologramVisible", true));
+                    entry.setEntityType(entrySection.getString("entityType", "PLAYER"));
 
                     if (entry.getWorld() != null) {
                         entries.put(id, entry);
@@ -89,7 +86,7 @@ public class NPCConfigLoader {
         config.options().copyHeader(true);
 
         for (Map.Entry<String, DisplayEntry> mapEntry : entries.entrySet()) {
-            String id = mapEntry.getKey();
+            String id = mapEntry.getKey().toLowerCase();
             DisplayEntry entry = mapEntry.getValue();
             String path = "entries." + id;
 
@@ -102,6 +99,7 @@ public class NPCConfigLoader {
             config.set(path + ".pitch", entry.getPitch());
             config.set(path + ".name", entry.getMessage());
             config.set(path + ".skin", entry.getItem() != null ? entry.getItem() : "default");
+
             if (entry.getTexturesValue() != null && entry.getTexturesSignature() != null) {
                 config.set(path + ".textures.value", entry.getTexturesValue());
                 config.set(path + ".textures.signature", entry.getTexturesSignature());
@@ -114,6 +112,9 @@ public class NPCConfigLoader {
             }
             if (entry.getActions() != null) {
                 config.set(path + ".actions", entry.getActions());
+            }
+            if (entry.getEntityType() != null) {
+                config.set(path + ".entityType", entry.getEntityType());
             }
             config.set(path + ".lines", entry.getLines());
         }
@@ -131,7 +132,7 @@ public class NPCConfigLoader {
             logger.warning("Tentativa de salvar uma DisplayEntry sem um ID.");
             return;
         }
-        entries.put(entry.getId(), entry);
+        entries.put(entry.getId().toLowerCase(), entry);
     }
 
     public void updateEntry(DisplayEntry entry) {
@@ -143,7 +144,7 @@ public class NPCConfigLoader {
     }
 
     public DisplayEntry getById(String id) {
-        return entries.get(id);
+        return entries.get(id.toLowerCase());
     }
 
     public void clearEntries() {
@@ -152,7 +153,7 @@ public class NPCConfigLoader {
 
     public boolean removeEntry(String id) {
         if (id == null) return false;
-        DisplayEntry removed = entries.remove(id);
+        DisplayEntry removed = entries.remove(id.toLowerCase());
         if (removed == null) return false;
         save();
         return true;

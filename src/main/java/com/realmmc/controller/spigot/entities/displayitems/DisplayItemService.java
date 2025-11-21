@@ -36,43 +36,50 @@ public class DisplayItemService {
         this.configLoader.load();
         try { clearAll(); } catch (Throwable ignored) {}
         loadSavedDisplays();
-        try {
-            if (interactListener == null) {
-                interactListener = new PacketListenerAbstract() {
-                    @Override
-                    public void onPacketReceive(PacketReceiveEvent event) {
-                        if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY) {
-                            WrapperPlayClientInteractEntity wrapper = new WrapperPlayClientInteractEntity(event);
-                            int targetId = wrapper.getEntityId();
-                            String entryId = entityIdToEntryId.get(targetId);
-                            if (entryId == null) return;
 
-                            Player player = (Player) event.getPlayer();
-                            if (wrapper.getHand() != InteractionHand.MAIN_HAND) return;
+        this.interactListener = new PacketListenerAbstract() {
+            @Override
+            public void onPacketReceive(PacketReceiveEvent event) {
+                if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY) {
+                    try {
+                        WrapperPlayClientInteractEntity wrapper = new WrapperPlayClientInteractEntity(event);
+                        int targetId = wrapper.getEntityId();
+                        String entryId = entityIdToEntryId.get(targetId);
+                        if (entryId == null) return;
 
-                            long now = System.currentTimeMillis();
-                            String key = player.getUniqueId() + ":" + targetId;
-                            if (clickDebounce.getOrDefault(key, 0L) > now - 300) return;
-                            clickDebounce.put(key, now);
+                        Player player = (Player) event.getPlayer();
+                        if (wrapper.getHand() != InteractionHand.MAIN_HAND) return;
 
-                            DisplayEntry entry = configLoader.getById(entryId);
-                            if (entry == null) return;
+                        long now = System.currentTimeMillis();
+                        String key = player.getUniqueId() + ":" + targetId;
+                        if (clickDebounce.getOrDefault(key, 0L) > now - 300) return;
+                        clickDebounce.put(key, now);
 
-                            List<String> actions = entry.getActions();
-                            if (actions == null || actions.isEmpty()) return;
+                        DisplayEntry entry = configLoader.getById(entryId);
+                        if (entry == null) return;
 
-                            Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
-                                World w = Bukkit.getWorld(entry.getWorld());
-                                if (w == null) w = player.getWorld();
-                                Location eloc = new Location(w, entry.getX(), entry.getY(), entry.getZ());
-                                Actions.runAll(player, entry, eloc, actions);
-                            });
-                        }
+                        List<String> actions = entry.getActions();
+                        if (actions == null || actions.isEmpty()) return;
+
+                        Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
+                            World w = Bukkit.getWorld(entry.getWorld());
+                            if (w == null) w = player.getWorld();
+                            Location eloc = new Location(w, entry.getX(), entry.getY(), entry.getZ());
+                            Actions.runAll(player, entry, eloc, actions);
+                        });
+                    } catch (Exception e) {
                     }
-                };
-                PacketEvents.getAPI().getEventManager().registerListener(interactListener);
+                }
             }
-        } catch (Throwable ignored) {}
+        };
+        PacketEvents.getAPI().getEventManager().registerListener(interactListener);
+    }
+
+    public void cleanup() {
+        if (interactListener != null) {
+            PacketEvents.getAPI().getEventManager().unregisterListener(interactListener);
+        }
+        clearAll();
     }
 
     private void loadSavedDisplays() {
