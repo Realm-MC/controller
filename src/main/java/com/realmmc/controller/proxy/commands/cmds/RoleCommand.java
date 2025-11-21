@@ -14,6 +14,7 @@ import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.messaging.RawMessage;
 import com.realmmc.controller.shared.preferences.PreferencesService;
+import com.realmmc.controller.shared.preferences.MedalVisibility;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileResolver;
 import com.realmmc.controller.shared.profile.ProfileService;
@@ -25,6 +26,7 @@ import com.realmmc.controller.shared.sounds.SoundKeys;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
+import com.realmmc.controller.shared.utils.NicknameFormatter;
 import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.realmmc.controller.shared.utils.TimeUtils;
 import com.velocitypowered.api.command.CommandSource;
@@ -44,7 +46,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-@Cmd(cmd = "role", aliases = {"group", "grupo"}, onlyPlayer = false)
+@Cmd(cmd = "role", aliases = {"group", "rank"}, onlyPlayer = false)
 public class RoleCommand implements CommandInterface {
 
     private final String requiredPermission = "controller.manager";
@@ -161,21 +163,7 @@ public class RoleCommand implements CommandInterface {
                         });
             }
 
-            String playerName = targetProfile.getName();
-            Role primaryRole = sessionData.getPrimaryRole();
-            String prefix = primaryRole.getPrefix();
-            String formattedNick;
-
-            if (prefix != null && !prefix.isEmpty()) {
-                if (prefix.endsWith(" ")) {
-                    formattedNick = prefix + playerName;
-                } else {
-                    formattedNick = prefix + " " + playerName;
-                }
-            } else {
-                String color = primaryRole.getColor();
-                formattedNick = (color != null ? color : "<gray>") + playerName;
-            }
+            String formattedNick = NicknameFormatter.getNickname(targetUuid, true, targetProfile.getName());
 
             Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_HEADER).with("subject", "Roles de " + formattedNick));
 
@@ -371,12 +359,14 @@ public class RoleCommand implements CommandInterface {
             }
             final Profile targetProfile = targetProfileOpt.get();
             final UUID targetUuid = targetProfile.getUuid();
-            final String targetOriginalName = targetProfile.getName();
 
             roleService.loadPlayerDataAsync(targetUuid).thenAcceptAsync(targetData -> {
+
+                String targetFormattedName = NicknameFormatter.getNickname(targetUuid, true, targetProfile.getName());
+
                 int targetWeight = targetData.getPrimaryRole().getWeight();
                 if (!hasBypass && targetWeight >= senderWeight) {
-                    Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_CLEAR_SUPERIOR).with("target_name", targetOriginalName));
+                    Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_CLEAR_SUPERIOR).with("target_name", targetFormattedName));
                     playSound(finalSender, SoundKeys.USAGE_ERROR);
                     return;
                 }
@@ -415,7 +405,7 @@ public class RoleCommand implements CommandInterface {
                             case ADD:
                                 boolean alreadyHasActivePermanent = currentRoles.stream().anyMatch(pr -> pr != null && pr.getRoleName().equalsIgnoreCase(roleNameInput) && pr.getStatus() == PlayerRole.Status.ACTIVE && pr.isPermanent());
                                 if (alreadyHasActivePermanent && expiresAt == null) {
-                                    Messages.send(finalSender, Message.of(MessageKey.ROLE_WARN_ALREADY_HAS_PERMANENT).with("player", targetOriginalName).with("group_display", targetRole.getDisplayName()));
+                                    Messages.send(finalSender, Message.of(MessageKey.ROLE_WARN_ALREADY_HAS_PERMANENT).with("player", targetFormattedName).with("group_display", targetRole.getDisplayName()));
                                     playSound(finalSender, SoundKeys.NOTIFICATION);
                                     return;
                                 }
@@ -439,11 +429,10 @@ public class RoleCommand implements CommandInterface {
                                     });
                                     ensureDefaultActiveIfNeeded(currentRoles, "dummy");
                                 } else {
-                                    Messages.send(finalSender, Message.of(MessageKey.ROLE_WARN_NOT_ACTIVE).with("player", targetOriginalName).with("group_display", targetRole.getDisplayName()).with("group_name", targetRole.getName()));
+                                    Messages.send(finalSender, Message.of(MessageKey.ROLE_WARN_NOT_ACTIVE).with("player", targetFormattedName).with("group_display", targetRole.getDisplayName()).with("group_name", targetRole.getName()));
                                     playSound(finalSender, SoundKeys.NOTIFICATION);
                                     return;
                                 }
-                                logger.log(Level.INFO, "[RoleCommand:Remove] Attempting to remove role {0} of {1}", new Object[]{roleNameInput, targetUuid});
                                 break;
                             default:
                                 throw new IllegalStateException("Tipo de modificação desconhecido");
@@ -494,7 +483,7 @@ public class RoleCommand implements CommandInterface {
                             }
 
                             if (successMessageKey.get() != null) {
-                                Messages.send(finalSender, Message.of(successMessageKey.get()).with("group_display", targetRole.getDisplayName()).with("group_name", targetRole.getName()).with("player", targetOriginalName).with("duration_msg", durationMsg));
+                                Messages.send(finalSender, Message.of(successMessageKey.get()).with("group_display", targetRole.getDisplayName()).with("group_name", targetRole.getName()).with("player", targetFormattedName).with("duration_msg", durationMsg));
                             }
                             playSound(finalSender, SoundKeys.SUCCESS);
 
@@ -506,11 +495,14 @@ public class RoleCommand implements CommandInterface {
                                         logger.info("[RoleCommand] Preferência StaffChat ativada automaticamente para " + targetUuid);
                                     }
                                 });
+
+                                preferencesService.setMedalVisibility(targetUuid, MedalVisibility.NONE);
+                                logger.info("[RoleCommand] Preferência de Medalha definida para NONE para novo Staff " + targetUuid);
                             }
 
                             boolean isTargetOnline = proxyServer.getPlayer(targetUuid).isPresent();
                             if (!finalHidden && (finalType == RoleModificationType.ADD || finalType == RoleModificationType.SET)) {
-                                publishRoleBroadcast(targetUuid, targetOriginalName, targetRole);
+                                publishRoleBroadcast(targetUuid, targetProfile.getName(), targetRole);
                             }
 
                             if (isTargetOnline && AuthenticationGuard.isAuthenticated(targetUuid)) {
@@ -725,7 +717,8 @@ public class RoleCommand implements CommandInterface {
             }
             final Profile targetProfile = targetProfileOpt.get();
             final UUID targetUuid = targetProfile.getUuid();
-            final String targetOriginalName = targetProfile.getName();
+
+            String targetFormattedName = NicknameFormatter.getNickname(targetUuid, true, targetProfile.getName());
 
             if (sender instanceof Player p && p.getUniqueId().equals(targetUuid)) {
                 Messages.send(sender, MessageKey.ROLE_ERROR_CANNOT_CLEAR_SELF);
@@ -736,7 +729,7 @@ public class RoleCommand implements CommandInterface {
             roleService.loadPlayerDataAsync(targetUuid).thenAcceptAsync(currentTargetData -> {
                 int targetMaxWeight = currentTargetData.getPrimaryRole().getWeight();
                 if (!hasBypass && targetMaxWeight >= senderWeight) {
-                    Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_CLEAR_SUPERIOR).with("target_name", targetOriginalName));
+                    Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_CLEAR_SUPERIOR).with("target_name", targetFormattedName));
                     playSound(finalSender, SoundKeys.USAGE_ERROR);
                     return;
                 }
@@ -768,7 +761,7 @@ public class RoleCommand implements CommandInterface {
                         if (!changed.get()) {
                             boolean defaultReactivated = currentRoles.stream().anyMatch(pr -> pr != null && "default".equalsIgnoreCase(pr.getRoleName()) && pr.getStatus() == PlayerRole.Status.ACTIVE);
                             if (!defaultReactivated) {
-                                Messages.send(finalSender, Message.of(MessageKey.ROLE_WARN_ALREADY_DEFAULT).with("player", targetOriginalName));
+                                Messages.send(finalSender, Message.of(MessageKey.ROLE_WARN_ALREADY_DEFAULT).with("player", targetFormattedName));
                                 playSound(finalSender, SoundKeys.NOTIFICATION);
                                 return;
                             }
@@ -799,7 +792,7 @@ public class RoleCommand implements CommandInterface {
                         roleService.publishSync(targetUuid);
                         logger.log(Level.INFO, "[RoleCommand:ClearPlayer] ROLE_SYNC published for {0}", targetUuid);
 
-                        Messages.send(finalSender, Message.of(isSelf ? MessageKey.ROLE_SUCCESS_CLEAR_PLAYER_SELF : MessageKey.ROLE_SUCCESS_CLEAR_PLAYER).with("player", targetOriginalName));
+                        Messages.send(finalSender, Message.of(isSelf ? MessageKey.ROLE_SUCCESS_CLEAR_PLAYER_SELF : MessageKey.ROLE_SUCCESS_CLEAR_PLAYER).with("player", targetFormattedName));
                         playSound(finalSender, SoundKeys.SUCCESS);
 
                         boolean isTargetOnline = proxyServer.getPlayer(targetUuid).isPresent();
@@ -848,6 +841,8 @@ public class RoleCommand implements CommandInterface {
                         int index = 1;
                         profilesWithRole.sort(Comparator.comparing(Profile::getName, String.CASE_INSENSITIVE_ORDER));
                         for (Profile profile : profilesWithRole) {
+                            String listName = NicknameFormatter.getNickname(profile.getUuid(), true, profile.getName());
+
                             PlayerRole roleDetails = profile.getRoles().stream().filter(pr -> pr != null && pr.getRoleName().equalsIgnoreCase(targetRole.getName()) && pr.getStatus() == PlayerRole.Status.ACTIVE).findFirst().orElse(null);
                             String statusString = "";
                             if (roleDetails != null) {
@@ -872,7 +867,7 @@ public class RoleCommand implements CommandInterface {
                             }
                             Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LIST_ITEM)
                                     .with("index", "<dark_gray>" + (index++) + "</dark_gray>")
-                                    .with("value", profile.getName() + " " + statusString));
+                                    .with("value", listName + " " + statusString));
                         }
                     }
                     Messages.send(finalSender, "<white>");
@@ -916,28 +911,20 @@ public class RoleCommand implements CommandInterface {
 
     private void playSound(CommandSource sender, String key) {
         if (sender instanceof Player player) {
-            soundPlayerOpt.ifPresent(sp -> {
-                try {
-                    sp.playSound(player, key);
-                } catch (Exception e) {
-                    logger.log(Level.WARNING, "[RoleCommand] Error playing sound '{0}' for {1}", new Object[]{key, player.getUsername()});
-                }
-            });
+            soundPlayerOpt.ifPresent(sp -> sp.playSound(player, key));
         }
     }
 
     private CompletableFuture<Optional<Profile>> resolveProfileAsync(String input) {
         Executor exec = roleService.getAsyncExecutor();
         if (exec == null) exec = ForkJoinPool.commonPool();
-        final Executor fExec = exec;
         return CompletableFuture.supplyAsync(() -> {
             try {
                 return ProfileResolver.resolve(input);
             } catch (Exception e) {
-                logger.log(Level.SEVERE, "[RoleCommand] ProfileResolver error", e);
                 return Optional.empty();
             }
-        }, fExec);
+        }, exec);
     }
 
     private Optional<Role> getSenderPrimaryRole(CommandSource sender) {
@@ -950,11 +937,8 @@ public class RoleCommand implements CommandInterface {
                 if (cachedData.isPresent()) {
                     return cachedData.map(PlayerSessionData::getPrimaryRole);
                 }
-
-                logger.log(Level.WARNING, "[RoleCommand] Session cache miss for sender {0}, loading sync...", p.getUsername());
                 return Optional.of(roleService.loadPlayerDataAsync(p.getUniqueId()).join().getPrimaryRole());
             } catch (Exception e) {
-                logger.log(Level.WARNING, "[RoleCommand] Failed to get role (sync fallback) for " + p.getUsername(), e);
                 return Optional.empty();
             }
         }
@@ -972,11 +956,6 @@ public class RoleCommand implements CommandInterface {
     }
 
     private Void handleCommandError(CommandSource sender, String action, Throwable t) {
-        Throwable cause = t;
-        while (cause.getCause() != null && cause.getCause() != cause) {
-            cause = cause.getCause();
-        }
-        logger.log(Level.SEVERE, "[RoleCommand] Error during action '" + action + "'", cause);
         Messages.send(sender, MessageKey.COMMAND_ERROR);
         playSound(sender, SoundKeys.ERROR);
         return null;
@@ -995,7 +974,8 @@ public class RoleCommand implements CommandInterface {
             if (args.length == 1) {
                 List<String> subCommands = Arrays.asList("info", "list", "add", "remove", "set", "clear", "help");
                 subCommands.stream().filter(sub -> sub.toLowerCase().startsWith(currentArg)).forEach(completions::add);
-            } else if (args.length == 2) {
+            }
+            else if (args.length == 2) {
                 String subCmd = args[0].toLowerCase();
                 boolean suggestPlayer = Arrays.asList("add", "remove", "set", "clear", "info").contains(subCmd);
                 boolean suggestGroup = Arrays.asList("list", "info", "clear").contains(subCmd);
@@ -1011,7 +991,8 @@ public class RoleCommand implements CommandInterface {
                             .filter(name -> name.toLowerCase().startsWith(currentArg))
                             .forEach(completions::add);
                 }
-            } else if (args.length == 3) {
+            }
+            else if (args.length == 3) {
                 String subCmd = args[0].toLowerCase();
                 if (Arrays.asList("add", "set", "remove").contains(subCmd)) {
                     roleService.getAllCachedRoles().stream()
@@ -1021,11 +1002,13 @@ public class RoleCommand implements CommandInterface {
                             .filter(name -> !((subCmd.equals("remove") || subCmd.equals("set")) && name.equalsIgnoreCase("default")))
                             .forEach(completions::add);
                 }
-            } else if (args.length == 4 && (args[0].equalsIgnoreCase("add") || args[0].equalsIgnoreCase("set"))) {
+            }
+            else if (args.length == 4 && (args[0].equalsIgnoreCase("add") || args[0].equalsIgnoreCase("set"))) {
                 List<String> durations = Arrays.asList("30s", "1m", "5m", "15m", "30m", "1h", "12h", "1d", "7d", "15d", "30d", "90d", "180d", "1y");
                 durations.stream().filter(d -> d.startsWith(currentArg)).forEach(completions::add);
                 if ("-hidden".startsWith(currentArg)) completions.add("-hidden");
-            } else if (args.length == 5 && (args[0].equalsIgnoreCase("add") || args[0].equalsIgnoreCase("set"))) {
+            }
+            else if (args.length == 5 && (args[0].equalsIgnoreCase("add") || args[0].equalsIgnoreCase("set"))) {
                 if (!args[3].equalsIgnoreCase("-hidden") && "-hidden".startsWith(currentArg)) {
                     completions.add("-hidden");
                 }

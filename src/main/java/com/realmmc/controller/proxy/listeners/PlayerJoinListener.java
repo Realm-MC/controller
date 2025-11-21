@@ -4,6 +4,7 @@ import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.proxy.Proxy;
 import com.realmmc.controller.shared.annotations.Listeners;
+import com.realmmc.controller.shared.auth.AuthenticationGuard;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.preferences.PreferencesService;
@@ -20,6 +21,7 @@ import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 
+import java.net.InetSocketAddress;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -74,7 +76,8 @@ public class PlayerJoinListener {
             int protocol = player.getProtocolVersion().getProtocol();
             boolean isPremium = Proxy.getInstance().getPremiumLoginStatus().getOrDefault(username.toLowerCase(), false);
 
-            service.startSession(uuid, username, proxyId, null, protocol, -1, ip, null, null, isPremium);
+            // CORREÇÃO AQUI: Adicionado 'null' como último argumento (medalha)
+            service.startSession(uuid, username, proxyId, null, protocol, -1, ip, null, null, isPremium, null);
         });
 
         logger.info("[PlayerJoin] Session created (CONNECTING) for " + username);
@@ -100,6 +103,7 @@ public class PlayerJoinListener {
                 service.setSessionField(uuid, "clientVersion", clientVersion);
                 service.setSessionField(uuid, "role", profile.getPrimaryRoleName());
                 service.setSessionField(uuid, "cash", String.valueOf(profile.getCash()));
+                service.setSessionField(uuid, "medal", profile.getEquippedMedal());
             });
 
             preferencesService.loadAndCachePreferences(uuid);
