@@ -63,7 +63,6 @@ public class Messages {
                 return Language.PORTUGUESE;
             }
         }
-
         return Language.ENGLISH;
     }
 
@@ -98,7 +97,6 @@ public class Messages {
                 PreferencesService prefsService = prefsOpt.get();
 
                 Optional<Language> cachedLang = prefsService.getCachedLanguage(playerUuid);
-
                 if (cachedLang.isPresent()) {
                     return cachedLang.get().getLocale();
                 }
@@ -192,7 +190,7 @@ public class Messages {
     }
 
     public static void sendTitle(Object recipient, Message title, Message subtitle) {
-        SDK.sendTitle(recipient, title, subtitle, null); // Padrão do Minecraft
+        SDK.sendTitle(recipient, title, subtitle, null);
     }
 
     public static void sendTitle(Object recipient, MessageKey titleKey, MessageKey subtitleKey) {

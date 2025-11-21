@@ -30,7 +30,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-@Cmd(cmd = "preferencia", aliases = {"pref", "config", "settings"}, onlyPlayer = false)
+@Cmd(cmd = "preference", aliases = {"preferences", "preferencia", "preferencias", "toggle"}, onlyPlayer = false)
 public class PreferenceCommand implements CommandInterface {
 
     private final Logger logger;
