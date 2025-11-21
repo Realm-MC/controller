@@ -135,7 +135,7 @@ public class ProfileService {
 
             repository.upsert(profile);
             publish("upsert", profile);
-            updateSessionData(profile.getUuid(), profile.getCash(), profile.getPrimaryRoleName());
+            updateSessionData(profile.getUuid(), profile.getCash(), profile.getPrimaryRoleName(), profile.getEquippedMedal());
 
             LOGGER.log(Level.INFO, "[ProfileService] Profile {0} (UUID: {1}) saved/updated successfully. ID: {2}",
                     new Object[]{profile.getName(), profile.getUuid(), profile.getId()});
@@ -149,13 +149,12 @@ public class ProfileService {
         }
     }
 
-    private void updateSessionData(UUID uuid, int cash, String primaryRole) {
+    private void updateSessionData(UUID uuid, int cash, String primaryRole, String medal) {
         getSessionTracker().ifPresent(session -> {
             try {
                 session.setSessionField(uuid, "cash", String.valueOf(cash));
-                if (primaryRole != null) {
-                    session.setSessionField(uuid, "role", primaryRole);
-                }
+                if (primaryRole != null) session.setSessionField(uuid, "role", primaryRole);
+                if (medal != null) session.setSessionField(uuid, "medal", medal);
             } catch (Exception e) {
                 LOGGER.warning("[ProfileService] Failed to update session data in Redis for " + uuid);
             }
@@ -243,6 +242,11 @@ public class ProfileService {
                 needsSave.set(true);
             }
 
+            if (profileToReturn.getEquippedMedal() == null) {
+                profileToReturn.setEquippedMedal("none");
+                needsSave.set(true);
+            }
+
             profileToReturn.setLastLogin(System.currentTimeMillis());
             profileToReturn.setLastClientVersion(clientVersion);
             profileToReturn.setLastClientType(clientType);
@@ -284,6 +288,7 @@ public class ProfileService {
                     .roles(new ArrayList<>(List.of(PlayerRole.builder().roleName("default").status(PlayerRole.Status.ACTIVE).build())))
                     .primaryRoleName("default")
                     .premiumAccount(isPremium)
+                    .equippedMedal("none")
                     .createdAt(now)
                     .build();
 
@@ -431,7 +436,7 @@ public class ProfileService {
             p.setUpdatedAt(System.currentTimeMillis());
 
             publish("upsert", p);
-            updateSessionData(uuid, p.getCash(), p.getPrimaryRoleName());
+            updateSessionData(uuid, p.getCash(), p.getPrimaryRoleName(), p.getEquippedMedal());
         }
     }
 
@@ -483,6 +488,7 @@ public class ProfileService {
                 node.put("username", profile.getUsername());
                 node.put("cash", profile.getCash());
                 node.put("premium", profile.isPremiumAccount());
+                node.put("equippedMedal", profile.getEquippedMedal());
                 if (profile.getCashTopPosition() != null) node.put("cashTopPosition", profile.getCashTopPosition()); else node.putNull("cashTopPosition");
                 if (profile.getCashTopPositionEnteredAt() != null) node.put("cashTopPositionEnteredAt", profile.getCashTopPositionEnteredAt()); else node.putNull("cashTopPositionEnteredAt");
                 node.put("firstIp", profile.getFirstIp());

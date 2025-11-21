@@ -49,22 +49,24 @@ public class PreferencesSyncSubscriber implements RedisMessageListener {
             String uuidStr = node.path("uuid").asText(null);
             String langStr = node.path("language").asText(null);
             JsonNode staffChatNode = node.path("staffChatEnabled");
+            String medalVisStr = node.path("medalVisibility").asText(null);
 
             if (uuidStr != null) {
                 UUID uuid = UUID.fromString(uuidStr);
                 Language language = (langStr != null) ? Language.valueOf(langStr) : Language.getDefault();
                 boolean staffChatEnabled = staffChatNode.isBoolean() ? staffChatNode.asBoolean() : true;
+                MedalVisibility medalVisibility = (medalVisStr != null) ? MedalVisibility.valueOf(medalVisStr) : MedalVisibility.ALL;
 
-                preferencesService.updateCachedPreferences(uuid, language, staffChatEnabled);
+                preferencesService.updateCachedPreferences(uuid, language, staffChatEnabled, medalVisibility);
 
-                LOGGER.log(Level.FINE, "Received PREFERENCES_SYNC for {0}, updated local cache (Lang: {1}, SC: {2})", new Object[]{uuid, language, staffChatEnabled});
+                LOGGER.log(Level.FINE, "Received PREFERENCES_SYNC for {0}", uuid);
 
             } else {
                 LOGGER.warning("Received invalid PREFERENCES_SYNC message: " + message);
             }
 
         } catch (IllegalArgumentException e) {
-            LOGGER.warning("Invalid UUID or Language Enum received on PREFERENCES_SYNC: " + message);
+            LOGGER.warning("Invalid UUID or Enum received on PREFERENCES_SYNC: " + message);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error processing PREFERENCES_SYNC message", e);
         }

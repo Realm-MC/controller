@@ -40,6 +40,8 @@ public class Profile {
     private Long cashTopPositionEnteredAt;
     @Builder.Default
     private boolean premiumAccount = false;
+    @Builder.Default
+    private String equippedMedal = "none";
     private long createdAt;
     private long updatedAt;
 }

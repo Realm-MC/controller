@@ -23,4 +23,7 @@ public class Preferences {
 
     @Builder.Default
     private boolean staffChatEnabled = true;
+
+    @Builder.Default
+    private MedalVisibility medalVisibility = MedalVisibility.ALL;
 }
