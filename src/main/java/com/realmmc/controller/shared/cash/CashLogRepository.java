@@ -13,7 +13,7 @@ import java.util.UUID;
 public class CashLogRepository extends AbstractMongoRepository<CashLog> {
 
     public CashLogRepository() {
-        super(CashLog.class, "cash_logs");
+        super(CashLog.class, "cashlogs");
         ensureIndexes();
     }
 
