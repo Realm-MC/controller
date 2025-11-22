@@ -14,7 +14,6 @@ import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.messaging.RawMessage;
 import com.realmmc.controller.shared.preferences.PreferencesService;
-import com.realmmc.controller.shared.preferences.MedalVisibility;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileResolver;
 import com.realmmc.controller.shared.profile.ProfileService;
@@ -495,9 +494,6 @@ public class RoleCommand implements CommandInterface {
                                         logger.info("[RoleCommand] Preferência StaffChat ativada automaticamente para " + targetUuid);
                                     }
                                 });
-
-                                preferencesService.setMedalVisibility(targetUuid, MedalVisibility.NONE);
-                                logger.info("[RoleCommand] Preferência de Medalha definida para NONE para novo Staff " + targetUuid);
                             }
 
                             boolean isTargetOnline = proxyServer.getPlayer(targetUuid).isPresent();

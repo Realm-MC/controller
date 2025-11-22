@@ -28,7 +28,6 @@ public class PreferencesService {
 
     private final Map<UUID, Language> languageCache = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> staffChatCache = new ConcurrentHashMap<>();
-    private final Map<UUID, MedalVisibility> medalVisibilityCache = new ConcurrentHashMap<>();
 
     public Optional<Preferences> getPreferences(UUID uuid) {
         return repository.findByUuid(uuid);
@@ -57,11 +56,10 @@ public class PreferencesService {
                     .name(profile.getName())
                     .serverLanguage(langToSet)
                     .staffChatEnabled(true)
-                    .medalVisibility(MedalVisibility.ALL)
                     .build();
 
             repository.upsert(newPrefs);
-            updateCachedPreferences(profile.getUuid(), langToSet, true, MedalVisibility.ALL);
+            updateCachedPreferences(profile.getUuid(), langToSet, true);
             return newPrefs;
         });
     }
@@ -97,17 +95,6 @@ public class PreferencesService {
         return newState;
     }
 
-    public void setMedalVisibility(UUID uuid, MedalVisibility visibility) {
-        Optional<Preferences> prefsOpt = getOrLoadPreferences(uuid);
-        if (prefsOpt.isPresent()) {
-            Preferences prefs = prefsOpt.get();
-            if (prefs.getMedalVisibility() != visibility) {
-                prefs.setMedalVisibility(visibility);
-                save(prefs);
-            }
-        }
-    }
-
     public void updateIdentification(Profile profile) {
         if (profile == null) return;
         Preferences prefs = ensurePreferences(profile);
@@ -133,7 +120,7 @@ public class PreferencesService {
 
     public void save(Preferences preferences) {
         repository.upsert(preferences);
-        updateCachedPreferences(preferences.getUuid(), preferences.getServerLanguage(), preferences.isStaffChatEnabled(), preferences.getMedalVisibility());
+        updateCachedPreferences(preferences.getUuid(), preferences.getServerLanguage(), preferences.isStaffChatEnabled());
         publishUpdate(preferences);
     }
 
@@ -143,7 +130,6 @@ public class PreferencesService {
             node.put("uuid", preferences.getUuid().toString());
             node.put("language", preferences.getServerLanguage().name());
             node.put("staffChatEnabled", preferences.isStaffChatEnabled());
-            node.put("medalVisibility", preferences.getMedalVisibility().name());
 
             String json = node.toString();
             RedisPublisher.publish(RedisChannel.PREFERENCES_SYNC, json);
@@ -160,26 +146,18 @@ public class PreferencesService {
         return Optional.ofNullable(staffChatCache.get(uuid));
     }
 
-    public Optional<MedalVisibility> getCachedMedalVisibility(UUID uuid) {
-        return Optional.ofNullable(medalVisibilityCache.get(uuid));
-    }
-
-    public void updateCachedPreferences(UUID uuid, Language language, boolean staffChatEnabled, MedalVisibility medalVisibility) {
+    public void updateCachedPreferences(UUID uuid, Language language, boolean staffChatEnabled) {
         if (uuid == null) return;
 
         if (language != null) languageCache.put(uuid, language);
         else languageCache.remove(uuid);
 
         staffChatCache.put(uuid, staffChatEnabled);
-
-        if (medalVisibility != null) medalVisibilityCache.put(uuid, medalVisibility);
-        else medalVisibilityCache.remove(uuid);
     }
 
     public void removeCachedPreferences(UUID uuid) {
         languageCache.remove(uuid);
         staffChatCache.remove(uuid);
-        medalVisibilityCache.remove(uuid);
     }
 
     public void loadAndCachePreferences(UUID uuid) {
@@ -187,9 +165,8 @@ public class PreferencesService {
 
         Language lang = prefsOpt.map(Preferences::getServerLanguage).orElse(Language.getDefault());
         boolean staffChat = prefsOpt.map(Preferences::isStaffChatEnabled).orElse(true);
-        MedalVisibility medalVis = prefsOpt.map(Preferences::getMedalVisibility).orElse(MedalVisibility.ALL);
 
-        updateCachedPreferences(uuid, lang, staffChat, medalVis);
+        updateCachedPreferences(uuid, lang, staffChat);
     }
 
     public void checkAndSendStaffChatWarning(Object playerObject, UUID uuid) {

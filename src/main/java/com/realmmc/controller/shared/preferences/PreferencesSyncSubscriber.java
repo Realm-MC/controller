@@ -49,15 +49,13 @@ public class PreferencesSyncSubscriber implements RedisMessageListener {
             String uuidStr = node.path("uuid").asText(null);
             String langStr = node.path("language").asText(null);
             JsonNode staffChatNode = node.path("staffChatEnabled");
-            String medalVisStr = node.path("medalVisibility").asText(null);
 
             if (uuidStr != null) {
                 UUID uuid = UUID.fromString(uuidStr);
                 Language language = (langStr != null) ? Language.valueOf(langStr) : Language.getDefault();
                 boolean staffChatEnabled = staffChatNode.isBoolean() ? staffChatNode.asBoolean() : true;
-                MedalVisibility medalVisibility = (medalVisStr != null) ? MedalVisibility.valueOf(medalVisStr) : MedalVisibility.ALL;
 
-                preferencesService.updateCachedPreferences(uuid, language, staffChatEnabled, medalVisibility);
+                preferencesService.updateCachedPreferences(uuid, language, staffChatEnabled);
 
                 LOGGER.log(Level.FINE, "Received PREFERENCES_SYNC for {0}", uuid);
 

@@ -30,7 +30,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-@Cmd(cmd = "preferencia", aliases = {"pref", "config", "settings"}, onlyPlayer = false)
+@Cmd(cmd = "preference", aliases = {"preferences", "preferencia", "preferencias", "toggle"}, onlyPlayer = false)
 public class PreferenceCommand implements CommandInterface {
 
     private final Logger logger;
@@ -103,6 +103,7 @@ public class PreferenceCommand implements CommandInterface {
             }
 
             Profile profile = targetProfileOpt.get();
+
             return roleService.loadPlayerDataAsync(profile.getUuid())
                     .thenApply(sessionData -> new AbstractMap.SimpleImmutableEntry<>(profile, sessionData));
 
@@ -111,6 +112,7 @@ public class PreferenceCommand implements CommandInterface {
 
             Profile profile = entry.getKey();
             PlayerSessionData sessionData = entry.getValue();
+
             if (sessionData == null) sessionData = roleService.getDefaultSessionData(profile.getUuid());
 
             Preferences prefs = preferencesService.ensurePreferences(profile);
@@ -165,10 +167,8 @@ public class PreferenceCommand implements CommandInterface {
             Profile profile = targetProfileOpt.get();
             return roleService.loadPlayerDataAsync(profile.getUuid())
                     .thenApply(sessionData -> new AbstractMap.SimpleImmutableEntry<>(profile, sessionData));
-
         }).thenAccept(entry -> {
             if (entry == null) return;
-
             Profile profile = entry.getKey();
             PlayerSessionData sessionData = entry.getValue();
             if (sessionData == null) sessionData = roleService.getDefaultSessionData(profile.getUuid());
@@ -192,6 +192,10 @@ public class PreferenceCommand implements CommandInterface {
             }
 
             if (changed) {
+                preferencesService.save(prefs);
+
+                preferencesService.updateCachedPreferences(profile.getUuid(), prefs.getServerLanguage(), prefs.isStaffChatEnabled());
+
                 String formattedName = NicknameFormatter.getNickname(profile.getUuid(), true, profile.getName());
                 Locale senderLocale = Messages.determineLocale(sender);
                 String valTranslated = Messages.translate(newValMsg, senderLocale);
@@ -233,7 +237,8 @@ public class PreferenceCommand implements CommandInterface {
                 if (key.equals("linguagem") || key.equals("language")) {
                     Language newLang = preferencesService.toggleLanguage(uuid);
                     valKey = (newLang == Language.PORTUGUESE) ? KEY_LANG_PT : KEY_LANG_EN;
-                    preferencesService.updateCachedPreferences(uuid, newLang, preferencesService.getCachedStaffChatEnabled(uuid).orElse(true), prefs.getMedalVisibility());
+
+                    preferencesService.updateCachedPreferences(uuid, newLang, preferencesService.getCachedStaffChatEnabled(uuid).orElse(true));
                     changed = true;
 
                 } else if (key.equals("staffchat") || key.equals("chatstaff")) {
@@ -245,7 +250,8 @@ public class PreferenceCommand implements CommandInterface {
                     boolean newState = preferencesService.toggleStaffChat(uuid);
                     valKey = newState ? KEY_ENABLED : KEY_DISABLED;
 
-                    preferencesService.updateCachedPreferences(uuid, prefs.getServerLanguage(), newState, prefs.getMedalVisibility());
+                    prefs.setStaffChatEnabled(newState);
+                    preferencesService.updateCachedPreferences(uuid, prefs.getServerLanguage(), newState);
                     changed = true;
                 } else {
                     Messages.send(sender, Message.of(MessageKey.PREF_UNKNOWN).with("pref", key));
@@ -298,6 +304,7 @@ public class PreferenceCommand implements CommandInterface {
         if (args.length == 1) {
             String current = args[0].toLowerCase();
             suggestions.add("linguagem");
+
             if (sender.hasPermission(permHelper)) {
                 suggestions.add("staffchat");
             }

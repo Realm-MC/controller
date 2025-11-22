@@ -17,13 +17,8 @@ public class Preferences {
     private Integer id;
     private UUID uuid;
     private String name;
-
     @Builder.Default
     private Language serverLanguage = Language.getDefault();
-
     @Builder.Default
     private boolean staffChatEnabled = true;
-
-    @Builder.Default
-    private MedalVisibility medalVisibility = MedalVisibility.ALL;
 }
