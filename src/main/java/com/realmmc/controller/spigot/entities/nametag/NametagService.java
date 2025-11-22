@@ -23,7 +23,6 @@ import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class NametagService implements Listener {
@@ -43,13 +42,15 @@ public class NametagService implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
-        updateTag(event.getPlayer());
-
-        for (Player online : Bukkit.getOnlinePlayers()) {
-            if (!online.getUniqueId().equals(event.getPlayer().getUniqueId())) {
-                sendTeamPacket(event.getPlayer(), online);
+        Bukkit.getScheduler().runTaskLater(Main.getInstance(), () -> {
+            updateTag(event.getPlayer());
+            for (Player online : Bukkit.getOnlinePlayers()) {
+                if (!online.getUniqueId().equals(event.getPlayer().getUniqueId())) {
+                    sendTeamPacket(online, event.getPlayer());
+                    sendTeamPacket(event.getPlayer(), online);
+                }
             }
-        }
+        }, 5L);
     }
 
     @EventHandler
@@ -73,12 +74,13 @@ public class NametagService implements Listener {
 
     private void applyTag(Player player, PlayerSessionData session, Profile profile) {
         Role role = session.getPrimaryRole();
-        String teamName = getTeamName(role);
-        String medalId = profile.getEquippedMedal();
 
+        String teamName = getUniqueTeamName(role, player.getUniqueId());
         playerTeams.put(player.getUniqueId(), teamName);
 
+        String medalId = profile.getEquippedMedal();
         String medalPrefix = "";
+
         if (medalId != null && !medalId.equalsIgnoreCase("none")) {
             Optional<Medal> medalOpt = Medal.fromId(medalId);
             if (medalOpt.isPresent()) {
@@ -91,11 +93,10 @@ public class NametagService implements Listener {
 
         String fullPrefixStr = medalPrefix + rolePrefix;
 
-        Component prefixComponent = miniMessage.deserialize(fullPrefixStr);
         Component displayName = miniMessage.deserialize(fullPrefixStr + colorStr + player.getName());
-
         player.playerListName(displayName);
 
+        Component prefixComponent = miniMessage.deserialize(fullPrefixStr);
         for (Player viewer : Bukkit.getOnlinePlayers()) {
             sendTeamPacket(viewer, player, teamName, prefixComponent, role.getColor());
         }
@@ -140,59 +141,54 @@ public class NametagService implements Listener {
                 WrapperPlayServerTeams.OptionData.NONE
         );
 
-        WrapperPlayServerTeams createPacket = new WrapperPlayServerTeams(
-                teamName,
-                WrapperPlayServerTeams.TeamMode.CREATE,
-                Optional.of(info),
-                Collections.singletonList(target.getName())
-        );
-
-        WrapperPlayServerTeams addPacket = new WrapperPlayServerTeams(
-                teamName,
-                WrapperPlayServerTeams.TeamMode.ADD_ENTITIES,
-                Optional.empty(),
-                Collections.singletonList(target.getName())
-        );
+        try {
+            WrapperPlayServerTeams createPacket = new WrapperPlayServerTeams(
+                    teamName,
+                    WrapperPlayServerTeams.TeamMode.CREATE,
+                    Optional.of(info),
+                    Collections.singletonList(target.getName())
+            );
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, createPacket);
+        } catch (Exception e) {}
 
         try {
-            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, createPacket);
-            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, addPacket);
-        } catch (Exception e) {
-            logger.log(Level.WARNING, "Failed to send nametag packet to " + viewer.getName(), e);
-        }
+            WrapperPlayServerTeams updatePacket = new WrapperPlayServerTeams(
+                    teamName,
+                    WrapperPlayServerTeams.TeamMode.UPDATE,
+                    Optional.of(info),
+                    Collections.emptyList()
+            );
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, updatePacket);
+        } catch (Exception e) {}
+
+        try {
+            WrapperPlayServerTeams addEntityPacket = new WrapperPlayServerTeams(
+                    teamName,
+                    WrapperPlayServerTeams.TeamMode.ADD_ENTITIES,
+                    Optional.empty(),
+                    Collections.singletonList(target.getName())
+            );
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, addEntityPacket);
+        } catch (Exception e) {}
     }
 
-    private String getTeamName(Role role) {
+    private String getUniqueTeamName(Role role, UUID uuid) {
         int priority = 9999 - role.getWeight();
-        return String.format("%04d_%s", priority, role.getName());
+        return String.format("%04d_%s", priority, uuid.toString().substring(0, 8));
     }
 
     private NamedTextColor getNamedTextColor(String miniMessageColor) {
-        if (miniMessageColor == null || miniMessageColor.isEmpty()) {
-            return NamedTextColor.WHITE;
-        }
-
+        if (miniMessageColor == null || miniMessageColor.isEmpty()) return NamedTextColor.WHITE;
         String cleanColor = miniMessageColor.replace("<", "").replace(">", "");
-
         NamedTextColor byName = NamedTextColor.NAMES.value(cleanColor.toLowerCase());
-        if (byName != null) {
-            return byName;
-        }
+        if (byName != null) return byName;
 
         if (cleanColor.startsWith("#") && cleanColor.length() == 7) {
             try {
                 int hex = Integer.parseInt(cleanColor.substring(1), 16);
                 return NamedTextColor.nearestTo(TextColor.color(hex));
-            } catch (NumberFormatException ignored) {
-            }
+            } catch (NumberFormatException ignored) {}
         }
-
         return NamedTextColor.WHITE;
-    }
-
-    public void updateAll() {
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            updateTag(p);
-        }
     }
 }

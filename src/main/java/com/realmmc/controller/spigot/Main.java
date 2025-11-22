@@ -10,6 +10,7 @@ import com.realmmc.controller.modules.spigot.SpigotModule;
 import com.realmmc.controller.shared.geoip.GeoIPService;
 import com.realmmc.controller.shared.messaging.MessagingSDK;
 
+import com.realmmc.controller.spigot.entities.cosmetics.MedalService;
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
 import com.realmmc.controller.spigot.entities.holograms.HologramService;
 import com.realmmc.controller.spigot.entities.nametag.NametagService;
@@ -47,6 +48,8 @@ public class Main extends JavaPlugin {
     private NPCService npcService;
     @Getter
     private NametagService nametagService;
+    @Getter
+    private MedalService medalService;
 
     private ModuleManager moduleManager;
     private ServiceRegistry serviceRegistry;
@@ -117,24 +120,26 @@ public class Main extends JavaPlugin {
             logger.info("Serviços de Entidades Base (Display, Hologram, NPC) inicializados.");
 
             moduleManager = new ModuleManager(logger);
-
             moduleManager.autoRegisterModules(AutoRegister.Platform.SPIGOT, getClass());
-
             moduleManager.registerModule(new SchedulerModule(null, this, logger));
             moduleManager.registerModule(new SpigotModule(this, logger));
-
             moduleManager.enableAllModules();
+
+            medalService = new MedalService();
+            getServer().getPluginManager().registerEvents(medalService, this);
+            logger.info("MedalService inicializado e eventos registrados.");
 
             nametagService = new NametagService();
             serviceRegistry.registerService(NametagService.class, nametagService);
             getServer().getPluginManager().registerEvents(nametagService, this);
 
-            logger.info("Serviços dependentes (Nametag) inicializados após módulos.");
+            logger.info("Serviços dependentes (Nametag, Medalhas) inicializados após módulos.");
 
             for (Player p : Bukkit.getOnlinePlayers()) {
                 try {
                     npcService.resendAllTo(p);
                     nametagService.updateTag(p);
+                    medalService.updateMedal(p);
                 } catch (Exception e) {
                     logger.log(Level.WARNING, "Erro ao atualizar entidades para " + p.getName() + " no onEnable.", e);
                 }
@@ -166,6 +171,9 @@ public class Main extends JavaPlugin {
             if (npcService != null) {
                 try { npcService.cleanup(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao limpar NPCs.", e); }
             }
+            if (medalService != null) {
+                try { medalService.removeAll(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao limpar Medalhas.", e); }
+            }
 
         } finally {
             if (geoIPService != null) {
@@ -181,7 +189,6 @@ public class Main extends JavaPlugin {
                 try { currentRegistry.unregisterService(DisplayItemService.class); } catch (Exception e) {}
                 try { currentRegistry.unregisterService(GeoIPService.class); } catch (Exception e) {}
                 try { currentRegistry.unregisterService(Plugin.class); } catch (Exception e) {}
-                logger.info("Serviços desregistrados do ServiceRegistry.");
             }
 
             serviceRegistry = null;
@@ -191,6 +198,7 @@ public class Main extends JavaPlugin {
             npcService = null;
             nametagService = null;
             geoIPService = null;
+            medalService = null;
 
             instance = null;
 
@@ -203,9 +211,8 @@ public class Main extends JavaPlugin {
         if (!file.exists()) {
             try {
                 saveResource(resourceName, false);
-                logger.info("Arquivo padrão '" + resourceName + "' copiado para a pasta de dados.");
             } catch (IllegalArgumentException e) {
-                logger.warning("Recurso '" + resourceName + "' não encontrado no JAR para salvar como padrão.");
+                logger.warning("Recurso '" + resourceName + "' não encontrado no JAR.");
             }
         }
     }
@@ -217,17 +224,8 @@ public class Main extends JavaPlugin {
                 Files.createDirectories(parentDir);
             }
             try (InputStream stream = getClass().getResourceAsStream("/" + resourcePath)) {
-                if (stream == null) {
-                    logger.warning("Recurso não encontrado no JAR: /" + resourcePath);
-                    return;
-                }
+                if (stream == null) return;
                 Files.copy(stream, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                logger.finer("Recurso padrão copiado: /" + resourcePath + " -> " + targetPath);
-            } catch (IOException e) {
-                logger.log(Level.SEVERE, "Falha ao copiar recurso padrão: /" + resourcePath, e);
-                throw e;
-            } catch (NullPointerException e) {
-                logger.warning("NPE ao tentar obter recurso: /" + resourcePath + ". Verifique o caminho.");
             }
         }
     }

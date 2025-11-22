@@ -3,12 +3,14 @@ package com.realmmc.controller.spigot.entities.cosmetics;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.server.data.ServerType;
 import com.realmmc.controller.shared.cosmetics.medals.Medal;
-import com.realmmc.controller.shared.preferences.MedalVisibility;
-import com.realmmc.controller.shared.preferences.PreferencesService;
 import com.realmmc.controller.shared.profile.ProfileService;
 import com.realmmc.controller.spigot.Main;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
+import org.bukkit.GameMode;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -30,21 +32,19 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MedalService implements Listener {
 
     private final ProfileService profileService;
-    private final PreferencesService preferencesService;
     private final Map<UUID, TextDisplay> activeMedals = new ConcurrentHashMap<>();
     private final MiniMessage mm = MiniMessage.miniMessage();
     private final ServerType currentServerType;
 
     public MedalService() {
         this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
-        this.preferencesService = ServiceRegistry.getInstance().requireService(PreferencesService.class);
 
         String typeStr = System.getProperty("map.type");
         if (typeStr != null) {
             try {
                 this.currentServerType = ServerType.valueOf(typeStr.toUpperCase());
             } catch (IllegalArgumentException e) {
-                Main.getInstance().getLogger().warning("Tipo de servidor inválido: " + typeStr);
+                Main.getInstance().getLogger().warning("Tipo de servidor inválido definido em -Dmap.type: " + typeStr);
                 throw e;
             }
         } else {
@@ -57,21 +57,28 @@ public class MedalService implements Listener {
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     if (activeMedals.containsKey(p.getUniqueId())) {
                         TextDisplay display = activeMedals.get(p.getUniqueId());
+
                         if (display == null || !display.isValid()) {
-                            removeMedal(p);
+                            activeMedals.remove(p.getUniqueId());
                             updateMedal(p);
                             continue;
                         }
-                        if (p.isDead() || !p.isValid()) {
-                            display.setVisibleByDefault(false);
-                        } else {
-                            display.setVisibleByDefault(true);
-                            display.teleport(p.getLocation().add(0, 2.35, 0));
+
+                        boolean shouldHide = p.isSneaking() || p.getGameMode() == GameMode.SPECTATOR || p.isDead() || !p.isValid();
+                        byte targetOpacity = shouldHide ? (byte) 0 : (byte) -1;
+
+                        if (display.getTextOpacity() != targetOpacity) {
+                            display.setTextOpacity(targetOpacity);
+                            display.setDefaultBackground(!shouldHide);
+                        }
+
+                        if (!p.getPassengers().contains(display)) {
+                            p.addPassenger(display);
                         }
                     }
                 }
             }
-        }.runTaskTimer(Main.getInstance(), 20L, 20L);
+        }.runTaskTimer(Main.getInstance(), 2L, 2L);
     }
 
     @EventHandler
@@ -97,12 +104,6 @@ public class MedalService implements Listener {
     public void updateMedal(Player player) {
         if (!player.isOnline()) return;
 
-        MedalVisibility vis = preferencesService.getCachedMedalVisibility(player.getUniqueId()).orElse(MedalVisibility.ALL);
-        if (vis == MedalVisibility.PREFIX_ONLY || vis == MedalVisibility.NONE) {
-            removeMedal(player);
-            return;
-        }
-
         profileService.getByUuid(player.getUniqueId()).ifPresent(profile -> {
             String medalId = profile.getEquippedMedal();
             Optional<Medal> medalOpt = Medal.fromId(medalId);
@@ -113,35 +114,29 @@ public class MedalService implements Listener {
             }
 
             Medal medal = medalOpt.get();
-
-            if (!medal.isVisibleOn(currentServerType)) {
+            if (!medal.getAllowedTypes().isEmpty() && !medal.getAllowedTypes().contains(currentServerType)) {
                 removeMedal(player);
                 return;
             }
 
-            renderMedal(player, medal);
+            Bukkit.getScheduler().runTask(Main.getInstance(), () -> renderMedal(player, medal));
         });
     }
 
     private void renderMedal(Player player, Medal medal) {
         removeMedal(player);
-
-        TextDisplay display = player.getWorld().spawn(player.getLocation().add(0, 2.35, 0), TextDisplay.class);
+        TextDisplay display = player.getWorld().spawn(player.getLocation(), TextDisplay.class);
         display.text(mm.deserialize(medal.getDisplayName()));
         display.setBillboard(Display.Billboard.CENTER);
         display.setSeeThrough(false);
-        display.setDefaultBackground(false);
-        display.setShadowed(true);
-
+        display.setShadowed(false);
+        display.setDefaultBackground(true);
         Transformation trans = display.getTransformation();
         trans.getScale().set(1.0f);
         trans.getTranslation().set(0.0f, 0.5f, 0.0f);
         display.setTransformation(trans);
-
         display.setPersistent(false);
-
         player.addPassenger(display);
-
         activeMedals.put(player.getUniqueId(), display);
     }
 
