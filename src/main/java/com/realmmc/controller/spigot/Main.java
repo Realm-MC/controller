@@ -9,6 +9,8 @@ import com.realmmc.controller.modules.spigot.SpigotModule;
 
 import com.realmmc.controller.shared.geoip.GeoIPService;
 import com.realmmc.controller.shared.messaging.MessagingSDK;
+import com.realmmc.controller.shared.storage.redis.RedisChannel;
+import com.realmmc.controller.shared.storage.redis.RedisSubscriber;
 
 import com.realmmc.controller.spigot.entities.cosmetics.MedalService;
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
@@ -107,6 +109,9 @@ public class Main extends JavaPlugin {
                 logger.warning("Tentativa de reinicializar MessagingSDK ignorada.");
             }
 
+            // --- 1. ENTIDADES INDEPENDENTES ---
+            // Estas não dependem do ProfileService, então podem carregar antes dos módulos.
+
             displayItemService = new DisplayItemService();
             serviceRegistry.registerService(DisplayItemService.class, displayItemService);
 
@@ -119,22 +124,39 @@ public class Main extends JavaPlugin {
 
             logger.info("Serviços de Entidades Base (Display, Hologram, NPC) inicializados.");
 
+            // --- 2. CARREGAMENTO DE MÓDULOS ---
+            // Isto inicializa Database, ProfileService, RoleService, etc.
+
             moduleManager = new ModuleManager(logger);
             moduleManager.autoRegisterModules(AutoRegister.Platform.SPIGOT, getClass());
             moduleManager.registerModule(new SchedulerModule(null, this, logger));
             moduleManager.registerModule(new SpigotModule(this, logger));
+
             moduleManager.enableAllModules();
 
+            // --- 3. SERVIÇOS DEPENDENTES & REDIS ---
+            // Estes precisam do ProfileService (carregado acima) e do RedisSubscriber.
+
+            RedisSubscriber redisSubscriber = serviceRegistry.requireService(RedisSubscriber.class);
+
+            // MedalService
             medalService = new MedalService();
             getServer().getPluginManager().registerEvents(medalService, this);
-            logger.info("MedalService inicializado e eventos registrados.");
+            // Regista no Redis para receber updates de "Equipar Medalha" instantaneamente
+            redisSubscriber.registerListener(RedisChannel.PROFILES_SYNC, medalService);
+            logger.info("MedalService inicializado, eventos Bukkit e Redis registrados.");
 
+            // NametagService
             nametagService = new NametagService();
             serviceRegistry.registerService(NametagService.class, nametagService);
             getServer().getPluginManager().registerEvents(nametagService, this);
+            // Regista no Redis para receber updates de Prefixo instantaneamente
+            redisSubscriber.registerListener(RedisChannel.PROFILES_SYNC, nametagService);
+            logger.info("NametagService inicializado, eventos Bukkit e Redis registrados.");
 
             logger.info("Serviços dependentes (Nametag, Medalhas) inicializados após módulos.");
 
+            // Atualização inicial para jogadores que já estão online (caso de /reload)
             for (Player p : Bukkit.getOnlinePlayers()) {
                 try {
                     npcService.resendAllTo(p);
@@ -158,10 +180,12 @@ public class Main extends JavaPlugin {
         try {
             logger.info("Finalizando Controller Core (Spigot - v2)...");
 
+            // Desabilita módulos (Database, Profile, etc)
             if (moduleManager != null) {
                 moduleManager.disableAllModules();
             }
 
+            // Limpa entidades visuais
             if (displayItemService != null) {
                 try { displayItemService.cleanup(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao limpar DisplayItems.", e); }
             }
@@ -176,11 +200,13 @@ public class Main extends JavaPlugin {
             }
 
         } finally {
+            // Fecha conexões auxiliares
             if (geoIPService != null) {
                 try { geoIPService.close(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao fechar GeoIPService.", e); }
             }
             MessagingSDK.getInstance().shutdown();
 
+            // Remove serviços do registry
             ServiceRegistry currentRegistry = ServiceRegistry.getInstance();
             if (currentRegistry != null) {
                 try { currentRegistry.unregisterService(NametagService.class); } catch (Exception e) {}
@@ -191,6 +217,7 @@ public class Main extends JavaPlugin {
                 try { currentRegistry.unregisterService(Plugin.class); } catch (Exception e) {}
             }
 
+            // Limpa referências estáticas
             serviceRegistry = null;
             moduleManager = null;
             displayItemService = null;

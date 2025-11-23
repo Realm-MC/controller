@@ -1,5 +1,7 @@
 package com.realmmc.controller.spigot.entities.nametag;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams;
 import com.realmmc.controller.core.services.ServiceRegistry;
@@ -9,6 +11,8 @@ import com.realmmc.controller.shared.cosmetics.medals.Medal;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileService;
 import com.realmmc.controller.shared.role.Role;
+import com.realmmc.controller.shared.storage.redis.RedisChannel;
+import com.realmmc.controller.shared.storage.redis.RedisMessageListener;
 import com.realmmc.controller.spigot.Main;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -23,21 +27,45 @@ import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class NametagService implements Listener {
+public class NametagService implements Listener, RedisMessageListener {
 
     private final Logger logger;
     private final RoleService roleService;
     private final ProfileService profileService;
     private final MiniMessage miniMessage;
     private final Map<UUID, String> playerTeams = new ConcurrentHashMap<>();
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public NametagService() {
         this.logger = Main.getInstance().getLogger();
         this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
         this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
         this.miniMessage = MiniMessage.miniMessage();
+    }
+
+    // --- REDIS LISTENER ---
+    @Override
+    public void onMessage(String channel, String message) {
+        if (!RedisChannel.PROFILES_SYNC.getName().equals(channel)) return;
+
+        try {
+            JsonNode node = mapper.readTree(message);
+            String uuidStr = node.path("uuid").asText(null);
+
+            if (uuidStr != null) {
+                UUID uuid = UUID.fromString(uuidStr);
+                Player player = Bukkit.getPlayer(uuid);
+                // Se o jogador estiver online, atualiza a tag
+                if (player != null && player.isOnline()) {
+                    Bukkit.getScheduler().runTask(Main.getInstance(), () -> updateTag(player));
+                }
+            }
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "[NametagService] Erro ao processar update Redis", e);
+        }
     }
 
     @EventHandler
@@ -74,7 +102,6 @@ public class NametagService implements Listener {
 
     private void applyTag(Player player, PlayerSessionData session, Profile profile) {
         Role role = session.getPrimaryRole();
-
         String teamName = getUniqueTeamName(role, player.getUniqueId());
         playerTeams.put(player.getUniqueId(), teamName);
 
@@ -149,7 +176,7 @@ public class NametagService implements Listener {
                     Collections.singletonList(target.getName())
             );
             PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, createPacket);
-        } catch (Exception e) {}
+        } catch (Exception ignored) {}
 
         try {
             WrapperPlayServerTeams updatePacket = new WrapperPlayServerTeams(
@@ -159,7 +186,7 @@ public class NametagService implements Listener {
                     Collections.emptyList()
             );
             PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, updatePacket);
-        } catch (Exception e) {}
+        } catch (Exception ignored) {}
 
         try {
             WrapperPlayServerTeams addEntityPacket = new WrapperPlayServerTeams(
@@ -169,7 +196,7 @@ public class NametagService implements Listener {
                     Collections.singletonList(target.getName())
             );
             PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, addEntityPacket);
-        } catch (Exception e) {}
+        } catch (Exception ignored) {}
     }
 
     private String getUniqueTeamName(Role role, UUID uuid) {

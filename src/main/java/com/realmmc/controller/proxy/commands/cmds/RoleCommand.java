@@ -817,29 +817,39 @@ public class RoleCommand implements CommandInterface {
         final String groupNameInput = args[1].toLowerCase();
         final CommandSource finalSender = sender;
         final Locale senderLocale = Messages.determineLocale(sender);
+
         Optional<Role> roleOpt = roleService.getRole(groupNameInput);
         if (roleOpt.isEmpty()) {
             Messages.send(finalSender, Message.of(MessageKey.ROLE_ERROR_GROUP_NOT_FOUND).with("group", groupNameInput));
             playSound(finalSender, SoundKeys.USAGE_ERROR);
             return;
         }
+
         final Role targetRole = roleOpt.get();
         final String targetRoleDisplayName = targetRole.getDisplayName();
+
         Messages.send(finalSender, Message.of(MessageKey.ROLE_LIST_IN_PROGRESS).with("group_display", targetRoleDisplayName));
         playSound(finalSender, SoundKeys.NOTIFICATION);
 
         CompletableFuture.supplyAsync(() -> profileService.findByActiveRoleName(targetRole.getName()), roleService.getAsyncExecutor())
                 .thenAcceptAsync(profilesWithRole -> {
-                    Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", "Jogadores Ativos no Grupo " + targetRoleDisplayName).with("count", profilesWithRole.size()));
+                    Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER)
+                            .with("key", "Jogadores Ativos no Grupo " + targetRoleDisplayName)
+                            .with("count", profilesWithRole.size()));
+
                     if (profilesWithRole.isEmpty()) {
                         Messages.send(finalSender, MessageKey.COMMON_INFO_LIST_EMPTY);
                     } else {
                         int index = 1;
                         profilesWithRole.sort(Comparator.comparing(Profile::getName, String.CASE_INSENSITIVE_ORDER));
-                        for (Profile profile : profilesWithRole) {
-                            String listName = NicknameFormatter.getNickname(profile.getUuid(), true, profile.getName());
 
-                            PlayerRole roleDetails = profile.getRoles().stream().filter(pr -> pr != null && pr.getRoleName().equalsIgnoreCase(targetRole.getName()) && pr.getStatus() == PlayerRole.Status.ACTIVE).findFirst().orElse(null);
+                        for (Profile profile : profilesWithRole) {
+                            String listName = targetRole.getColor() + profile.getName() + "<reset>";
+                            PlayerRole roleDetails = profile.getRoles().stream()
+                                    .filter(pr -> pr != null && pr.getRoleName().equalsIgnoreCase(targetRole.getName()) && pr.getStatus() == PlayerRole.Status.ACTIVE)
+                                    .findFirst()
+                                    .orElse(null);
+
                             String statusString = "";
                             if (roleDetails != null) {
                                 MessageKey statusKey;
@@ -861,6 +871,7 @@ public class RoleCommand implements CommandInterface {
                             } else {
                                 statusString = Messages.translate(MessageKey.ROLE_INFO_STATUS_UNKNOWN, senderLocale);
                             }
+
                             Messages.send(finalSender, Message.of(MessageKey.COMMON_INFO_LIST_ITEM)
                                     .with("index", "<dark_gray>" + (index++) + "</dark_gray>")
                                     .with("value", listName + " " + statusString));
@@ -869,7 +880,11 @@ public class RoleCommand implements CommandInterface {
                     Messages.send(finalSender, "<white>");
                     playSound(finalSender, SoundKeys.NOTIFICATION);
                 }, roleService.getAsyncExecutor())
-                .exceptionally(ex -> handleCommandError(sender, "listar grupo " + targetRoleDisplayName, ex));
+                .exceptionally(ex -> {
+                    logger.log(Level.SEVERE, "Erro ao listar grupo " + targetRoleDisplayName, ex);
+                    handleCommandError(sender, "listar grupo " + targetRoleDisplayName, ex);
+                    return null;
+                });
     }
 
     private void showHelp(CommandSource sender, String label) {

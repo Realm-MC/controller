@@ -5,6 +5,7 @@ import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.proxy.Proxy;
 import com.realmmc.controller.shared.annotations.Listeners;
 import com.realmmc.controller.shared.auth.AuthenticationGuard;
+import com.realmmc.controller.shared.cosmetics.CosmeticsService;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.preferences.PreferencesService;
@@ -21,7 +22,6 @@ import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 
-import java.net.InetSocketAddress;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -76,11 +76,10 @@ public class PlayerJoinListener {
             int protocol = player.getProtocolVersion().getProtocol();
             boolean isPremium = Proxy.getInstance().getPremiumLoginStatus().getOrDefault(username.toLowerCase(), false);
 
-            // CORREÇÃO AQUI: Adicionado 'null' como último argumento (medalha)
             service.startSession(uuid, username, proxyId, null, protocol, -1, ip, null, null, isPremium, null);
         });
 
-        logger.info("[PlayerJoin] Session created (CONNECTING) for " + username);
+        logger.info("[PlayerJoin] Sessão iniciada (CONNECTING) para " + username);
     }
 
     @Subscribe
@@ -98,6 +97,10 @@ public class PlayerJoinListener {
 
             Profile profile = profileService.ensureProfile(uuid, username, username.toLowerCase(), ip, clientVersion, "Java", isPremium, player);
 
+            ServiceRegistry.getInstance().getService(CosmeticsService.class).ifPresent(cs -> {
+                cs.ensureCosmetics(profile);
+            });
+
             sessionTrackerServiceOpt.ifPresent(service -> {
                 service.setSessionField(uuid, "username", profile.getName());
                 service.setSessionField(uuid, "clientVersion", clientVersion);
@@ -113,7 +116,7 @@ public class PlayerJoinListener {
             Proxy.getInstance().getOfflineUuids().remove(username.toLowerCase());
 
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "[PlayerJoin] Critical error in PostLogin for " + username, e);
+            logger.log(Level.SEVERE, "[PlayerJoin] Erro crítico no PostLogin para " + username, e);
             player.disconnect(MiniMessage.miniMessage().deserialize(Messages.translate(MessageKey.KICK_GENERIC_PROFILE_ERROR)));
             sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid));
         }
@@ -125,7 +128,7 @@ public class PlayerJoinListener {
         final UUID uuid = player.getUniqueId();
 
         sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, player.getUsername()));
-        logger.info("[PlayerJoin] Session ended for " + player.getUsername());
+        logger.info("[PlayerJoin] Sessão finalizada para " + player.getUsername());
 
         Long loginTime = Proxy.getInstance().getLoginTimestamps().remove(uuid);
         if (loginTime != null) {
