@@ -4,6 +4,8 @@ import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.shared.geoip.GeoIPService;
 import com.realmmc.controller.shared.preferences.Language;
 import com.realmmc.controller.shared.preferences.PreferencesService;
+import net.kyori.adventure.bossbar.BossBar;
+import net.kyori.adventure.title.Title;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -11,7 +13,6 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import org.bukkit.entity.Player;
-
 
 public class Messages {
 
@@ -62,7 +63,6 @@ public class Messages {
                 return Language.PORTUGUESE;
             }
         }
-
         return Language.ENGLISH;
     }
 
@@ -95,12 +95,16 @@ public class Messages {
             Optional<PreferencesService> prefsOpt = ServiceRegistry.getInstance().getService(PreferencesService.class);
             if (prefsOpt.isPresent()) {
                 PreferencesService prefsService = prefsOpt.get();
+
                 Optional<Language> cachedLang = prefsService.getCachedLanguage(playerUuid);
                 if (cachedLang.isPresent()) {
                     return cachedLang.get().getLocale();
                 }
-                Language dbLang = prefsService.loadAndCacheLanguage(playerUuid);
-                return dbLang.getLocale();
+
+                prefsService.loadAndCachePreferences(playerUuid);
+                return prefsService.getCachedLanguage(playerUuid)
+                        .orElse(Language.getDefault())
+                        .getLocale();
             }
         }
 
@@ -113,7 +117,6 @@ public class Messages {
 
         return PT_BR;
     }
-
 
     public static void send(Object recipient, String text) {
         SDK.sendRawMessage(recipient, text);
@@ -168,5 +171,41 @@ public class Messages {
         for (Object recipient : recipients) {
             send(recipient, message);
         }
+    }
+
+    public static void sendActionBar(Object recipient, Message message) {
+        SDK.sendActionBar(recipient, message);
+    }
+
+    public static void sendActionBar(Object recipient, MessageKey key) {
+        SDK.sendActionBar(recipient, Message.of(key));
+    }
+
+    public static void sendActionBar(Object recipient, String rawText) {
+        SDK.sendActionBar(recipient, Message.raw(rawText));
+    }
+
+    public static void sendTitle(Object recipient, Message title, Message subtitle, Title.Times times) {
+        SDK.sendTitle(recipient, title, subtitle, times);
+    }
+
+    public static void sendTitle(Object recipient, Message title, Message subtitle) {
+        SDK.sendTitle(recipient, title, subtitle, null);
+    }
+
+    public static void sendTitle(Object recipient, MessageKey titleKey, MessageKey subtitleKey) {
+        SDK.sendTitle(recipient, Message.of(titleKey), Message.of(subtitleKey), null);
+    }
+
+    public static void sendTitle(Object recipient, String rawTitle, String rawSubtitle) {
+        SDK.sendTitle(recipient, Message.raw(rawTitle), Message.raw(rawSubtitle), null);
+    }
+
+    public static void showBossBar(Object recipient, BossBar bar) {
+        SDK.showBossBar(recipient, bar);
+    }
+
+    public static void hideBossBar(Object recipient, BossBar bar) {
+        SDK.hideBossBar(recipient, bar);
     }
 }

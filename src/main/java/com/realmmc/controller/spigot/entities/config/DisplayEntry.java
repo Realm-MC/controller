@@ -22,6 +22,7 @@ public class DisplayEntry {
     private String id;
     private Boolean isMovible;
     private Boolean hologramVisible;
+    private String entityType;
 
     public Type getType() { return type; }
     public void setType(Type type) { this.type = type; }
@@ -61,6 +62,8 @@ public class DisplayEntry {
     public void setIsMovible(Boolean isMovible) { this.isMovible = isMovible; }
     public Boolean getHologramVisible() { return hologramVisible; }
     public void setHologramVisible(Boolean hologramVisible) { this.hologramVisible = hologramVisible; }
+    public String getEntityType() { return entityType; }
+    public void setEntityType(String entityType) { this.entityType = entityType; }
 
     public enum Type {
         DISPLAY_ITEM,

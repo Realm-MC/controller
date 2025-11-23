@@ -1,13 +1,12 @@
 package com.realmmc.controller.spigot.entities.npcs;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
 import com.github.retrooper.packetevents.protocol.entity.pose.EntityPose;
+import com.github.retrooper.packetevents.protocol.entity.type.EntityType;
 import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.protocol.player.GameMode;
@@ -21,17 +20,16 @@ import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.config.NPCConfigLoader;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.minimessage.MiniMessage;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.scoreboard.Scoreboard;
-import org.bukkit.scoreboard.Team;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,119 +44,124 @@ public class NPCService implements Listener {
     private PacketListenerAbstract interactListener;
     private final MojangSkinResolver mojangResolver = new MojangSkinResolver();
     private final MineskinResolver mineskinResolver = new MineskinResolver();
-    private final Map<UUID, List<UUID>> nameHolograms = new HashMap<>();
-    private final MiniMessage mm = MiniMessage.miniMessage();
-    private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.builder().character('&').hexColors().build();
+
+    private final Map<UUID, List<UUID>> nameHolograms = new ConcurrentHashMap<>();
     private final Map<Integer, Map<UUID, float[]>> npcViewerRot = new ConcurrentHashMap<>();
+
+    private BukkitTask lookTask;
+    private BukkitTask checkTask;
 
     public NPCService() {
         this.configLoader = new NPCConfigLoader();
         this.configLoader.load();
         loadSavedNPCs();
-        startLookTask();
-        try {
-            if (interactListener == null) {
-                interactListener = new PacketListenerAbstract() {
-                    @Override
-                    public void onPacketReceive(PacketReceiveEvent event) {
-                        if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY) {
-                            WrapperPlayClientInteractEntity wrapper = new WrapperPlayClientInteractEntity(event);
-                            int targetId = wrapper.getEntityId();
-                            String entryId = entityIdToEntryId.get(targetId);
-                            if (entryId == null) return;
-                            Player player = (Player) event.getPlayer();
-                            String actionName = String.valueOf(wrapper.getAction());
-                            if ("ATTACK".equals(actionName)) return;
-                            String handName = String.valueOf(wrapper.getHand());
-                            if (handName != null && handName.equals("OFF_HAND")) return;
+        startTasks();
 
-                            long now = System.currentTimeMillis();
-                            String key = player.getUniqueId() + ":" + targetId;
-                            Long last = clickDebounce.get(key);
-                            if (last != null && now - last < 300) return;
-                            clickDebounce.put(key, now);
+        this.interactListener = new PacketListenerAbstract() {
+            @Override
+            public void onPacketReceive(PacketReceiveEvent event) {
+                if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY) {
+                    try {
+                        WrapperPlayClientInteractEntity wrapper = new WrapperPlayClientInteractEntity(event);
+                        int targetId = wrapper.getEntityId();
+                        String entryId = entityIdToEntryId.get(targetId);
+                        if (entryId == null) return;
+                        Player player = (Player) event.getPlayer();
+                        String actionName = String.valueOf(wrapper.getAction());
+                        if ("ATTACK".equals(actionName)) return;
+                        String handName = String.valueOf(wrapper.getHand());
+                        if (handName != null && handName.equals("OFF_HAND")) return;
 
-                            DisplayEntry entry = configLoader.getById(entryId);
-                            if (entry == null || entry.getActions() == null || entry.getActions().isEmpty()) return;
-                            Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
-                                Actions.runAll(player, entry, player.getLocation(), entry.getActions());
-                            });
-                        }
-                    }
-                };
-                PacketEvents.getAPI().getEventManager().registerListener(interactListener);
-            }
-        } catch (Throwable t) {
-            Main.getInstance().getLogger().log(Level.SEVERE, "Falha crítica ao registrar listener de interação de pacotes para NPCs.", t);
-        }
-    }
+                        long now = System.currentTimeMillis();
+                        String key = player.getUniqueId() + ":" + targetId;
+                        Long last = clickDebounce.get(key);
+                        if (last != null && now - last < 300) return;
+                        clickDebounce.put(key, now);
 
-    private void startLookTask() {
-        try {
-            Bukkit.getScheduler().runTaskTimer(Main.getInstance(), () -> {
-                if (globalNPCs.isEmpty()) return;
-
-                for (Map.Entry<String, NPCData> kv : globalNPCs.entrySet()) {
-                    NPCData npc = kv.getValue();
-                    DisplayEntry entry = configLoader.getById(kv.getKey());
-
-                    if (entry == null || !Boolean.TRUE.equals(entry.getIsMovible())) continue;
-
-                    Location npcLoc = npc.location();
-                    World npcWorld = npcLoc.getWorld();
-                    if (npcWorld == null) continue;
-
-                    double radius = 8.0;
-                    double radiusSq = radius * radius;
-
-                    Map<UUID, float[]> perViewer = npcViewerRot.computeIfAbsent(npc.entityId(), k -> new ConcurrentHashMap<>());
-
-                    for (Player viewer : npcWorld.getPlayers()) {
-                        if (!viewer.isValid() || viewer.isDead()) continue;
-
-                        float targetYaw;
-                        float targetPitch;
-
-                        double dsq = viewer.getLocation().distanceSquared(npcLoc);
-                        if (dsq <= radiusSq) {
-                            Location eye = viewer.getEyeLocation();
-                            double dx = eye.getX() - npcLoc.getX();
-                            double dy = eye.getY() - (npcLoc.getY() + 1.50);
-                            double dz = eye.getZ() - npcLoc.getZ();
-                            double yawRad = Math.atan2(-dx, dz);
-                            double xz = Math.max(0.0001, Math.sqrt(dx * dx + dz * dz));
-                            double pitchRad = -Math.atan2(dy, xz);
-                            targetYaw = normalizeYaw((float) Math.toDegrees(yawRad));
-                            targetPitch = clampPitch((float) Math.toDegrees(pitchRad));
-                        } else {
-                            targetYaw = normalizeYaw(npcLoc.getYaw());
-                            targetPitch = clampPitch(npcLoc.getPitch());
-                        }
-
-                        float[] current = perViewer.computeIfAbsent(viewer.getUniqueId(), u -> new float[]{normalizeYaw(npcLoc.getYaw()), clampPitch(npcLoc.getPitch())});
-
-                        float newYaw = stepAngle(current[0], targetYaw, 10.0f);
-                        float newPitch = stepAngle(current[1], targetPitch, 10.0f);
-
-                        if (Math.abs(newYaw - current[0]) > 0.1f || Math.abs(newPitch - current[1]) > 0.1f) {
-                            current[0] = newYaw;
-                            current[1] = newPitch;
-
-                            try {
-                                WrapperPlayServerEntityHeadLook head = new WrapperPlayServerEntityHeadLook(npc.entityId(), newYaw);
-                                WrapperPlayServerEntityRotation rotation = new WrapperPlayServerEntityRotation(npc.entityId(), newYaw, newPitch, false);
-                                PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, head);
-                                PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, rotation);
-                            } catch (Throwable t) {
-                                Main.getInstance().getLogger().log(Level.WARNING, "Erro não crítico ao enviar pacotes de rotação de NPC.", t);
-                            }
-                        }
+                        DisplayEntry entry = configLoader.getById(entryId);
+                        if (entry == null || entry.getActions() == null || entry.getActions().isEmpty()) return;
+                        Bukkit.getScheduler().runTask(Main.getInstance(), () -> {
+                            Actions.runAll(player, entry, player.getLocation(), entry.getActions());
+                        });
+                    } catch (Exception e) {
                     }
                 }
-            }, 10L, 2L);
-        } catch (Throwable t) {
-            Main.getInstance().getLogger().log(Level.SEVERE, "Falha crítica ao iniciar a tarefa de rotação de NPCs.", t);
+            }
+        };
+        PacketEvents.getAPI().getEventManager().registerListener(interactListener);
+    }
+
+    public void cleanup() {
+        if (interactListener != null) {
+            PacketEvents.getAPI().getEventManager().unregisterListener(interactListener);
         }
+        if (lookTask != null) lookTask.cancel();
+        if (checkTask != null) checkTask.cancel();
+        despawnAll();
+    }
+
+    private void startTasks() {
+        this.lookTask = Bukkit.getScheduler().runTaskTimer(Main.getInstance(), () -> {
+            if (globalNPCs.isEmpty()) return;
+
+            for (Map.Entry<String, NPCData> kv : globalNPCs.entrySet()) {
+                NPCData npc = kv.getValue();
+                DisplayEntry entry = configLoader.getById(kv.getKey());
+
+                if (entry == null || !Boolean.TRUE.equals(entry.getIsMovible())) continue;
+
+                Location npcLoc = npc.location();
+                World npcWorld = npcLoc.getWorld();
+                if (npcWorld == null) continue;
+
+                double radius = 8.0;
+                double radiusSq = radius * radius;
+
+                Map<UUID, float[]> perViewer = npcViewerRot.computeIfAbsent(npc.entityId(), k -> new ConcurrentHashMap<>());
+
+                for (Player viewer : npcWorld.getPlayers()) {
+                    if (!viewer.isValid() || viewer.isDead()) continue;
+
+                    float targetYaw = normalizeYaw(npcLoc.getYaw());
+                    float targetPitch = clampPitch(npcLoc.getPitch());
+
+                    double dsq = viewer.getLocation().distanceSquared(npcLoc);
+                    if (dsq <= radiusSq) {
+                        Location eye = viewer.getEyeLocation();
+                        double dx = eye.getX() - npcLoc.getX();
+                        double dy = eye.getY() - (npcLoc.getY() + 1.50);
+                        double dz = eye.getZ() - npcLoc.getZ();
+                        double yawRad = Math.atan2(-dx, dz);
+                        double xz = Math.max(0.0001, Math.sqrt(dx * dx + dz * dz));
+                        double pitchRad = -Math.atan2(dy, xz);
+                        targetYaw = normalizeYaw((float) Math.toDegrees(yawRad));
+                        targetPitch = clampPitch((float) Math.toDegrees(pitchRad));
+                    }
+
+                    float[] current = perViewer.computeIfAbsent(viewer.getUniqueId(), u -> new float[]{normalizeYaw(npcLoc.getYaw()), clampPitch(npcLoc.getPitch())});
+
+                    float newYaw = stepAngle(current[0], targetYaw, 15.0f);
+                    float newPitch = stepAngle(current[1], targetPitch, 15.0f);
+
+                    if (Math.abs(newYaw - current[0]) > 0.1f || Math.abs(newPitch - current[1]) > 0.1f) {
+                        current[0] = newYaw;
+                        current[1] = newPitch;
+                        try {
+                            WrapperPlayServerEntityHeadLook head = new WrapperPlayServerEntityHeadLook(npc.entityId(), newYaw);
+                            WrapperPlayServerEntityRotation rotation = new WrapperPlayServerEntityRotation(npc.entityId(), newYaw, newPitch, false);
+                            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, head);
+                            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, rotation);
+                        } catch (Throwable t) {}
+                    }
+                }
+            }
+        }, 10L, 2L);
+
+        this.checkTask = Bukkit.getScheduler().runTaskTimer(Main.getInstance(), () -> {
+            for (NPCData npc : globalNPCs.values()) {
+                ensureHologramExists(npc);
+            }
+        }, 100L, 100L);
     }
 
     private float normalizeYaw(float yaw) {
@@ -185,12 +188,19 @@ public class NPCService implements Listener {
         resendAllTo(event.getPlayer());
     }
 
+    @EventHandler
+    public void onPlayerRespawn(PlayerRespawnEvent event) {
+        Bukkit.getScheduler().runTaskLater(Main.getInstance(), () -> resendAllTo(event.getPlayer()), 20L);
+    }
+
     public void resendAllTo(Player player) {
         for (NPCData npc : globalNPCs.values()) {
-            try {
-                sendNPCPackets(player, npc);
-            } catch (Exception e) {
-                Main.getInstance().getLogger().log(Level.WARNING, "Falha ao enviar pacotes do NPC " + npc.entityId() + " para o jogador " + player.getName(), e);
+            if (npc.location().getWorld().getName().equals(player.getWorld().getName())) {
+                try {
+                    sendNPCPackets(player, npc);
+                } catch (Exception e) {
+                    Main.getInstance().getLogger().log(Level.WARNING, "Failed to send packets for NPC " + npc.entityId(), e);
+                }
             }
         }
     }
@@ -201,9 +211,7 @@ public class NPCService implements Listener {
         try {
             WrapperPlayServerDestroyEntities destroy = new WrapperPlayServerDestroyEntities(ids);
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, destroy);
-        } catch (Exception e) {
-            Main.getInstance().getLogger().log(Level.WARNING, "Falha ao enviar pacote de destruição de NPC para " + player.getName(), e);
-        }
+        } catch (Exception e) {}
     }
 
     public void despawnAll() {
@@ -215,19 +223,8 @@ public class NPCService implements Listener {
             for (List<UUID> ids : nameHolograms.values()) {
                 holo.removeByUUIDs(ids);
             }
-        } catch (Throwable t) {
-            Main.getInstance().getLogger().log(Level.WARNING, "Erro não crítico ao remover hologramas de nomes de NPCs.", t);
-        }
+        } catch (Throwable t) {}
         nameHolograms.clear();
-        try {
-            Scoreboard sb = Bukkit.getScoreboardManager().getMainScoreboard();
-            for (NPCData npc : globalNPCs.values()) {
-                Team t = sb.getTeam("npc_hide_" + npc.entityId());
-                if (t != null) t.unregister();
-            }
-        } catch (Throwable t) {
-            Main.getInstance().getLogger().log(Level.WARNING, "Erro não crítico ao remover times de scoreboard de NPCs.", t);
-        }
     }
 
     public void reloadAll() {
@@ -237,6 +234,53 @@ public class NPCService implements Listener {
         loadSavedNPCs();
         for (Player p : Bukkit.getOnlinePlayers()) {
             resendAllTo(p);
+        }
+    }
+
+    public void refreshNpc(String id) {
+        String lowerId = id.toLowerCase();
+        NPCData oldData = globalNPCs.get(lowerId);
+
+        if (oldData != null) {
+            int[] ids = {oldData.entityId()};
+            WrapperPlayServerDestroyEntities destroy = new WrapperPlayServerDestroyEntities(ids);
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                PacketEvents.getAPI().getPlayerManager().sendPacket(p, destroy);
+            }
+            entityIdToEntryId.remove(oldData.entityId());
+
+            List<UUID> oldHolo = nameHolograms.remove(oldData.uuid());
+            if (oldHolo != null) Main.getInstance().getHologramService().removeByUUIDs(oldHolo);
+
+            globalNPCs.remove(lowerId);
+        }
+
+        configLoader.load();
+        DisplayEntry entry = configLoader.getById(lowerId);
+
+        if (entry != null) {
+            try {
+                World world = Bukkit.getWorld(entry.getWorld());
+                if (world != null) {
+                    Location location = new Location(world, entry.getX(), entry.getY(), entry.getZ(), entry.getYaw(), entry.getPitch());
+                    String displayName = entry.getMessage();
+                    String skin = entry.getItem() != null ? entry.getItem() : "default";
+                    String typeName = entry.getEntityType() != null ? entry.getEntityType() : "PLAYER";
+
+                    NPCData npcData = createNPCData(lowerId, location, displayName, skin, entry.getTexturesValue(), entry.getTexturesSignature(), typeName);
+                    if (npcData != null) {
+                        globalNPCs.put(lowerId, npcData);
+                        entityIdToEntryId.put(npcData.entityId(), lowerId);
+                        ensureHologramExists(npcData);
+
+                        for (Player p : world.getPlayers()) {
+                            sendNPCPackets(p, npcData);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                Main.getInstance().getLogger().log(Level.SEVERE, "Erro ao atualizar NPC " + lowerId, e);
+            }
         }
     }
 
@@ -253,63 +297,92 @@ public class NPCService implements Listener {
                 World world = Bukkit.getWorld(entry.getWorld());
                 if (world == null) continue;
                 Location location = new Location(world, entry.getX(), entry.getY(), entry.getZ(), entry.getYaw(), entry.getPitch());
-                String id = entry.getId();
+                String id = entry.getId().toLowerCase();
                 String displayName = entry.getMessage();
                 String skin = entry.getItem() != null ? entry.getItem() : "default";
-                NPCData npcData = createNPCData(id, location, displayName, skin, entry.getTexturesValue(), entry.getTexturesSignature());
+                String typeName = entry.getEntityType() != null ? entry.getEntityType() : "PLAYER";
+
+                NPCData npcData = createNPCData(id, location, displayName, skin, entry.getTexturesValue(), entry.getTexturesSignature(), typeName);
                 if (npcData != null) {
                     globalNPCs.put(id, npcData);
                     entityIdToEntryId.put(npcData.entityId(), id);
-                    spawnNameHologram(npcData);
+                    ensureHologramExists(npcData);
                 }
             } catch (Exception e) {
-                Main.getInstance().getLogger().log(Level.SEVERE, "Erro ao carregar NPC com ID de config " + entry.getId(), e);
+                Main.getInstance().getLogger().log(Level.SEVERE, "Erro ao carregar NPC " + entry.getId(), e);
             }
         }
     }
 
-    private NPCData createNPCData(String id, Location location, String displayName, String skinSource, String texturesValue, String texturesSignature) {
+    private NPCData createNPCData(String id, Location location, String displayName, String skinSource, String texturesValue, String texturesSignature, String typeName) {
         try {
             UUID npcUUID = UUID.randomUUID();
             int entityId = ThreadLocalRandom.current().nextInt(100000, 999999);
             String internalName = (id != null && !id.isEmpty()) ? id : "NPC_" + entityId;
+            if (internalName.length() > 16) internalName = internalName.substring(0, 16);
+
             UserProfile profile = new UserProfile(npcUUID, internalName);
+            EntityType type = EntityTypes.PLAYER;
 
-            if (texturesValue != null && texturesSignature != null) {
-                profile.getTextureProperties().add(new TextureProperty("textures", texturesValue, texturesSignature));
-            } else if (!"player".equalsIgnoreCase(skinSource)) {
-                TextureProperty texture = null;
-                if (skinSource != null && (skinSource.startsWith("http://") || skinSource.startsWith("https://"))) {
-                    texture = mineskinResolver.resolveFromUrl(skinSource);
-                } else if (skinSource != null && !"default".equalsIgnoreCase(skinSource)) {
-                    texture = mojangResolver.resolveByNameOrUuid(skinSource);
-                }
+            try {
+                type = EntityTypes.getByName(typeName.toLowerCase());
+                if (type == null) type = EntityTypes.PLAYER;
+            } catch (Exception e) {
+                type = EntityTypes.PLAYER;
+            }
 
-                if (texture != null) {
-                    profile.getTextureProperties().add(texture);
+            if (type == EntityTypes.PLAYER) {
+                if (texturesValue != null && texturesSignature != null) {
+                    profile.getTextureProperties().add(new TextureProperty("textures", texturesValue, texturesSignature));
+                } else if (!"player".equalsIgnoreCase(skinSource)) {
+                    TextureProperty texture = null;
+                    if (skinSource != null && (skinSource.startsWith("http://") || skinSource.startsWith("https://"))) {
+                        texture = mineskinResolver.resolveFromUrl(skinSource);
+                    } else if (skinSource != null && !"default".equalsIgnoreCase(skinSource)) {
+                        texture = mojangResolver.resolveByNameOrUuid(skinSource);
+                    }
+                    if (texture != null) {
+                        profile.getTextureProperties().add(texture);
+                    }
                 }
             }
 
-            return new NPCData(npcUUID, entityId, profile, location, displayName, skinSource);
+            return new NPCData(npcUUID, entityId, profile, location, displayName, skinSource, type);
         } catch (Exception e) {
             Main.getInstance().getLogger().log(Level.SEVERE, "Erro ao criar dados do NPC: " + id, e);
             return null;
         }
     }
 
+    private void ensureHologramExists(NPCData npc) {
+        if (!nameHolograms.containsKey(npc.uuid())) {
+            spawnNameHologram(npc);
+            return;
+        }
+        List<UUID> ids = nameHolograms.get(npc.uuid());
+        boolean anyInvalid = false;
+        for (UUID id : ids) {
+            Entity e = Bukkit.getEntity(id);
+            if (e == null || !e.isValid()) {
+                anyInvalid = true;
+                break;
+            }
+        }
+        if (anyInvalid) {
+            Main.getInstance().getHologramService().removeByUUIDs(ids);
+            spawnNameHologram(npc);
+        }
+    }
+
     private void spawnNameHologram(NPCData npc) {
         try {
-            List<UUID> old = nameHolograms.remove(npc.uuid());
-            if (old != null) {
-                Main.getInstance().getHologramService().removeByUUIDs(old);
-            }
-
             DisplayEntry entry = configLoader.getById(entityIdToEntryId.get(npc.entityId()));
             if (entry != null && !Boolean.TRUE.equals(entry.getHologramVisible())) {
                 return;
             }
 
-            Location base = npc.location().clone().add(0, 2.0, 0);
+            double height = (npc.entityType() == EntityTypes.PLAYER) ? 2.0 : 1.8;
+            Location base = npc.location().clone().add(0, height, 0);
 
             List<String> lines = null;
             if (entry != null) {
@@ -324,9 +397,7 @@ public class NPCService implements Listener {
             }
 
             var ids = Main.getInstance().getHologramService().spawnTemporary(base, lines, false);
-            try { Main.getInstance().getHologramService().addTagToUUIDs(ids, "controller_npc_name_line"); } catch (Throwable t) {
-                Main.getInstance().getLogger().log(Level.WARNING, "Erro ao adicionar tag a UUIDs de holograma de NPC.", t);
-            }
+            try { Main.getInstance().getHologramService().addTagToUUIDs(ids, "controller_npc_name_line"); } catch (Throwable t) {}
             nameHolograms.put(npc.uuid(), ids);
         } catch (Throwable t) {
             Main.getInstance().getLogger().log(Level.SEVERE, "Falha ao criar holograma de nome para NPC " + npc.uuid(), t);
@@ -335,33 +406,48 @@ public class NPCService implements Listener {
 
     private void sendNPCPackets(Player player, NPCData npcData) {
         try {
-            UserProfile profileToSend = npcData.profile();
-
-            if ("player".equalsIgnoreCase(npcData.skin())) {
-                profileToSend = new UserProfile(npcData.uuid(), npcData.profile().getName());
-                for (com.destroystokyo.paper.profile.ProfileProperty property : player.getPlayerProfile().getProperties()) {
-                    if (property.getName().equals("textures")) {
-                        profileToSend.getTextureProperties().add(new TextureProperty("textures", property.getValue(), property.getSignature()));
-                    }
-                }
-            }
-
-            sendTeamPackets(player, npcData);
-
-            WrapperPlayServerPlayerInfoUpdate.PlayerInfo playerInfo =
-                    new WrapperPlayServerPlayerInfoUpdate.PlayerInfo(profileToSend, true, 0, GameMode.SURVIVAL, null, null);
-            WrapperPlayServerPlayerInfoUpdate addPlayerPacket =
-                    new WrapperPlayServerPlayerInfoUpdate(WrapperPlayServerPlayerInfoUpdate.Action.ADD_PLAYER, playerInfo);
-            PacketEvents.getAPI().getPlayerManager().sendPacket(player, addPlayerPacket);
-
             com.github.retrooper.packetevents.protocol.world.Location position =
                     new com.github.retrooper.packetevents.protocol.world.Location(
                             npcData.location().getX(), npcData.location().getY(), npcData.location().getZ(),
                             npcData.location().getYaw(), npcData.location().getPitch());
-            WrapperPlayServerSpawnEntity spawnPacket = new WrapperPlayServerSpawnEntity(
-                    npcData.entityId(), npcData.uuid(), EntityTypes.PLAYER, position,
-                    npcData.location().getYaw(), 0, null);
-            PacketEvents.getAPI().getPlayerManager().sendPacket(player, spawnPacket);
+
+            if (npcData.entityType() == EntityTypes.PLAYER) {
+                UserProfile profileToSend = npcData.profile();
+                if ("player".equalsIgnoreCase(npcData.skin())) {
+                    profileToSend = new UserProfile(npcData.uuid(), npcData.profile().getName());
+                    for (com.destroystokyo.paper.profile.ProfileProperty property : player.getPlayerProfile().getProperties()) {
+                        if (property.getName().equals("textures")) {
+                            profileToSend.getTextureProperties().add(new TextureProperty("textures", property.getValue(), property.getSignature()));
+                        }
+                    }
+                }
+
+                sendTeamPackets(player, npcData);
+
+                WrapperPlayServerPlayerInfoUpdate.PlayerInfo playerInfo =
+                        new WrapperPlayServerPlayerInfoUpdate.PlayerInfo(profileToSend, true, 0, GameMode.SURVIVAL, null, null);
+                WrapperPlayServerPlayerInfoUpdate addPlayerPacket =
+                        new WrapperPlayServerPlayerInfoUpdate(WrapperPlayServerPlayerInfoUpdate.Action.ADD_PLAYER, playerInfo);
+                PacketEvents.getAPI().getPlayerManager().sendPacket(player, addPlayerPacket);
+
+                WrapperPlayServerSpawnEntity spawnPacket = new WrapperPlayServerSpawnEntity(
+                        npcData.entityId(), npcData.uuid(), EntityTypes.PLAYER, position,
+                        npcData.location().getYaw(), 0, null);
+                PacketEvents.getAPI().getPlayerManager().sendPacket(player, spawnPacket);
+
+                Bukkit.getScheduler().runTaskLater(Main.getPlugin(Main.class), () -> {
+                    try {
+                        WrapperPlayServerPlayerInfoRemove removePacket = new WrapperPlayServerPlayerInfoRemove(List.of(npcData.uuid()));
+                        PacketEvents.getAPI().getPlayerManager().sendPacket(player, removePacket);
+                    } catch (Exception e) {}
+                }, 40L);
+
+            } else {
+                WrapperPlayServerSpawnEntity spawnPacket = new WrapperPlayServerSpawnEntity(
+                        npcData.entityId(), npcData.uuid(), npcData.entityType(), position,
+                        npcData.location().getYaw(), 0, null);
+                PacketEvents.getAPI().getPlayerManager().sendPacket(player, spawnPacket);
+            }
 
             WrapperPlayServerEntityHeadLook headLookPacket = new WrapperPlayServerEntityHeadLook(
                     npcData.entityId(), npcData.location().getYaw());
@@ -369,22 +455,15 @@ public class NPCService implements Listener {
 
             try {
                 java.util.List<EntityData<?>> metadata = new java.util.ArrayList<>();
-                metadata.add(new EntityData(17, EntityDataTypes.BYTE, (byte) 0x7F));
-                metadata.add(new EntityData(6, EntityDataTypes.ENTITY_POSE, EntityPose.STANDING));
+
+                if (npcData.entityType() == EntityTypes.PLAYER) {
+                    metadata.add(new EntityData(17, EntityDataTypes.BYTE, (byte) 0x7F));
+                }
+
                 WrapperPlayServerEntityMetadata metaPacket = new WrapperPlayServerEntityMetadata(npcData.entityId(), metadata);
                 PacketEvents.getAPI().getPlayerManager().sendPacket(player, metaPacket);
-            } catch (Throwable t) {
-                Main.getInstance().getLogger().log(Level.WARNING, "Falha ao enviar metadados de entidade para NPC.", t);
-            }
+            } catch (Throwable t) {}
 
-            Bukkit.getScheduler().runTaskLater(Main.getPlugin(Main.class), () -> {
-                try {
-                    WrapperPlayServerPlayerInfoRemove removePacket = new WrapperPlayServerPlayerInfoRemove(List.of(npcData.uuid()));
-                    PacketEvents.getAPI().getPlayerManager().sendPacket(player, removePacket);
-                } catch (Exception e) {
-                    Main.getInstance().getLogger().log(Level.WARNING, "Falha ao remover NPC da lista de jogadores (tablist) para " + player.getName(), e);
-                }
-            }, 40L);
         } catch (Exception e) {
             Main.getInstance().getLogger().log(Level.SEVERE, "Erro ao enviar pacotes do NPC: " + npcData.entityId(), e);
         }
@@ -406,10 +485,16 @@ public class NPCService implements Listener {
             );
 
             WrapperPlayServerTeams teamCreatePacket = new WrapperPlayServerTeams(
-                    teamName, WrapperPlayServerTeams.TeamMode.CREATE, Optional.of(teamInfo), Collections.emptyList());
+                    teamName,
+                    WrapperPlayServerTeams.TeamMode.CREATE,
+                    Optional.of(teamInfo),
+                    Collections.emptyList());
 
             WrapperPlayServerTeams teamAddPlayerPacket = new WrapperPlayServerTeams(
-                    teamName, WrapperPlayServerTeams.TeamMode.ADD_ENTITIES, Optional.empty(), List.of(npcProfileName));
+                    teamName,
+                    WrapperPlayServerTeams.TeamMode.ADD_ENTITIES,
+                    Optional.empty(),
+                    List.of(npcProfileName));
 
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, teamCreatePacket);
             PacketEvents.getAPI().getPlayerManager().sendPacket(player, teamAddPlayerPacket);
@@ -420,7 +505,7 @@ public class NPCService implements Listener {
 
     public void createNpc(String id, Location location, String displayName, String skinSource) {
         DisplayEntry entry = new DisplayEntry();
-        entry.setId(id);
+        entry.setId(id.toLowerCase());
         entry.setType(DisplayEntry.Type.NPC);
         entry.setWorld(location.getWorld().getName());
         entry.setX(location.getX());
@@ -432,21 +517,19 @@ public class NPCService implements Listener {
         entry.setItem(skinSource);
         entry.setIsMovible(false);
         entry.setHologramVisible(true);
+        entry.setEntityType("PLAYER");
         entry.setLines(displayName != null ? new ArrayList<>(List.of(displayName)) : new ArrayList<>());
         entry.setActions(new ArrayList<>());
-
         configLoader.addEntry(entry);
         configLoader.save();
-        reloadAll();
+        refreshNpc(id);
     }
 
     public void cloneNpc(String originalId, String newId, Location location) {
-        DisplayEntry originalEntry = configLoader.getById(originalId);
+        DisplayEntry originalEntry = configLoader.getById(originalId.toLowerCase());
         if (originalEntry == null) return;
-
         DisplayEntry newEntry = new DisplayEntry();
-
-        newEntry.setId(newId);
+        newEntry.setId(newId.toLowerCase());
         newEntry.setType(originalEntry.getType());
         newEntry.setMessage(originalEntry.getMessage());
         newEntry.setItem(originalEntry.getItem());
@@ -456,27 +539,36 @@ public class NPCService implements Listener {
         newEntry.setActions((originalEntry.getActions() != null) ? new ArrayList<>(originalEntry.getActions()) : new ArrayList<>());
         newEntry.setTexturesValue(originalEntry.getTexturesValue());
         newEntry.setTexturesSignature(originalEntry.getTexturesSignature());
-
+        newEntry.setEntityType(originalEntry.getEntityType());
         newEntry.setWorld(location.getWorld().getName());
         newEntry.setX(location.getX());
         newEntry.setY(location.getY());
         newEntry.setZ(location.getZ());
         newEntry.setYaw(location.getYaw());
         newEntry.setPitch(location.getPitch());
-
         configLoader.addEntry(newEntry);
         configLoader.save();
-        reloadAll();
+        refreshNpc(newId);
     }
 
     public void removeNpc(String id) {
-        if (configLoader.removeEntry(id)) {
-            reloadAll();
+        if (configLoader.removeEntry(id.toLowerCase())) {
+            NPCData data = globalNPCs.get(id.toLowerCase());
+            if (data != null) {
+                int[] ids = {data.entityId()};
+                WrapperPlayServerDestroyEntities destroy = new WrapperPlayServerDestroyEntities(ids);
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    PacketEvents.getAPI().getPlayerManager().sendPacket(p, destroy);
+                }
+                globalNPCs.remove(id.toLowerCase());
+                List<UUID> holo = nameHolograms.remove(data.uuid());
+                if(holo!=null) Main.getInstance().getHologramService().removeByUUIDs(holo);
+            }
         }
     }
 
     public void teleportNpc(String id, Location location) {
-        DisplayEntry entry = configLoader.getById(id);
+        DisplayEntry entry = configLoader.getById(id.toLowerCase());
         if (entry != null) {
             entry.setWorld(location.getWorld().getName());
             entry.setX(location.getX());
@@ -486,55 +578,50 @@ public class NPCService implements Listener {
             entry.setPitch(location.getPitch());
             configLoader.updateEntry(entry);
             configLoader.save();
-            reloadAll();
+            refreshNpc(id);
         }
     }
 
     public void renameNpc(String id, String newName) {
-        DisplayEntry entry = configLoader.getById(id);
+        DisplayEntry entry = configLoader.getById(id.toLowerCase());
         if (entry != null) {
             entry.setMessage(newName);
             List<String> lines = new ArrayList<>(entry.getLines());
-            if (!lines.isEmpty()) {
-                lines.set(0, newName);
-                entry.setLines(lines);
-            } else {
-                lines.add(newName);
-                entry.setLines(lines);
-            }
+            if (!lines.isEmpty()) lines.set(0, newName); else lines.add(newName);
+            entry.setLines(lines);
             configLoader.updateEntry(entry);
             configLoader.save();
-            reloadAll();
+            refreshNpc(id);
         }
     }
 
     public boolean toggleNameVisibility(String id) {
-        DisplayEntry entry = configLoader.getById(id);
+        DisplayEntry entry = configLoader.getById(id.toLowerCase());
         if (entry != null) {
             boolean newState = !Boolean.TRUE.equals(entry.getHologramVisible());
             entry.setHologramVisible(newState);
             configLoader.updateEntry(entry);
             configLoader.save();
-            reloadAll();
+            refreshNpc(id);
             return newState;
         }
         return false;
     }
 
     public void updateNpcSkin(String id, String newSkinSource) {
-        DisplayEntry entry = configLoader.getById(id);
+        DisplayEntry entry = configLoader.getById(id.toLowerCase());
         if (entry != null) {
             entry.setItem(newSkinSource);
             entry.setTexturesValue(null);
             entry.setTexturesSignature(null);
             configLoader.updateEntry(entry);
             configLoader.save();
-            reloadAll();
+            refreshNpc(id);
         }
     }
 
     public boolean toggleLookAtPlayer(String id) {
-        DisplayEntry entry = configLoader.getById(id);
+        DisplayEntry entry = configLoader.getById(id.toLowerCase());
         if (entry != null) {
             boolean newState = !Boolean.TRUE.equals(entry.getIsMovible());
             entry.setIsMovible(newState);
@@ -545,20 +632,30 @@ public class NPCService implements Listener {
         return false;
     }
 
+    public void setEntityType(String id, String type) {
+        DisplayEntry entry = configLoader.getById(id.toLowerCase());
+        if (entry != null) {
+            entry.setEntityType(type.toUpperCase());
+            configLoader.updateEntry(entry);
+            configLoader.save();
+            refreshNpc(id);
+        }
+    }
+
     public void addLine(String id, String text) {
-        DisplayEntry entry = configLoader.getById(id);
+        DisplayEntry entry = configLoader.getById(id.toLowerCase());
         if (entry != null) {
             List<String> lines = (entry.getLines() != null) ? new ArrayList<>(entry.getLines()) : new ArrayList<>();
             lines.add(text);
             entry.setLines(lines);
             configLoader.updateEntry(entry);
             configLoader.save();
-            reloadAll();
+            refreshNpc(id);
         }
     }
 
     public boolean setLine(String id, int lineIndex, String text) {
-        DisplayEntry entry = configLoader.getById(id);
+        DisplayEntry entry = configLoader.getById(id.toLowerCase());
         if (entry != null) {
             List<String> lines = entry.getLines();
             if (lines == null) return false;
@@ -567,7 +664,7 @@ public class NPCService implements Listener {
                 entry.setLines(lines);
                 configLoader.updateEntry(entry);
                 configLoader.save();
-                reloadAll();
+                refreshNpc(id);
                 return true;
             }
         }
@@ -575,7 +672,7 @@ public class NPCService implements Listener {
     }
 
     public boolean removeLine(String id, int lineIndex) {
-        DisplayEntry entry = configLoader.getById(id);
+        DisplayEntry entry = configLoader.getById(id.toLowerCase());
         if (entry != null) {
             List<String> lines = entry.getLines();
             if (lines == null) return false;
@@ -584,7 +681,7 @@ public class NPCService implements Listener {
                 entry.setLines(lines);
                 configLoader.updateEntry(entry);
                 configLoader.save();
-                reloadAll();
+                refreshNpc(id);
                 return true;
             }
         }
@@ -592,7 +689,7 @@ public class NPCService implements Listener {
     }
 
     public void addAction(String id, String action) {
-        DisplayEntry entry = configLoader.getById(id);
+        DisplayEntry entry = configLoader.getById(id.toLowerCase());
         if (entry != null) {
             List<String> actions = (entry.getActions() != null) ? new ArrayList<>(entry.getActions()) : new ArrayList<>();
             actions.add(action);
@@ -603,7 +700,7 @@ public class NPCService implements Listener {
     }
 
     public boolean removeAction(String id, int actionIndex) {
-        DisplayEntry entry = configLoader.getById(id);
+        DisplayEntry entry = configLoader.getById(id.toLowerCase());
         if (entry != null) {
             List<String> actions = entry.getActions();
             if (actions == null) return false;
@@ -619,11 +716,11 @@ public class NPCService implements Listener {
     }
 
     public NPCData getNpcById(String id) {
-        return globalNPCs.get(id);
+        return globalNPCs.get(id.toLowerCase());
     }
 
     public DisplayEntry getNpcEntry(String id) {
-        return configLoader.getById(id);
+        return configLoader.getById(id.toLowerCase());
     }
 
     public Set<String> getAllNpcIds() {

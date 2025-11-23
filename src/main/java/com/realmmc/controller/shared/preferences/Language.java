@@ -4,7 +4,7 @@ import java.util.Locale;
 
 public enum Language {
     PORTUGUESE("pt", "BR", new Locale("pt", "BR")),
-    ENGLISH("en", "US", Locale.US);
+    ENGLISH("en", "US", new Locale("en"));
 
     private final String code;
     private final String country;

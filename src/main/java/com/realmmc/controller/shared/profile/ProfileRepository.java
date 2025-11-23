@@ -37,10 +37,9 @@ public class ProfileRepository extends AbstractMongoRepository<Profile> {
                             .collationStrength(CollationStrength.SECONDARY)
                             .build()));
             col.createIndex(Indexes.descending("lastLogin"));
-
             col.createIndex(Indexes.ascending("roles.roleName"));
-
             col.createIndex(Indexes.ascending("roles.status"));
+            col.createIndex(Indexes.descending("cash"));
 
             LOGGER.info("[ProfileRepository] Indexes for 'profiles' collection checked/created successfully.");
         } catch (MongoException e) {
@@ -126,5 +125,31 @@ public class ProfileRepository extends AbstractMongoRepository<Profile> {
 
         UpdateResult result = collection().updateMany(filter, update, options);
         return result.getModifiedCount();
+    }
+
+    public List<Profile> findTopByCash(int limit) {
+        Bson sort = Sorts.descending("cash");
+        Bson projection = Projections.fields(
+                Projections.include("uuid", "name", "cash", "primaryRoleName")
+        );
+
+        return collection().find()
+                .sort(sort)
+                .projection(projection)
+                .limit(Math.max(1, limit))
+                .into(new ArrayList<>());
+    }
+
+    public long countByCashGreaterThan(int cashAmount) {
+        return collection().countDocuments(Filters.gt("cash", cashAmount));
+    }
+
+    public boolean atomicAddCash(UUID uuid, int amount) {
+        Bson filter = Filters.eq("uuid", uuid);
+        Bson update = Updates.inc("cash", amount);
+        Bson finalUpdate = Updates.combine(update, Updates.set("updatedAt", System.currentTimeMillis()));
+
+        UpdateResult result = collection().updateOne(filter, finalUpdate);
+        return result.getModifiedCount() > 0;
     }
 }

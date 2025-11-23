@@ -13,16 +13,22 @@ import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
 import com.mongodb.MongoException;
+import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Projections;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import redis.clients.jedis.Jedis;
 
@@ -34,11 +40,10 @@ public class ServerRegistryService {
     private final PterodactylService pterodactylService;
 
     private static final double LOBBY_SCALE_UP_THRESHOLD = 0.70;
-    private static final int GAME_BW_MIN_ROOMS = 0;
     private static final long SERVER_EMPTY_SHUTDOWN_MS = TimeUnit.SECONDS.toMillis(30);
+    private static final Pattern LOBBY_NAME_PATTERN = Pattern.compile("^lobby-(\\d+)$", Pattern.CASE_INSENSITIVE);
 
     private final Map<String, Long> emptySinceTimestamp = new ConcurrentHashMap<>();
-
     private ScheduledFuture<?> healthCheckTask = null;
 
     public ServerRegistryService(Logger logger) {
@@ -52,8 +57,7 @@ public class ServerRegistryService {
         logger.info("[ServerRegistry] Initializing ServerRegistryService...");
         setupDefaultServers();
         initializeStaticServers();
-        startMonitoringTask();
-        startHealthCheckTask();
+        startHealthCheckAndScalingTask();
     }
 
     private void setupDefaultServers() {
@@ -61,23 +65,28 @@ public class ServerRegistryService {
             logger.info("[ServerRegistry] Synchronizing default servers with MongoDB...");
             for (DefaultServer defaultServer : DefaultServer.values()) {
                 Optional<ServerInfo> existingOpt = repository.findByName(defaultServer.getName());
-
+                ServerInfo defaultInfo = defaultServer.toServerInfo();
                 if (existingOpt.isEmpty()) {
-                    repository.save(defaultServer.toServerInfo());
-                    logger.info("[ServerRegistry] Default server '" + defaultServer.getName() + "' created in DB.");
+                    repository.save(defaultInfo);
+                    logger.info("[ServerRegistry] Default server '" + defaultInfo.getName() + "' created in DB.");
                 } else {
                     ServerInfo existing = existingOpt.get();
-
                     boolean updated = false;
-                    if (!existing.getMinGroup().equals(defaultServer.getMinGroup())) {
-                        existing.setMinGroup(defaultServer.getMinGroup());
-                        updated = true;
+                    if (!existing.getMinGroup().equals(defaultInfo.getMinGroup())) {
+                        existing.setMinGroup(defaultInfo.getMinGroup()); updated = true;
                     }
-                    if (existing.getType() != defaultServer.getType()) {
-                        existing.setType(defaultServer.getType());
-                        updated = true;
+                    if (existing.getType() != defaultInfo.getType()) {
+                        existing.setType(defaultInfo.getType()); updated = true;
                     }
-
+                    if (!existing.getIp().equals(defaultInfo.getIp())) {
+                        existing.setIp(defaultInfo.getIp()); updated = true;
+                    }
+                    if (existing.getPort() != defaultInfo.getPort()) {
+                        existing.setPort(defaultInfo.getPort()); updated = true;
+                    }
+                    if (!existing.getPterodactylId().equals(defaultInfo.getPterodactylId())) {
+                        existing.setPterodactylId(defaultInfo.getPterodactylId()); updated = true;
+                    }
                     if (updated) {
                         repository.save(existing);
                         logger.fine("[ServerRegistry] Default server '" + existing.getName() + "' updated with defaults.");
@@ -91,33 +100,19 @@ public class ServerRegistryService {
 
     private void initializeStaticServers() {
         try {
-            List<ServerInfo> persistentServers = repository.findByType(ServerType.PERSISTENT);
-            List<ServerInfo> loginServers = repository.findByType(ServerType.LOGIN);
-            List<ServerInfo> lobbyServers = repository.findByType(ServerType.LOBBY);
-
-            List<ServerInfo> allStaticServers = new ArrayList<>();
-            allStaticServers.addAll(persistentServers);
-            allStaticServers.addAll(loginServers);
-            allStaticServers.addAll(lobbyServers);
-
-            logger.info("[ServerRegistry] Loading " + allStaticServers.size() + " static servers (PERSISTENT, LOGIN, LOBBY)...");
-
-            for (ServerInfo server : allStaticServers) {
-                if (server.getIp() == null || server.getPort() == 0) {
+            List<ServerInfo> allDbServers = repository.collection().find().into(new ArrayList<>());
+            List<ServerInfo> staticServersToStart = allDbServers.stream()
+                    .filter(s -> isStaticDefault(s.getName()))
+                    .toList();
+            logger.info("[ServerRegistry] Loading " + staticServersToStart.size() + " static/default servers...");
+            for (ServerInfo server : staticServersToStart) {
+                if (server.getIp() == null || server.getPort() == 0 || server.getIp().equals("0.0.0.0")) {
                     logger.warning("[ServerRegistry] Static server '" + server.getName() + "' is missing IP/Port in DB. Skipping.");
                     continue;
                 }
-
                 registerServerWithVelocity(server);
-
-                if (server.getStatus() == ServerStatus.OFFLINE) {
-                    logger.info("[ServerRegistry] Static server '" + server.getName() + "' is OFFLINE in DB. Attempting to start...");
-                    scaleUpStaticServer(server);
-                }
-                else if (server.getStatus() == ServerStatus.STARTING || server.getStatus() == ServerStatus.STOPPING) {
-                    logger.warning("[ServerRegistry] Static server '" + server.getName() + "' found in state " + server.getStatus() + ". Forcing restart.");
-                    server.setStatus(ServerStatus.OFFLINE);
-                    repository.save(server);
+                if (server.getStatus() != ServerStatus.ONLINE) {
+                    logger.info("[ServerRegistry] Static server '" + server.getName() + "' is not ONLINE (" + server.getStatus() + "). Forcing start...");
                     scaleUpStaticServer(server);
                 }
                 if (server.getPlayerCount() != 0) {
@@ -130,38 +125,42 @@ public class ServerRegistryService {
         }
     }
 
-    private void startMonitoringTask() {
-        if (TaskScheduler.getAsyncExecutor() == null || TaskScheduler.getAsyncExecutor().isShutdown()) {
-            logger.severe("[ServerRegistry] TaskScheduler not available. Cannot start monitoring task.");
-            return;
-        }
-
-        TaskScheduler.runAsyncTimer(() -> {
-            try {
-                checkServerScaling();
-            } catch (Exception e) {
-                logger.log(Level.SEVERE, "[ServerRegistry] Error in server monitoring loop.", e);
-            }
-        }, 15, 10, TimeUnit.SECONDS);
-
-        logger.info("[ServerRegistry] Server monitoring and scaling task started.");
-    }
-
-    private void startHealthCheckTask() {
+    private void startHealthCheckAndScalingTask() {
         if (healthCheckTask != null && !healthCheckTask.isDone()) {
-            logger.fine("[ServerRegistry] Health Check Task is already running.");
             return;
         }
-
         healthCheckTask = TaskScheduler.runAsyncTimer(() -> {
             try {
                 runHealthCheck();
+                checkServerScaling();
             } catch (Exception e) {
-                logger.log(Level.SEVERE, "[ServerRegistry] Critical error in Pterodactyl Health Check loop.", e);
+                logger.log(Level.SEVERE, "[ServerRegistry] Critical error in combined Health/Scaling Check loop.", e);
             }
-        }, 30, 60, TimeUnit.SECONDS);
+        }, 30, 15, TimeUnit.SECONDS);
+        logger.info("[ServerRegistry] Health Check & Scaling Task (Pterodactyl <-> DB) started.");
+    }
 
-        logger.info("[ServerRegistry] Health Check Task (Pterodactyl -> DB) started.");
+    public void handleServerReadySignal(String serverName) {
+        TaskScheduler.runAsync(() -> {
+            try {
+                Optional<ServerInfo> opt = repository.findByName(serverName);
+                if (opt.isPresent()) {
+                    ServerInfo server = opt.get();
+
+                    if (server.getStatus() == ServerStatus.ONLINE) return;
+
+                    logger.info("[ServerRegistry] Servidor '" + serverName + "' confirmou inicialização completa via Redis. Marcando como ONLINE.");
+
+                    server.setStatus(ServerStatus.ONLINE);
+                    server.setPlayerCount(0);
+                    repository.save(server);
+
+                    registerServerWithVelocity(server);
+                }
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Erro ao processar sinal READY para " + serverName, e);
+            }
+        });
     }
 
     private void runHealthCheck() {
@@ -175,7 +174,18 @@ public class ServerRegistryService {
         }
 
         for (ServerInfo server : allDbServers) {
-            if (server.getStatus() == ServerStatus.STOPPING) continue;
+            if (isStaticDefault(server.getName()) && server.getStatus() == ServerStatus.STOPPING) {
+                continue;
+            }
+            if (server.getPterodactylId() == null || server.getPterodactylId().isEmpty() || server.getPterodactylId().equals("NOT_SET")) {
+                continue;
+            }
+            if (server.getInternalPteroId() == 0 && !isStaticDefault(server.getName())) {
+                logger.warning("[ServerRegistry] Health Check: Dynamic server '" + server.getName() + "' has missing InternalPteroId(0). Deleting from DB.");
+                repository.delete(Filters.eq("_id", server.getName()));
+                unregisterServerFromVelocity(server.getName());
+                continue;
+            }
 
             pterodactylService.getServerDetails(server.getPterodactylId())
                     .whenComplete((detailsOpt, ex) -> {
@@ -183,30 +193,56 @@ public class ServerRegistryService {
                             logger.log(Level.WARNING, "[ServerRegistry] Health Check: Failed to get Pterodactyl details for " + server.getName(), ex);
                             return;
                         }
+
                         if (detailsOpt.isEmpty()) {
-                            logger.warning("[ServerRegistry] Health Check: No details received for " + server.getName() + " (Pterodactyl API failed?).");
+                            logger.warning("[ServerRegistry] Health Check: No details received for " + server.getName() + " (API failed or server deleted externally?).");
+                            if (!isStaticDefault(server.getName())) {
+                                logger.warning("[ServerRegistry] [Health Check] Deleting '" + server.getName() + "' from DB as it was not found on Pterodactyl.");
+                                repository.delete(Filters.eq("_id", server.getName()));
+                                unregisterServerFromVelocity(server.getName());
+                            }
                             return;
                         }
 
                         ServerStatus pteroStatus = parsePteroState(detailsOpt.get());
-                        ServerStatus oldStatus = server.getStatus();
+                        ServerStatus dbStatus = server.getStatus();
 
-                        if (pteroStatus != oldStatus) {
-                            logger.info("[ServerRegistry] [Health Check] Discrepancy detected for '" + server.getName() + "'. DB: " + oldStatus + ", Ptero: " + pteroStatus + ". Updating DB.");
-
-                            server.setStatus(pteroStatus);
-                            if (pteroStatus == ServerStatus.OFFLINE) {
+                        if (pteroStatus == ServerStatus.OFFLINE || pteroStatus == ServerStatus.STOPPING) {
+                            if (dbStatus != ServerStatus.OFFLINE) {
+                                logger.info("[ServerRegistry] " + server.getName() + " morreu/parou no Pterodactyl. Marcando OFFLINE.");
+                                server.setStatus(ServerStatus.OFFLINE);
                                 server.setPlayerCount(0);
+                                repository.save(server);
                                 unregisterServerFromVelocity(server.getName());
                             }
-                            repository.save(server);
 
-                            if (pteroStatus == ServerStatus.ONLINE) {
-                                registerServerWithVelocity(server);
-                                logger.info("[ServerRegistry] [Health Check] Forçando re-registro no Velocity para '" + server.getName() + "' (ONLINE).");
+                            if (!isStaticDefault(server.getName()) && dbStatus == ServerStatus.STOPPING) {
+                                logger.info("[ServerRegistry] [Health Check] Dynamic server '" + server.getName() + "' is OFFLINE (was STOPPING). Deleting from Pterodactyl and MongoDB...");
+
+                                pterodactylService.deletePterodactylServer(server.getInternalPteroId())
+                                        .thenAccept(deleted -> {
+                                            if (deleted) {
+                                                repository.delete(Filters.eq("_id", server.getName()));
+                                                logger.info("[ServerRegistry] [Health Check] Server '" + server.getName() + "' deleted successfully.");
+                                            } else {
+                                                logger.severe("[ServerRegistry] [Health Check] Failed to delete server '" + server.getName() + "' from Pterodactyl. Will retry later.");
+                                            }
+                                        });
                             }
-                        } else {
-                            logger.finer("[ServerRegistry] Health Check: Status OK for " + server.getName() + " (" + pteroStatus + ")");
+                            return;
+                        }
+
+                        if (pteroStatus == ServerStatus.ONLINE) {
+                            if (dbStatus == ServerStatus.OFFLINE) {
+                                logger.info("[ServerRegistry] " + server.getName() + " detetado como 'running' no Pterodactyl. Marcando como STARTING (aguardando Redis).");
+                                server.setStatus(ServerStatus.STARTING);
+                                repository.save(server);
+                            }
+
+                            if (dbStatus == ServerStatus.ONLINE && proxyServer.getServer(server.getName()).isEmpty()) {
+                                logger.info("[ServerRegistry] " + server.getName() + " está ONLINE no DB mas falta no Proxy. Registrando.");
+                                registerServerWithVelocity(server);
+                            }
                         }
                     });
         }
@@ -214,18 +250,12 @@ public class ServerRegistryService {
 
     private ServerStatus parsePteroState(JsonNode details) {
         String pteroState = details.path("attributes").path("current_state").asText("offline").toLowerCase();
-
-        switch (pteroState) {
-            case "running":
-                return ServerStatus.ONLINE;
-            case "starting":
-                return ServerStatus.STARTING;
-            case "stopping":
-                return ServerStatus.STOPPING;
-            case "offline":
-            default:
-                return ServerStatus.OFFLINE;
-        }
+        return switch (pteroState) {
+            case "running" -> ServerStatus.ONLINE;
+            case "starting" -> ServerStatus.STARTING;
+            case "stopping" -> ServerStatus.STOPPING;
+            default -> ServerStatus.OFFLINE;
+        };
     }
 
     private void checkServerScaling() {
@@ -236,10 +266,10 @@ public class ServerRegistryService {
                     .filter(s -> s.getStatus() == ServerStatus.ONLINE || s.getStatus() == ServerStatus.STARTING)
                     .mapToInt(ServerInfo::getMaxPlayersVip)
                     .sum();
+            totalMaxPlayers = Math.max(500, totalMaxPlayers);
 
             try (Jedis jedis = RedisManager.getResource()) {
                 jedis.setex(RedisChannel.GLOBAL_NETWORK_MAX_PLAYERS.getName(), 20, String.valueOf(totalMaxPlayers));
-                logger.finer("[ServerRegistry] Network max players (" + totalMaxPlayers + ") recalculated and saved to Redis.");
             } catch (Exception e) {
                 logger.log(Level.WARNING, "[ServerRegistry] Failed to save global network max players to Redis.", e);
             }
@@ -253,14 +283,6 @@ public class ServerRegistryService {
                     .entrySet().stream()
                     .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().intValue()));
 
-            List<ServerInfo> allOnlineLobbies = allDbServers.stream()
-                    .filter(s -> (s.getType() == ServerType.LOBBY || s.getType() == ServerType.LOBBY_AUTO) && s.getStatus() == ServerStatus.ONLINE)
-                    .toList();
-
-            List<ServerInfo> onlineGameBw = allDbServers.stream()
-                    .filter(s -> s.getType() == ServerType.GAME_BW && s.getStatus() == ServerStatus.ONLINE)
-                    .toList();
-
             for (ServerInfo server : allDbServers) {
                 boolean needsSave = false;
                 int newCount = onlinePlayerCounts.getOrDefault(server.getName(), 0);
@@ -269,21 +291,18 @@ public class ServerRegistryService {
                         server.setPlayerCount(newCount);
                         needsSave = true;
                     }
-                }
-                else if (server.getPlayerCount() != 0) {
+                } else if (server.getPlayerCount() != 0) {
                     server.setPlayerCount(0);
                     needsSave = true;
                 }
                 if (needsSave) {
                     repository.save(server);
-                    logger.finer("[ServerRegistry] Player count updated for '" + server.getName() + "': " + newCount);
                 }
             }
 
             List<ServerInfo> staticServers = allDbServers.stream()
-                    .filter(s -> s.getType() == ServerType.LOBBY || s.getType() == ServerType.LOGIN || s.getType() == ServerType.PERSISTENT)
+                    .filter(s -> isStaticDefault(s.getName()))
                     .toList();
-
             for (ServerInfo server : staticServers) {
                 if (server.getStatus() == ServerStatus.OFFLINE) {
                     logger.warning("[ServerRegistry] Static server '" + server.getName() + "' is OFFLINE. Attempting restart...");
@@ -291,11 +310,10 @@ public class ServerRegistryService {
                 }
             }
 
-            List<ServerInfo> dynamicServers = allDbServers.stream()
-                    .filter(s -> s.getType() == ServerType.LOBBY_AUTO || s.getType() == ServerType.GAME_BW)
-                    .toList();
-
-            for (ServerInfo server : dynamicServers) {
+            for (ServerInfo server : allDbServers) {
+                if (isStaticDefault(server.getName()) || server.getType() != ServerType.LOBBY) {
+                    continue;
+                }
                 if (server.getStatus() != ServerStatus.ONLINE) {
                     emptySinceTimestamp.remove(server.getName());
                     continue;
@@ -305,7 +323,7 @@ public class ServerRegistryService {
                     long emptySince = emptySinceTimestamp.computeIfAbsent(server.getName(), k -> System.currentTimeMillis());
                     if (System.currentTimeMillis() - emptySince > SERVER_EMPTY_SHUTDOWN_MS) {
                         logger.info("[ServerRegistry] Dynamic server '" + server.getName() + "' empty for > 30s. Shutting down...");
-                        scaleDownServer(server);
+                        scaleDownDynamicServer(server);
                         emptySinceTimestamp.remove(server.getName());
                     }
                 } else {
@@ -313,12 +331,20 @@ public class ServerRegistryService {
                 }
             }
 
+            List<ServerInfo> allLobbyServers = allDbServers.stream()
+                    .filter(s -> s.getType() == ServerType.LOBBY)
+                    .toList();
+            List<ServerInfo> onlineLobbies = allLobbyServers.stream()
+                    .filter(s -> s.getStatus() == ServerStatus.ONLINE)
+                    .toList();
+
             boolean triggerLobbyScaleUp = false;
-            if (allOnlineLobbies.isEmpty()) {
-                logger.warning("[ServerRegistry] No online lobbies! (Not even static lobby-1). Check MongoDB.");
+            if (onlineLobbies.isEmpty()) {
+                logger.warning("[ServerRegistry] No online lobbies! Triggering scale-up.");
+                triggerLobbyScaleUp = true;
             } else {
                 boolean allLobbiesFull = true;
-                for (ServerInfo lobby : allOnlineLobbies) {
+                for (ServerInfo lobby : onlineLobbies) {
                     int playerCount = onlinePlayerCounts.getOrDefault(lobby.getName(), 0);
                     if (playerCount < (lobby.getMaxPlayers() * LOBBY_SCALE_UP_THRESHOLD)) {
                         allLobbiesFull = false;
@@ -326,104 +352,149 @@ public class ServerRegistryService {
                     }
                 }
                 if (allLobbiesFull) {
+                    logger.info("[ServerRegistry] All lobbies are at >" + (LOBBY_SCALE_UP_THRESHOLD * 100) + "% capacity. Triggering scale-up.");
                     triggerLobbyScaleUp = true;
                 }
             }
 
             if (triggerLobbyScaleUp) {
-                long startingLobbyAutoCount = allDbServers.stream()
-                        .filter(s -> s.getType() == ServerType.LOBBY_AUTO && s.getStatus() == ServerStatus.STARTING)
+                long startingLobbyCount = allLobbyServers.stream()
+                        .filter(s -> s.getStatus() == ServerStatus.STARTING)
                         .count();
-                if (startingLobbyAutoCount == 0) {
-                    logger.info("[ServerRegistry] All online lobbies are over 70%. Attempting to start a LOBBY_AUTO...");
-                    scaleUpDynamicServer(ServerType.LOBBY_AUTO);
+
+                if (startingLobbyCount < 2) {
+                    logger.info("[ServerRegistry] Attempting to create a new LOBBY server...");
+                    scaleUpNewServer(ServerType.LOBBY);
                 } else {
-                    logger.fine("[ServerRegistry] LOBBY_AUTO scaling-up paused. " + startingLobbyAutoCount + " already STARTING.");
+                    logger.fine("[ServerRegistry] LOBBY scale-up paused. " + startingLobbyCount + " servers already STARTING.");
                 }
             }
 
-            long startingGameBwCount = allDbServers.stream()
-                    .filter(s -> s.getType() == ServerType.GAME_BW && s.getStatus() == ServerStatus.STARTING)
-                    .count();
-            if (onlineGameBw.size() < GAME_BW_MIN_ROOMS && startingGameBwCount == 0) {
-                int needed = GAME_BW_MIN_ROOMS - onlineGameBw.size();
-                logger.info("[ServerRegistry] Below minimum of " + GAME_BW_MIN_ROOMS + " Game rooms (BedWars). Starting " + needed + "...");
-                scaleUpDynamicServer(ServerType.GAME_BW);
-            } else if (startingGameBwCount > 0) {
-                logger.fine("[ServerRegistry] GAME_BW scaling-up paused. " + startingGameBwCount + " already STARTING.");
-            }
-
         } catch (MongoException e) {
-            logger.log(Level.SEVERE, "[ServerRegistry] MongoDB access error during server monitoring. Current cycle skipped.", e);
+            logger.log(Level.SEVERE, "[ServerRegistry] MongoDB error in scaling loop.", e);
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "[ServerRegistry] Unexpected error in server monitoring loop.", e);
+            logger.log(Level.SEVERE, "[ServerRegistry] Unexpected error in scaling loop.", e);
         }
     }
 
-    private void scaleUpDynamicServer(ServerType type) {
-        Optional<ServerInfo> serverToStartOpt = repository.findByTypeAndStatus(type, ServerStatus.OFFLINE)
-                .stream()
-                .findFirst();
+    public boolean isStaticDefault(String serverName) {
+        if (serverName == null) return false;
+        for (DefaultServer ds : DefaultServer.values()) {
+            if (ds.getName().equalsIgnoreCase(serverName)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
-        if (serverToStartOpt.isEmpty()) {
-            logger.warning("[ServerRegistry] Request to start server type " + type + ", but no more OFFLINE servers available in DB.");
+    private String findNextAvailableLobbyName() {
+        try {
+            Set<Integer> existingNumbers = new HashSet<>();
+
+            repository.collection().find(Filters.regex("_id", "^lobby-(\\d+)$", "i"))
+                    .projection(Projections.include("_id"))
+                    .forEach(doc -> {
+                        Matcher matcher = LOBBY_NAME_PATTERN.matcher(doc.getName());
+                        if (matcher.matches()) {
+                            try {
+                                existingNumbers.add(Integer.parseInt(matcher.group(1)));
+                            } catch (NumberFormatException e) {
+                            }
+                        }
+                    });
+
+            existingNumbers.add(1);
+
+            int i = 1;
+            while (existingNumbers.contains(i)) {
+                i++;
+            }
+
+            String newName = "lobby-" + i;
+            logger.info("[ServerRegistry] Found next available name: " + newName);
+            return newName;
+
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "[ServerRegistry] Failed to find next available lobby name", e);
+            return null;
+        }
+    }
+
+
+    private void scaleUpNewServer(ServerType type) {
+        String serverName = findNextAvailableLobbyName();
+        if (serverName == null) {
+            logger.severe("[ServerRegistry] Failed to find an available server name. Aborting scale-up.");
             return;
         }
 
-        ServerInfo serverToStart = serverToStartOpt.get();
+        logger.info("[ServerRegistry] Attempting to create Pterodactyl server for: " + serverName);
 
-        serverToStart.setStatus(ServerStatus.STARTING);
-        serverToStart.setPlayerCount(0);
-        repository.save(serverToStart);
-        logger.info("[ServerRegistry] Starting dynamic server '" + serverToStart.getName() + "' (ID: " + serverToStart.getPterodactylId() + ")...");
-
-        pterodactylService.startServer(serverToStart.getPterodactylId())
-                .thenAccept(success -> {
-                    if (success) {
-                        logger.info("[ServerRegistry] 'start' command sent for '" + serverToStart.getName() + "'. Awaiting Health Check.");
-                    } else {
-                        logger.severe("[ServerRegistry] Failed to start server '" + serverToStart.getName() + "' via Pterodactyl API.");
-                        serverToStart.setStatus(ServerStatus.OFFLINE);
-                        repository.save(serverToStart);
+        pterodactylService.createPterodactylServer(serverName, type)
+                .thenAccept(serverInfoOpt -> {
+                    if (serverInfoOpt.isEmpty()) {
+                        logger.severe("[ServerRegistry] Failed to CREATE Pterodactyl server for " + serverName);
+                        return;
                     }
+
+                    ServerInfo newServer = serverInfoOpt.get();
+                    newServer.setStatus(ServerStatus.STARTING);
+
+                    try {
+                        repository.save(newServer);
+                        logger.info("[ServerRegistry] New ServerInfo for '" + serverName + "' saved to MongoDB.");
+                    } catch (Exception e) {
+                        logger.log(Level.SEVERE, "[ServerRegistry] Failed to save new ServerInfo to MongoDB. Deleting Pterodactyl server...", e);
+                        pterodactylService.deletePterodactylServer(newServer.getInternalPteroId());
+                        return;
+                    }
+
+                    pterodactylService.startServer(newServer.getPterodactylId())
+                            .thenAccept(success -> {
+                                if (success) {
+                                    logger.info("[ServerRegistry] 'start' command sent to new server '" + serverName + "'.");
+                                } else {
+                                    logger.severe("[ServerRegistry] Failed to send 'start' command to new server '" + serverName + "'. Deleting...");
+                                    repository.delete(Filters.eq("_id", newServer.getName()));
+                                    pterodactylService.deletePterodactylServer(newServer.getInternalPteroId());
+                                }
+                            });
                 })
                 .exceptionally(ex -> {
-                    logger.log(Level.SEVERE, "[ServerRegistry] Exception while starting server " + serverToStart.getName(), ex);
-                    serverToStart.setStatus(ServerStatus.OFFLINE);
-                    repository.save(serverToStart);
+                    logger.log(Level.SEVERE, "[ServerRegistry] Exception in server creation chain for " + serverName, ex);
                     return null;
                 });
     }
 
     private void scaleUpStaticServer(ServerInfo server) {
-        if (server.getStatus() != ServerStatus.OFFLINE) {
-            server.setStatus(ServerStatus.OFFLINE);
+        if (!isStaticDefault(server.getName())) {
+            logger.warning("scaleUpStaticServer called for a non-static server: " + server.getName());
+            return;
         }
 
         server.setStatus(ServerStatus.STARTING);
         server.setPlayerCount(0);
         repository.save(server);
-        logger.info("[ServerRegistry] Re-starting static server '" + server.getName() + "' (ID: " + server.getPterodactylId() + ")...");
+        logger.info("[ServerRegistry] (Re)starting static server '" + server.getName() + "'...");
 
         pterodactylService.startServer(server.getPterodactylId())
                 .thenAccept(success -> {
                     if (success) {
-                        logger.info("[ServerRegistry] 'start' command sent for static server '" + server.getName() + "'. Awaiting Health Check.");
+                        logger.info("[ServerRegistry] 'start' command sent for static '" + server.getName() + "'.");
                     } else {
-                        logger.severe("[ServerRegistry] Failed to re-start static server '" + server.getName() + "' via API.");
+                        logger.severe("[ServerRegistry] Failed to (re)start static server '" + server.getName() + "'. Setting OFFLINE.");
                         server.setStatus(ServerStatus.OFFLINE);
                         repository.save(server);
                     }
-                })
-                .exceptionally(ex -> {
-                    logger.log(Level.SEVERE, "[ServerRegistry] Exception while re-starting static server " + server.getName(), ex);
-                    server.setStatus(ServerStatus.OFFLINE);
-                    repository.save(server);
-                    return null;
                 });
     }
 
-    private void scaleDownServer(ServerInfo server) {
+    private void scaleDownDynamicServer(ServerInfo server) {
+        if (isStaticDefault(server.getName())) {
+            logger.warning("scaleDownDynamicServer called for static server: " + server.getName() + ". Ignoring.");
+            return;
+        }
+
         server.setStatus(ServerStatus.STOPPING);
         server.setPlayerCount(0);
         repository.save(server);
@@ -434,9 +505,9 @@ public class ServerRegistryService {
         pterodactylService.stopServer(server.getPterodactylId())
                 .thenAccept(success -> {
                     if (success) {
-                        logger.info("[ServerRegistry] 'stop' command sent for '" + server.getName() + "'. Awaiting Health Check.");
+                        logger.info("[ServerRegistry] 'stop' command sent for '" + server.getName() + "'. Awaiting Health Check to delete.");
                     } else {
-                        logger.severe("[ServerRegistry] Failed to stop server '" + server.getName() + "' via Pterodactyl API. Reverting status to ONLINE.");
+                        logger.severe("[ServerRegistry] Failed to stop server '" + server.getName() + "'. Reverting to ONLINE.");
                         server.setStatus(ServerStatus.ONLINE);
                         repository.save(server);
                         registerServerWithVelocity(server);
@@ -451,10 +522,13 @@ public class ServerRegistryService {
                 });
     }
 
-
     private void registerServerWithVelocity(ServerInfo serverInfo) {
-        InetSocketAddress address = new InetSocketAddress(serverInfo.getIp(), serverInfo.getPort());
+        if (serverInfo.getIp() == null || serverInfo.getIp().isEmpty() || serverInfo.getIp().equals("0.0.0.0") || serverInfo.getPort() == 0) {
+            logger.warning("[ServerRegistry] Attempted to register server '" + serverInfo.getName() + "' but IP/Port is invalid. Waiting for Health Check.");
+            return;
+        }
 
+        InetSocketAddress address = new InetSocketAddress(serverInfo.getIp(), serverInfo.getPort());
         com.velocitypowered.api.proxy.server.ServerInfo velocityInfo =
                 new com.velocitypowered.api.proxy.server.ServerInfo(serverInfo.getName(), address);
 
@@ -464,26 +538,37 @@ public class ServerRegistryService {
         }
 
         proxyServer.registerServer(velocityInfo);
-        logger.info("[ServerRegistry] Server '" + serverInfo.getName() + "' added to Velocity runtime.");
+        logger.info("[ServerRegistry] Server '" + serverInfo.getName() + "' added to Velocity runtime at " + address);
     }
 
     public void unregisterServerFromVelocity(String serverName) {
         Optional<RegisteredServer> server = proxyServer.getServer(serverName);
         if (server.isPresent()) {
             proxyServer.unregisterServer(server.get().getServerInfo());
-            logger.finer("[ServerRegistry] Server '" + serverName + "' removed from Velocity runtime.");
+            logger.info("[ServerRegistry] Server '" + serverName + "' removed from Velocity runtime.");
         }
     }
 
     public Optional<RegisteredServer> getBestLobby() {
-        List<ServerInfo> onlineLobbies = new ArrayList<>();
-        onlineLobbies.addAll(repository.findByTypeAndStatus(ServerType.LOBBY, ServerStatus.ONLINE));
-        onlineLobbies.addAll(repository.findByTypeAndStatus(ServerType.LOBBY_AUTO, ServerStatus.ONLINE));
+        List<ServerInfo> onlineLobbies;
+        try {
+            onlineLobbies = repository.findByTypeAndStatus(ServerType.LOBBY, ServerStatus.ONLINE);
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "[ServerRegistry] [getBestLobby] Failed to query MongoDB for lobbies", e);
+            return proxyServer.getServer("lobby-1");
+        }
+
 
         if (onlineLobbies.isEmpty()) {
             logger.warning("[ServerRegistry] [getBestLobby] Player tried to find a lobby, but none are ONLINE.");
-            scaleUpDynamicServer(ServerType.LOBBY_AUTO);
-            return Optional.empty();
+            repository.findByName("lobby-1").ifPresent(lobby1 -> {
+                if (lobby1.getStatus() == ServerStatus.OFFLINE) {
+                    logger.warning("[ServerRegistry] [getBestLobby] lobby-1 is offline, attempting to start it.");
+                    scaleUpStaticServer(lobby1);
+                }
+            });
+            scaleUpNewServer(ServerType.LOBBY);
+            return proxyServer.getServer("lobby-1");
         }
 
         RegisteredServer bestChoice = null;
@@ -499,37 +584,38 @@ public class ServerRegistryService {
 
             try {
                 int playerCount = registeredServer.getPlayersConnected().size();
-
                 if (playerCount < lobbyInfo.getMaxPlayers()) {
                     if (playerCount < bestChoicePlayerCount) {
                         bestChoice = registeredServer;
                         bestChoicePlayerCount = playerCount;
                     }
                 }
-
             } catch (Exception e) {
                 logger.warning("[ServerRegistry] Could not get player count for " + lobbyInfo.getName() + ": " + e.getMessage());
             }
         }
 
         if (bestChoice == null) {
-            logger.warning("[ServerRegistry] [getBestLobby] All ONLINE lobbies (" + onlineLobbies.size() + ") are full or inaccessible.");
-            scaleUpDynamicServer(ServerType.LOBBY_AUTO);
+            logger.warning("[ServerRegistry] [getBestLobby] All ONLINE lobbies (" + onlineLobbies.size() + ") are full. Triggering new server.");
+            scaleUpNewServer(ServerType.LOBBY);
+            return proxyServer.getServer("lobby-1").or(() -> onlineLobbies.stream()
+                    .findFirst()
+                    .flatMap(s -> proxyServer.getServer(s.getName())));
         }
 
-        return Optional.ofNullable(bestChoice);
+        return Optional.of(bestChoice);
     }
 
     public void shutdown() {
-        stopHealthCheckTask();
+        stopHealthCheckAndScalingTask();
         logger.info("[ServerRegistry] ServerRegistryService finalized.");
     }
 
-    private void stopHealthCheckTask() {
+    private void stopHealthCheckAndScalingTask() {
         if (healthCheckTask != null) {
             try {
                 healthCheckTask.cancel(false);
-                logger.info("[ServerRegistry] Health Check Task (Pterodactyl) stopped.");
+                logger.info("[ServerRegistry] Health Check & Scaling Task (Pterodactyl) stopped.");
             } catch (Exception e) {
                 logger.log(Level.WARNING, "[ServerRegistry] Error stopping Health Check Task", e);
             } finally {

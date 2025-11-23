@@ -10,6 +10,7 @@ import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileResolver;
 import com.realmmc.controller.shared.sounds.SoundKeys;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
+import com.realmmc.controller.shared.utils.NicknameFormatter;
 import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.realmmc.controller.spigot.Main;
 import com.realmmc.controller.spigot.commands.CommandInterface;
@@ -356,7 +357,7 @@ public class ParticleCommand implements CommandInterface {
                     Player targetOnline = Bukkit.getPlayer(targetUuid);
 
                     if (targetOnline == null || !targetOnline.isOnline()) {
-                        String formattedNick = com.realmmc.controller.shared.utils.NicknameFormatter.getFullFormattedNick(targetUuid);
+                        String formattedNick = NicknameFormatter.getNickname(targetUuid, true, targetProfile.getName());
                         Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NOT_ONLINE)
                                 .with("player", formattedNick));
                         playSound(sender, SoundKeys.ERROR);
@@ -371,7 +372,7 @@ public class ParticleCommand implements CommandInterface {
                     }
 
                     if (particleService.spawnForPlayerOnce(targetOnline, particleId)) {
-                        String formattedNick = com.realmmc.controller.shared.utils.NicknameFormatter.getFullFormattedNick(targetUuid);
+                        String formattedNick = NicknameFormatter.getNickname(targetUuid, true, targetProfile.getName());
                         Messages.send(sender, Message.of(MessageKey.PARTICLE_TESTED)
                                 .with("id", particleId)
                                 .with("player", formattedNick));

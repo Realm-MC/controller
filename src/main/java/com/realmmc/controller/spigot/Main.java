@@ -1,33 +1,32 @@
 package com.realmmc.controller.spigot;
 
-// Core Controller imports
 import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.core.modules.ModuleManager;
 import com.realmmc.controller.core.services.ServiceRegistry;
 
-// Modules imports
 import com.realmmc.controller.modules.scheduler.SchedulerModule;
 import com.realmmc.controller.modules.spigot.SpigotModule;
 
-// Shared services imports
 import com.realmmc.controller.shared.geoip.GeoIPService;
 import com.realmmc.controller.shared.messaging.MessagingSDK;
+import com.realmmc.controller.shared.storage.redis.RedisChannel;
+import com.realmmc.controller.shared.storage.redis.RedisSubscriber;
 
-// Spigot specific entity services imports
+import com.realmmc.controller.spigot.entities.cosmetics.MedalService;
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
 import com.realmmc.controller.spigot.entities.holograms.HologramService;
+import com.realmmc.controller.spigot.entities.nametag.NametagService;
 import com.realmmc.controller.spigot.entities.npcs.NPCService;
 
-// Lombok import
+import com.github.retrooper.packetevents.PacketEvents;
+
 import lombok.Getter;
 
-// Bukkit imports
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.Plugin; // Import Plugin interface
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
-// Java IO and NIO imports
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,30 +34,30 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
-// Logging imports
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class Main extends JavaPlugin {
-    @Getter
-    private static Main instance; // Static instance for easy access
 
-    // Spigot Entity Services
+    @Getter
+    private static Main instance;
+
     @Getter
     private DisplayItemService displayItemService;
     @Getter
     private HologramService hologramService;
     @Getter
     private NPCService npcService;
+    @Getter
+    private NametagService nametagService;
+    @Getter
+    private MedalService medalService;
 
-    // Core Controller Components
     private ModuleManager moduleManager;
     private ServiceRegistry serviceRegistry;
 
-    // Shared Services
     private GeoIPService geoIPService;
 
-    // Logger instance
     private Logger logger;
 
     @Override
@@ -71,9 +70,14 @@ public class Main extends JavaPlugin {
     @Override
     public void onEnable() {
         try {
+            if (PacketEvents.getAPI() == null) {
+                logger.severe("PacketEvents não encontrado! O plugin PacketEvents é obrigatório.");
+                getServer().getPluginManager().disablePlugin(this);
+                return;
+            }
+
             logger.info("Inicializando Controller Core (Spigot - v2)...");
 
-            // --- Criação de Pastas e Cópia de Arquivos Padrão ---
             if (!getDataFolder().exists()) {
                 getDataFolder().mkdirs();
             }
@@ -88,21 +92,16 @@ public class Main extends JavaPlugin {
             saveDefaultConfigResource("holograms.yml");
             saveDefaultConfigResource("npcs.yml");
             saveDefaultConfigResource("particles.yml");
-            // saveDefaultConfig();
 
-            // --- Inicialização de Serviços Core ---
             serviceRegistry = new ServiceRegistry(logger);
 
-            // <<< REGISTRO DA INSTÂNCIA DO PLUGIN >>>
-            serviceRegistry.registerService(Plugin.class, this); // Registra a própria instância do plugin
+            serviceRegistry.registerService(Plugin.class, this);
             logger.info("Instância do Plugin (Main) registrada no ServiceRegistry.");
 
-            // GeoIP
             geoIPService = new GeoIPService(getDataFolder(), logger);
             serviceRegistry.registerService(GeoIPService.class, geoIPService);
             logger.info("GeoIPService registrado.");
 
-            // Messaging
             if (!MessagingSDK.getInstance().isInitialized()) {
                 MessagingSDK.getInstance().initializeForSpigot(messagesDir);
                 logger.info("MessagingSDK inicializado para Spigot.");
@@ -110,42 +109,61 @@ public class Main extends JavaPlugin {
                 logger.warning("Tentativa de reinicializar MessagingSDK ignorada.");
             }
 
-            // --- Inicialização de Serviços de Entidades (Spigot) ---
+            // --- 1. ENTIDADES INDEPENDENTES ---
+            // Estas não dependem do ProfileService, então podem carregar antes dos módulos.
+
             displayItemService = new DisplayItemService();
-            hologramService = new HologramService();
-            npcService = new NPCService(); // O construtor NÃO chama mais o loadSavedNPCs()
-
-            // <<< REGISTRO DOS SERVIÇOS DE ENTIDADES >>>
             serviceRegistry.registerService(DisplayItemService.class, displayItemService);
+
+            hologramService = new HologramService();
             serviceRegistry.registerService(HologramService.class, hologramService);
+
+            npcService = new NPCService();
             serviceRegistry.registerService(NPCService.class, npcService);
-            logger.info("Serviços de Entidades (Display, Hologram, NPC) inicializados e registrados no ServiceRegistry.");
+            getServer().getPluginManager().registerEvents(npcService, this);
 
-            // --- Inicialização do ModuleManager e Módulos ---
+            logger.info("Serviços de Entidades Base (Display, Hologram, NPC) inicializados.");
+
+            // --- 2. CARREGAMENTO DE MÓDULOS ---
+            // Isto inicializa Database, ProfileService, RoleService, etc.
+
             moduleManager = new ModuleManager(logger);
-
-            // Auto-registro de módulos gerais e SPIGOT
             moduleManager.autoRegisterModules(AutoRegister.Platform.SPIGOT, getClass());
-
-            // Registro manual de módulos específicos da plataforma
-            moduleManager.registerModule(new SchedulerModule(null, this, logger)); // Passa 'this' (Plugin)
+            moduleManager.registerModule(new SchedulerModule(null, this, logger));
             moduleManager.registerModule(new SpigotModule(this, logger));
 
-            // Habilita todos os módulos registrados
             moduleManager.enableAllModules();
 
-            // --- Registros Finais ---
-            getServer().getPluginManager().registerEvents(npcService, this);
-            logger.info("NPCService registrado como Listener do Bukkit.");
+            // --- 3. SERVIÇOS DEPENDENTES & REDIS ---
+            // Estes precisam do ProfileService (carregado acima) e do RedisSubscriber.
 
-            // A chamada npcService.loadSavedNPCs() foi movida para SpigotModule.onEnable()
+            RedisSubscriber redisSubscriber = serviceRegistry.requireService(RedisSubscriber.class);
 
-            // Reenvia NPCs para jogadores já online (em caso de /reload)
+            // MedalService
+            medalService = new MedalService();
+            getServer().getPluginManager().registerEvents(medalService, this);
+            // Regista no Redis para receber updates de "Equipar Medalha" instantaneamente
+            redisSubscriber.registerListener(RedisChannel.PROFILES_SYNC, medalService);
+            logger.info("MedalService inicializado, eventos Bukkit e Redis registrados.");
+
+            // NametagService
+            nametagService = new NametagService();
+            serviceRegistry.registerService(NametagService.class, nametagService);
+            getServer().getPluginManager().registerEvents(nametagService, this);
+            // Regista no Redis para receber updates de Prefixo instantaneamente
+            redisSubscriber.registerListener(RedisChannel.PROFILES_SYNC, nametagService);
+            logger.info("NametagService inicializado, eventos Bukkit e Redis registrados.");
+
+            logger.info("Serviços dependentes (Nametag, Medalhas) inicializados após módulos.");
+
+            // Atualização inicial para jogadores que já estão online (caso de /reload)
             for (Player p : Bukkit.getOnlinePlayers()) {
                 try {
                     npcService.resendAllTo(p);
+                    nametagService.updateTag(p);
+                    medalService.updateMedal(p);
                 } catch (Exception e) {
-                    logger.log(Level.WARNING, "Erro ao reenviar NPCs para " + p.getName() + " no onEnable.", e);
+                    logger.log(Level.WARNING, "Erro ao atualizar entidades para " + p.getName() + " no onEnable.", e);
                 }
             }
 
@@ -162,73 +180,70 @@ public class Main extends JavaPlugin {
         try {
             logger.info("Finalizando Controller Core (Spigot - v2)...");
 
-            // --- Desabilita Módulos na Ordem Inversa ---
+            // Desabilita módulos (Database, Profile, etc)
             if (moduleManager != null) {
                 moduleManager.disableAllModules();
             }
 
-            // --- Limpeza de Entidades ---
+            // Limpa entidades visuais
             if (displayItemService != null) {
-                try { displayItemService.clearAll(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao limpar DisplayItems.", e); }
+                try { displayItemService.cleanup(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao limpar DisplayItems.", e); }
             }
             if (hologramService != null) {
                 try { hologramService.clearAll(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao limpar Hologramas.", e); }
             }
             if (npcService != null) {
-                try { npcService.despawnAll(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao despawn NPCs.", e); }
+                try { npcService.cleanup(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao limpar NPCs.", e); }
+            }
+            if (medalService != null) {
+                try { medalService.removeAll(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao limpar Medalhas.", e); }
             }
 
         } finally {
-            // --- Finaliza Serviços Core ---
+            // Fecha conexões auxiliares
             if (geoIPService != null) {
                 try { geoIPService.close(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao fechar GeoIPService.", e); }
             }
             MessagingSDK.getInstance().shutdown();
 
-            // --- Desregistra Serviços do Registry ---
-            ServiceRegistry currentRegistry = ServiceRegistry.getInstance(); // Pega instância atual
+            // Remove serviços do registry
+            ServiceRegistry currentRegistry = ServiceRegistry.getInstance();
             if (currentRegistry != null) {
-                try { currentRegistry.unregisterService(NPCService.class); } catch (Exception e) { /* Log */ }
-                try { currentRegistry.unregisterService(HologramService.class); } catch (Exception e) { /* Log */ }
-                try { currentRegistry.unregisterService(DisplayItemService.class); } catch (Exception e) { /* Log */ }
-                try { currentRegistry.unregisterService(GeoIPService.class); } catch (Exception e) { /* Log */ }
-                try { currentRegistry.unregisterService(Plugin.class); } catch (Exception e) { /* Log */ }
-                logger.info("Serviços desregistrados do ServiceRegistry.");
+                try { currentRegistry.unregisterService(NametagService.class); } catch (Exception e) {}
+                try { currentRegistry.unregisterService(NPCService.class); } catch (Exception e) {}
+                try { currentRegistry.unregisterService(HologramService.class); } catch (Exception e) {}
+                try { currentRegistry.unregisterService(DisplayItemService.class); } catch (Exception e) {}
+                try { currentRegistry.unregisterService(GeoIPService.class); } catch (Exception e) {}
+                try { currentRegistry.unregisterService(Plugin.class); } catch (Exception e) {}
             }
 
-            // --- Limpa Referências ---
+            // Limpa referências estáticas
             serviceRegistry = null;
             moduleManager = null;
             displayItemService = null;
             hologramService = null;
             npcService = null;
+            nametagService = null;
             geoIPService = null;
+            medalService = null;
 
-            instance = null; // Limpa instância estática
+            instance = null;
 
             logger.info("Controller Core (Spigot - v2) finalizado.");
         }
     }
 
-    /**
-     * Salva um recurso da pasta 'resources' para a pasta de dados do plugin,
-     * apenas se ele não existir.
-     */
     private void saveDefaultConfigResource(String resourceName) {
         File file = new File(getDataFolder(), resourceName);
         if (!file.exists()) {
             try {
                 saveResource(resourceName, false);
-                logger.info("Arquivo padrão '" + resourceName + "' copiado para a pasta de dados.");
             } catch (IllegalArgumentException e) {
-                logger.warning("Recurso '" + resourceName + "' não encontrado no JAR para salvar como padrão.");
+                logger.warning("Recurso '" + resourceName + "' não encontrado no JAR.");
             }
         }
     }
 
-    /**
-     * Copia um recurso interno para um local específico se não existir.
-     */
     private void copyResourceIfNotExists(String resourcePath, Path targetPath) throws IOException {
         if (Files.notExists(targetPath)) {
             Path parentDir = targetPath.getParent();
@@ -236,17 +251,8 @@ public class Main extends JavaPlugin {
                 Files.createDirectories(parentDir);
             }
             try (InputStream stream = getClass().getResourceAsStream("/" + resourcePath)) {
-                if (stream == null) {
-                    logger.warning("Recurso não encontrado no JAR: /" + resourcePath);
-                    return;
-                }
+                if (stream == null) return;
                 Files.copy(stream, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                logger.finer("Recurso padrão copiado: /" + resourcePath + " -> " + targetPath);
-            } catch (IOException e) {
-                logger.log(Level.SEVERE, "Falha ao copiar recurso padrão: /" + resourcePath, e);
-                throw e;
-            } catch (NullPointerException e) {
-                logger.warning("NPE ao tentar obter recurso: /" + resourcePath + ". Verifique o caminho.");
             }
         }
     }

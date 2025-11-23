@@ -3,19 +3,19 @@ package com.realmmc.controller.modules.server;
 import com.realmmc.controller.core.modules.AbstractCoreModule;
 import com.realmmc.controller.core.modules.AutoRegister;
 import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.proxy.listeners.ServerStatusListener;
+import com.realmmc.controller.shared.storage.redis.RedisChannel;
+import com.realmmc.controller.shared.storage.redis.RedisSubscriber;
+
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * Módulo responsável por gerir o ciclo de vida e registo
- * de servidores (Lobbies, Minigames) via Pterodactyl.
- * Este módulo deve correr APENAS NO PROXY (VELOCITY).
- */
 @AutoRegister(platforms = {AutoRegister.Platform.PROXY})
 public class ServerManagerModule extends AbstractCoreModule {
 
     private PterodactylService pterodactylService;
     private ServerRegistryService serverRegistryService;
+    private ServerStatusListener statusListener;
 
     public ServerManagerModule(Logger logger) {
         super(logger);
@@ -26,29 +26,32 @@ public class ServerManagerModule extends AbstractCoreModule {
     @Override public String getDescription() { return "Gestor de servidores dinâmicos (Pterodactyl Auto-Scaling)."; }
 
     @Override public String[] getDependencies() {
-        // <<< CORREÇÃO: Dependência circular removida >>>
-        // Precisa apenas do DB e do Scheduler. O ProxyServer.class é injetado pelo Proxy.java (main).
         return new String[]{"Database", "SchedulerModule"};
     }
 
-    // <<< CORREÇÃO: Prioridade 40 (para carregar ANTES do ProxyModule) >>>
     @Override public int getPriority() { return 40; }
 
     @Override
     protected void onEnable() throws Exception {
         try {
-            // 1. Regista o PterodactylService
             this.pterodactylService = new PterodactylService(logger);
             ServiceRegistry.getInstance().registerService(PterodactylService.class, this.pterodactylService);
             logger.info("PterodactylService registado.");
 
-            // 2. Regista e inicializa o ServerRegistryService (o cérebro)
             this.serverRegistryService = new ServerRegistryService(logger);
             ServiceRegistry.getInstance().registerService(ServerRegistryService.class, this.serverRegistryService);
             logger.info("ServerRegistryService registado.");
 
-            // 3. Inicia a lógica do serviço
             this.serverRegistryService.initialize();
+
+            try {
+                RedisSubscriber redis = ServiceRegistry.getInstance().requireService(RedisSubscriber.class);
+                this.statusListener = new ServerStatusListener();
+                redis.registerListener(RedisChannel.SERVER_STATUS_UPDATE, this.statusListener);
+                logger.info("ServerStatusListener (Redis) registado.");
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Falha ao registar ServerStatusListener", e);
+            }
 
             logger.info("Módulo ServerManager iniciado com sucesso.");
 
@@ -67,14 +70,17 @@ public class ServerManagerModule extends AbstractCoreModule {
 
     @Override
     protected void onDisable() throws Exception {
-        // 1. Finaliza o ServerRegistryService (para a tarefa de monitorização)
+        if (this.statusListener != null) {
+            ServiceRegistry.getInstance().getService(RedisSubscriber.class)
+                    .ifPresent(r -> r.unregisterListener(RedisChannel.SERVER_STATUS_UPDATE));
+        }
+
         if (this.serverRegistryService != null) {
             this.serverRegistryService.shutdown();
             ServiceRegistry.getInstance().unregisterService(ServerRegistryService.class);
             logger.info("ServerRegistryService finalizado e desregistado.");
         }
 
-        // 2. Desregista o PterodactylService
         if (this.pterodactylService != null) {
             ServiceRegistry.getInstance().unregisterService(PterodactylService.class);
             logger.info("PterodactylService desregistado.");
@@ -82,6 +88,7 @@ public class ServerManagerModule extends AbstractCoreModule {
 
         this.serverRegistryService = null;
         this.pterodactylService = null;
+        this.statusListener = null;
         logger.info("Módulo ServerManager finalizado.");
     }
 }

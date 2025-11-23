@@ -16,10 +16,13 @@ public class ServerInfo {
     @BsonId
     private String name;
 
-    /** O ID alfanumérico do servidor no painel Pterodactyl (ex: "e0d9ff") */
+    /** O ID alfanumérico (UUID/short ID) usado pela API de CLIENTE (ex: "d79f737e") */
     private String pterodactylId;
 
-    /** O nome de exibição formatado (ex: "Lobby 1") */
+    /** O ID numérico INTERNO usado pela API de APLICAÇÃO (ex: 42) */
+    private int internalPteroId;
+
+    /** O ID alfanumérico do servidor no painel Pterodactyl (ex: "e0d9ff") */
     private String displayName;
 
     /** O endereço IP do nó (Node) que hospeda este servidor. */
@@ -46,9 +49,7 @@ public class ServerInfo {
     @Builder.Default
     private String minGroup = "default";
 
-    // <<< NOVO CAMPO ADICIONADO >>>
     /** A contagem atual de jogadores neste servidor. */
     @Builder.Default
     private int playerCount = 0;
-    // <<< FIM DO NOVO CAMPO >>>
 }

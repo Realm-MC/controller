@@ -3,131 +3,161 @@ package com.realmmc.controller.shared.utils;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.PlayerSessionData;
 import com.realmmc.controller.modules.role.RoleService;
+import com.realmmc.controller.shared.cosmetics.medals.Medal;
+import com.realmmc.controller.shared.profile.Profile;
+import com.realmmc.controller.shared.profile.ProfileService;
 import com.realmmc.controller.shared.role.Role;
 import com.realmmc.controller.shared.session.SessionTrackerService;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public final class NicknameFormatter {
 
     public static final Logger logger = Logger.getLogger(NicknameFormatter.class.getName());
 
-    private static final RoleService roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
-    private static final SessionTrackerService sessionTrackerService = ServiceRegistry.getInstance().requireService(SessionTrackerService.class);
+    private static RoleService roleService;
+    private static SessionTrackerService sessionTrackerService;
+    private static ProfileService profileService;
 
     private NicknameFormatter() {
     }
 
-    private static Optional<PlayerSessionData> getSessionDataFromCacheOnly(UUID uuid) {
-        if (uuid == null) {
+    private static void ensureServices() {
+        if (roleService == null) {
+            ServiceRegistry.getInstance().getService(RoleService.class).ifPresent(s -> roleService = s);
+        }
+        if (sessionTrackerService == null) {
+            ServiceRegistry.getInstance().getService(SessionTrackerService.class).ifPresent(s -> sessionTrackerService = s);
+        }
+        if (profileService == null) {
+            ServiceRegistry.getInstance().getService(ProfileService.class).ifPresent(s -> profileService = s);
+        }
+    }
+
+    private static Optional<PlayerSessionData> getSessionDataOrLoad(UUID uuid) {
+        ensureServices();
+        if (roleService == null || uuid == null) return Optional.empty();
+
+        Optional<PlayerSessionData> cachedData = roleService.getSessionDataFromCache(uuid);
+        if (cachedData.isPresent()) return cachedData;
+
+        try {
+            return Optional.ofNullable(roleService.loadPlayerDataAsync(uuid).join());
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "[NicknameFormatter] Failed to load session data for " + uuid, e);
             return Optional.empty();
         }
-        Optional<PlayerSessionData> cachedData = roleService.getSessionDataFromCache(uuid);
-        if (cachedData.isEmpty()) {
-            logger.finest("[NicknameFormatter] Cache miss (local) para PlayerSessionData (UUID: " + uuid + "). O nome não será formatado nesta passagem.");
-        }
-        return cachedData;
     }
 
-    public static String getName(UUID uuid) {
-        return sessionTrackerService.getSessionField(uuid, "username")
-                .orElse("Unknown");
-    }
+    private static String resolveName(UUID uuid) {
+        ensureServices();
+        if (uuid == null) return "Unknown";
 
-    public static String getUsername(UUID uuid) {
-        String name = getName(uuid);
-        return name.equals("Unknown") ? "unknown" : name.toLowerCase();
-    }
-
-    public static String getNick(UUID uuid, boolean withPrefix) {
-        String originalName = getName(uuid);
-        if (originalName.equals("Unknown")) {
-            return originalName;
+        if (sessionTrackerService != null) {
+            Optional<String> redisName = sessionTrackerService.getSessionField(uuid, "username");
+            if (redisName.isPresent()) return redisName.get();
         }
 
-        Optional<PlayerSessionData> sessionDataOpt = getSessionDataFromCacheOnly(uuid);
-        if (sessionDataOpt.isEmpty()) {
-            logger.finer("[NicknameFormatter] Não foi possível obter dados de sessão (cache-only) para getNick(UUID: " + uuid + "). Retornando nome original.");
-            return originalName;
-        }
-
-        Role primaryRole = sessionDataOpt.get().getPrimaryRole();
-
-        if (withPrefix) {
-            String prefix = primaryRole.getPrefix();
-            return (prefix != null && !prefix.isEmpty()) ? prefix + originalName : originalName;
-        } else {
-            String color = primaryRole.getColor();
-            return (color != null && !color.isEmpty()) ? color + originalName : originalName;
-        }
-    }
-
-    public static String getTagsGroup(UUID uuid) {
-        Optional<PlayerSessionData> sessionDataOpt = getSessionDataFromCacheOnly(uuid);
-        if (sessionDataOpt.isEmpty()) {
-            logger.finer("[NicknameFormatter] Não foi possível obter dados de sessão (cache-only) para getTagsGroup(UUID: " + uuid + "). Retornando string vazia.");
-            return "";
-        }
-
-        Role primaryRole = sessionDataOpt.get().getPrimaryRole();
-        String prefix = primaryRole.getPrefix();
-        String suffix = primaryRole.getSuffix();
-
-        StringBuilder tags = new StringBuilder();
-        boolean hasPrefix = prefix != null && !prefix.isEmpty();
-        boolean hasSuffix = suffix != null && !suffix.isEmpty();
-
-        if (hasPrefix) {
-            tags.append(prefix.trim());
-        }
-        if (hasPrefix && hasSuffix) {
-            tags.append(" ");
-        }
-        if (hasSuffix) {
-            tags.append(suffix.trim());
-        }
-        return tags.toString();
-    }
-
-    public static String getFullFormattedNick(UUID uuid) {
-        String originalName = getName(uuid);
-        if (originalName.equals("Unknown")) {
-            return originalName;
-        }
-
-        Optional<PlayerSessionData> sessionDataOpt = getSessionDataFromCacheOnly(uuid);
-        if (sessionDataOpt.isEmpty()) {
-            logger.finer("[NicknameFormatter] Não foi possível obter dados de sessão (cache-only) para getFullFormattedNick(UUID: " + uuid + "). Retornando nome original.");
-            return originalName;
-        }
-
-        Role primaryRole = sessionDataOpt.get().getPrimaryRole();
-        String prefix = primaryRole.getPrefix();
-        String suffix = primaryRole.getSuffix();
-
-        StringBuilder formattedNick = new StringBuilder();
-
-        boolean hasPrefix = prefix != null && !prefix.isEmpty();
-        boolean hasSuffix = suffix != null && !suffix.isEmpty();
-
-        if (hasPrefix) {
-            formattedNick.append(prefix);
-            if (!prefix.endsWith(" ") && !prefix.matches(".*<[^>]+>$")) {
-                formattedNick.append(" ");
+        if (profileService != null) {
+            try {
+                Optional<Profile> profile = profileService.getByUuid(uuid);
+                if (profile.isPresent()) return profile.get().getName();
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "[NicknameFormatter] Error fetching name from profile: " + e.getMessage());
             }
         }
 
-        formattedNick.append(originalName);
+        return "Unknown";
+    }
 
-        if (hasSuffix) {
+    private static String resolveMedalId(UUID uuid) {
+        String medalId = "none";
+        if (sessionTrackerService != null) {
+            medalId = sessionTrackerService.getSessionField(uuid, "medal").orElse("none");
+        }
+
+        if ("none".equals(medalId) && profileService != null) {
+            try {
+                Optional<Profile> p = profileService.getByUuid(uuid);
+                if (p.isPresent()) medalId = p.get().getEquippedMedal();
+            } catch (Exception ignored) {}
+        }
+        return medalId;
+    }
+
+    public static String getName(UUID uuid, boolean colored) {
+        String name = resolveName(uuid);
+        if (name.equals("Unknown")) return name;
+        if (!colored) return name;
+
+        Optional<PlayerSessionData> data = getSessionDataOrLoad(uuid);
+        if (data.isEmpty()) return name;
+
+        String color = data.get().getPrimaryRole().getColor();
+        if (color == null) color = "<gray>";
+
+        return color + name + "<reset>";
+    }
+
+    public static String getPrefix(UUID uuid, boolean includeMedal) {
+        Optional<PlayerSessionData> data = getSessionDataOrLoad(uuid);
+        if (data.isEmpty()) return "";
+
+        Role role = data.get().getPrimaryRole();
+        String rolePrefix = role.getPrefix() != null ? role.getPrefix() : "";
+
+        StringBuilder sb = new StringBuilder();
+
+        if (includeMedal) {
+            String medalId = resolveMedalId(uuid);
+            Medal medal = Medal.fromId(medalId).orElse(Medal.NONE);
+            if (medal != Medal.NONE) {
+                sb.append(medal.getPrefix());
+            }
+        }
+
+        if (!rolePrefix.isEmpty()) {
+            sb.append(rolePrefix);
+            if (!rolePrefix.endsWith(" ") && !rolePrefix.matches(".*<[^>]+>$")) {
+                sb.append(" ");
+            }
+        }
+
+        return sb.toString();
+    }
+
+    public static String getNickname(UUID uuid, boolean includeMedal) {
+        return getNickname(uuid, includeMedal, null);
+    }
+
+    public static String getNickname(UUID uuid, boolean includeMedal, String fallbackName) {
+        String name = (fallbackName != null) ? fallbackName : resolveName(uuid);
+        if (name.equals("Unknown")) return name;
+
+        Optional<PlayerSessionData> data = getSessionDataOrLoad(uuid);
+        if (data.isEmpty()) return name;
+
+        Role role = data.get().getPrimaryRole();
+        String prefix = getPrefix(uuid, includeMedal);
+        String color = role.getColor() != null ? role.getColor() : "<gray>";
+        String suffix = role.getSuffix() != null ? role.getSuffix() : "";
+
+        StringBuilder sb = new StringBuilder();
+
+        sb.append(prefix);
+        sb.append(color).append(name).append("<reset>");
+
+        if (!suffix.isEmpty()) {
             if (!suffix.startsWith(" ")) {
-                formattedNick.append(" ");
+                sb.append(" ");
             }
-            formattedNick.append(suffix);
+            sb.append(suffix);
         }
 
-        return formattedNick.toString();
+        return sb.toString();
     }
 }
