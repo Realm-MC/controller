@@ -11,7 +11,6 @@ import com.realmmc.controller.shared.session.SessionTrackerService;
 
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -89,6 +88,9 @@ public final class NicknameFormatter {
         return medalId;
     }
 
+    /**
+     * Retorna o nickname colorido sem prefixos/sufixos.
+     */
     public static String getName(UUID uuid, boolean colored) {
         String name = resolveName(uuid);
         if (name.equals("Unknown")) return name;
@@ -103,38 +105,11 @@ public final class NicknameFormatter {
         return color + name + "<reset>";
     }
 
-    public static String getPrefix(UUID uuid, boolean includeMedal) {
-        Optional<PlayerSessionData> data = getSessionDataOrLoad(uuid);
-        if (data.isEmpty()) return "";
-
-        Role role = data.get().getPrimaryRole();
-        String rolePrefix = role.getPrefix() != null ? role.getPrefix() : "";
-
-        StringBuilder sb = new StringBuilder();
-
-        if (includeMedal) {
-            String medalId = resolveMedalId(uuid);
-            Medal medal = Medal.fromId(medalId).orElse(Medal.NONE);
-            if (medal != Medal.NONE) {
-                sb.append(medal.getPrefix());
-            }
-        }
-
-        if (!rolePrefix.isEmpty()) {
-            sb.append(rolePrefix);
-            if (!rolePrefix.endsWith(" ") && !rolePrefix.matches(".*<[^>]+>$")) {
-                sb.append(" ");
-            }
-        }
-
-        return sb.toString();
-    }
-
-    public static String getNickname(UUID uuid, boolean includeMedal) {
-        return getNickname(uuid, includeMedal, null);
-    }
-
-    public static String getNickname(UUID uuid, boolean includeMedal, String fallbackName) {
+    /**
+     * Retorna o nickname completo formatado:
+     * [MedalPrefix] [RolePrefix] Name [RoleSuffix] [MedalSuffix]
+     */
+    public static String getNickname(UUID uuid, boolean includePrefixes, String fallbackName) {
         String name = (fallbackName != null) ? fallbackName : resolveName(uuid);
         if (name.equals("Unknown")) return name;
 
@@ -142,22 +117,49 @@ public final class NicknameFormatter {
         if (data.isEmpty()) return name;
 
         Role role = data.get().getPrimaryRole();
-        String prefix = getPrefix(uuid, includeMedal);
+        String rolePrefix = role.getPrefix() != null ? role.getPrefix() : "";
+        String roleSuffix = role.getSuffix() != null ? role.getSuffix() : "";
         String color = role.getColor() != null ? role.getColor() : "<gray>";
-        String suffix = role.getSuffix() != null ? role.getSuffix() : "";
 
         StringBuilder sb = new StringBuilder();
 
-        sb.append(prefix);
-        sb.append(color).append(name).append("<reset>");
+        if (includePrefixes) {
+            String medalId = resolveMedalId(uuid);
+            Medal medal = Medal.fromId(medalId).orElse(Medal.NONE);
 
-        if (!suffix.isEmpty()) {
-            if (!suffix.startsWith(" ")) {
-                sb.append(" ");
+            if (medal != Medal.NONE && !medal.getPrefix().isEmpty()) {
+                sb.append(medal.getPrefix());
             }
-            sb.append(suffix);
+
+            if (!rolePrefix.isEmpty()) {
+                sb.append(rolePrefix);
+                if (!rolePrefix.endsWith(" ") && !rolePrefix.matches(".*<[^>]+>$")) {
+                    sb.append(" ");
+                }
+            }
+
+            sb.append(color).append(name).append("<reset>");
+
+            if (!roleSuffix.isEmpty()) {
+                if (!roleSuffix.startsWith(" ")) sb.append(" ");
+                sb.append(roleSuffix);
+            }
+
+            if (medal != Medal.NONE && !medal.getSuffix().isEmpty()) {
+                sb.append(medal.getSuffix());
+            }
+        } else {
+            sb.append(color).append(name).append("<reset>");
         }
 
         return sb.toString();
+    }
+
+    public static String getNickname(UUID uuid, boolean includePrefixes) {
+        return getNickname(uuid, includePrefixes, null);
+    }
+
+    public static String getFullFormattedNick(UUID uuid) {
+        return getNickname(uuid, true, null);
     }
 }

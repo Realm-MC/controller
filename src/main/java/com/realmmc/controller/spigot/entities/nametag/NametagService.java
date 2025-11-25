@@ -46,10 +46,9 @@ public class NametagService implements Listener, RedisMessageListener {
         this.miniMessage = MiniMessage.miniMessage();
     }
 
-    // --- REDIS LISTENER ---
     @Override
     public void onMessage(String channel, String message) {
-        if (!RedisChannel.PROFILES_SYNC.getName().equals(channel)) return;
+        if (!RedisChannel.PROFILES_SYNC.getName().equals(channel) && !RedisChannel.COSMETICS_SYNC.getName().equals(channel)) return;
 
         try {
             JsonNode node = mapper.readTree(message);
@@ -58,7 +57,6 @@ public class NametagService implements Listener, RedisMessageListener {
             if (uuidStr != null) {
                 UUID uuid = UUID.fromString(uuidStr);
                 Player player = Bukkit.getPlayer(uuid);
-                // Se o jogador estiver online, atualiza a tag
                 if (player != null && player.isOnline()) {
                     Bukkit.getScheduler().runTask(Main.getInstance(), () -> updateTag(player));
                 }
@@ -107,25 +105,31 @@ public class NametagService implements Listener, RedisMessageListener {
 
         String medalId = profile.getEquippedMedal();
         String medalPrefix = "";
+        String medalSuffix = "";
 
         if (medalId != null && !medalId.equalsIgnoreCase("none")) {
             Optional<Medal> medalOpt = Medal.fromId(medalId);
             if (medalOpt.isPresent()) {
                 medalPrefix = medalOpt.get().getPrefix();
+                medalSuffix = medalOpt.get().getSuffix();
             }
         }
 
         String rolePrefix = role.getPrefix() != null ? role.getPrefix() : "";
+        String roleSuffix = role.getSuffix() != null ? role.getSuffix() : "";
         String colorStr = role.getColor() != null ? role.getColor() : "<gray>";
 
         String fullPrefixStr = medalPrefix + rolePrefix;
+        String fullSuffixStr = roleSuffix + medalSuffix;
 
-        Component displayName = miniMessage.deserialize(fullPrefixStr + colorStr + player.getName());
-        player.playerListName(displayName);
+        Component tabName = miniMessage.deserialize(fullPrefixStr + colorStr + player.getName() + "<reset>" + fullSuffixStr);
+        player.playerListName(tabName);
 
         Component prefixComponent = miniMessage.deserialize(fullPrefixStr);
+        Component suffixComponent = miniMessage.deserialize(fullSuffixStr);
+
         for (Player viewer : Bukkit.getOnlinePlayers()) {
-            sendTeamPacket(viewer, player, teamName, prefixComponent, role.getColor());
+            sendTeamPacket(viewer, player, teamName, prefixComponent, suffixComponent, role.getColor());
         }
     }
 
@@ -139,29 +143,36 @@ public class NametagService implements Listener, RedisMessageListener {
                 String medalId = profile.getEquippedMedal();
 
                 String medalPrefix = "";
+                String medalSuffix = "";
                 if (medalId != null && !medalId.equalsIgnoreCase("none")) {
                     Optional<Medal> medalOpt = Medal.fromId(medalId);
                     if (medalOpt.isPresent()) {
                         medalPrefix = medalOpt.get().getPrefix();
+                        medalSuffix = medalOpt.get().getSuffix();
                     }
                 }
 
                 String rolePrefix = role.getPrefix() != null ? role.getPrefix() : "";
+                String roleSuffix = role.getSuffix() != null ? role.getSuffix() : "";
+
                 String fullPrefixStr = medalPrefix + rolePrefix;
+                String fullSuffixStr = roleSuffix + medalSuffix;
 
                 Component prefixComponent = miniMessage.deserialize(fullPrefixStr);
-                sendTeamPacket(viewer, target, teamName, prefixComponent, role.getColor());
+                Component suffixComponent = miniMessage.deserialize(fullSuffixStr);
+
+                sendTeamPacket(viewer, target, teamName, prefixComponent, suffixComponent, role.getColor());
             });
         });
     }
 
-    private void sendTeamPacket(Player viewer, Player target, String teamName, Component prefix, String colorCode) {
+    private void sendTeamPacket(Player viewer, Player target, String teamName, Component prefix, Component suffix, String colorCode) {
         NamedTextColor teamColor = getNamedTextColor(colorCode);
 
         WrapperPlayServerTeams.ScoreBoardTeamInfo info = new WrapperPlayServerTeams.ScoreBoardTeamInfo(
                 Component.empty(),
                 prefix,
-                Component.empty(),
+                suffix,
                 WrapperPlayServerTeams.NameTagVisibility.ALWAYS,
                 WrapperPlayServerTeams.CollisionRule.NEVER,
                 teamColor,
@@ -186,16 +197,6 @@ public class NametagService implements Listener, RedisMessageListener {
                     Collections.emptyList()
             );
             PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, updatePacket);
-        } catch (Exception ignored) {}
-
-        try {
-            WrapperPlayServerTeams addEntityPacket = new WrapperPlayServerTeams(
-                    teamName,
-                    WrapperPlayServerTeams.TeamMode.ADD_ENTITIES,
-                    Optional.empty(),
-                    Collections.singletonList(target.getName())
-            );
-            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, addEntityPacket);
         } catch (Exception ignored) {}
     }
 
