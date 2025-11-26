@@ -9,10 +9,8 @@ import java.util.Optional;
 public enum Medal {
 
     NONE("none", "", "", "<grey>Nenhuma"),
-
     BETA("beta", "<aqua>[BETA] ", "", "<aqua>Beta"),
-
-    ALPHA("alpha", "<aqua>[ALPHA] ", "", "");
+    ALPHA("alpha", "<aqua>[ALPHA] ", "", "<aqua>Alpha");
 
     private final String id;
     private final String prefix;
