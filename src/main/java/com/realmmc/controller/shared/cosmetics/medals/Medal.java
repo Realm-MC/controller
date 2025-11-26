@@ -8,7 +8,6 @@ import java.util.Optional;
 @Getter
 public enum Medal {
 
-    NONE("none", "", "", "<grey>Nenhuma"),
     BETA("beta", "<aqua>[BETA] ", "", "<aqua>Beta"),
     ALPHA("alpha", "<aqua>[ALPHA] ", "", "<aqua>Alpha");
 
