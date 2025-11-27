@@ -88,9 +88,6 @@ public final class NicknameFormatter {
         return medalId;
     }
 
-    /**
-     * Retorna o nickname colorido sem prefixos/sufixos.
-     */
     public static String getName(UUID uuid, boolean colored) {
         String name = resolveName(uuid);
         if (name.equals("Unknown")) return name;
@@ -125,10 +122,13 @@ public final class NicknameFormatter {
 
         if (includePrefixes) {
             String medalId = resolveMedalId(uuid);
-            Medal medal = Medal.fromId(medalId).orElse(Medal.NONE);
+            Medal medal = null;
 
-            if (medal != Medal.NONE && !medal.getPrefix().isEmpty()) {
-                sb.append(medal.getPrefix());
+            if (medalId != null && !medalId.isEmpty() && !medalId.equalsIgnoreCase("none")) {
+                medal = Medal.fromId(medalId).orElse(null);
+                if (medal != null && !medal.getPrefix().isEmpty()) {
+                    sb.append(medal.getPrefix());
+                }
             }
 
             if (!rolePrefix.isEmpty()) {
@@ -145,7 +145,7 @@ public final class NicknameFormatter {
                 sb.append(roleSuffix);
             }
 
-            if (medal != Medal.NONE && !medal.getSuffix().isEmpty()) {
+            if (medal != null && !medal.getSuffix().isEmpty()) {
                 sb.append(medal.getSuffix());
             }
         } else {
