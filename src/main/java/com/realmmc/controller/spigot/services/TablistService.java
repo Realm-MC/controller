@@ -55,19 +55,19 @@ public class TablistService implements Listener {
         switch (animationIndex) {
             case STATE_SITE:
                 footerNavBar = "<gold>▼ Site <gray>▼ Loja ▼ Discord";
-                footerLink = "realmmc.com.br";
+                footerLink = "palacesky.com";
                 break;
             case STATE_STORE:
                 footerNavBar = "<gray>▼ Site <gold>▼ Loja <gray>▼ Discord";
-                footerLink = "loja.realmmc.com.br";
+                footerLink = "loja.palacesky.com";
                 break;
             case STATE_DISCORD:
                 footerNavBar = "<gray>▼ Site ▼ Loja <gold>▼ Discord";
-                footerLink = "discord.realmmc.com.br";
+                footerLink = "discord.palacesky.com";
                 break;
             default:
                 footerNavBar = "<gray>▼ Site ▼ Loja ▼ Discord";
-                footerLink = "realmmc.com.br";
+                footerLink = "palacesky.com";
                 break;
         }
 

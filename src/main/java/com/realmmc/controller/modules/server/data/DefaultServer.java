@@ -6,10 +6,9 @@ import lombok.Getter;
 public enum DefaultServer {
 
     // Formato: (name, displayName, ip, port, pterodactylId, maxPlayers, maxPlayersVip, minGroup, type)
-    LOGIN("login-1", "Login", "31.97.90.152", 25566, "d79f737e-d704-4506-8e25-96f72dc4dec3", 500, 500, "default", ServerType.LOGIN),
-    LOBBY("lobby-1", "Lobby 1", "31.97.90.152", 25567, "727c7884-b639-4058-89c3-dbb2ee553412", 100, 150, "default", ServerType.LOBBY),
-    BUILD("build-1", "Construção", "31.97.90.152", 25569, "384ce2a7-bc79-4f0c-a0e7-d8b317e5fcf3", 100, 100, "administrator", ServerType.PERSISTENT),
-    RANKUP("rankup-1", "Rankup", "31.97.90.152", 25568, "856fbec5-471c-4d55-8b8b-b205936d143c", 300, 500, "default", ServerType.PERSISTENT);
+    LOGIN("login-1", "Login", "181.214.48.24", 25566, "67827339-e73d-48de-823c-8e23fc4c41ff", 500, 500, "default", ServerType.LOGIN),
+    LOBBY("lobby-1", "Lobby 1", "181.214.48.24", 25567, "680712e1-d63f-4c91-a8ef-68324783185c", 100, 150, "default", ServerType.LOBBY),
+    BUILD("build-1", "Construção", "181.214.48.24", 25568, "b11fdc52-3cbe-4529-b3f0-776915fae3b8", 100, 100, "administrator", ServerType.PERSISTENT);
 
     private final String name;
     private final String displayName;
@@ -33,9 +32,6 @@ public enum DefaultServer {
         this.type = type;
     }
 
-    /**
-     * Converte este enum num objeto ServerInfo (POJO) para o MongoDB.
-     */
     public ServerInfo toServerInfo() {
         return ServerInfo.builder()
                 .name(name)
