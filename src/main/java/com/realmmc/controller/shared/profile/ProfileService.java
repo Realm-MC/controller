@@ -8,8 +8,6 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.UpdateResult;
 import com.realmmc.controller.core.services.ServiceRegistry;
-import com.realmmc.controller.shared.cash.CashLog;
-import com.realmmc.controller.shared.cash.CashLogRepository;
 import com.realmmc.controller.shared.preferences.Language;
 import com.realmmc.controller.shared.preferences.PreferencesService;
 import com.realmmc.controller.shared.role.PlayerRole;
@@ -30,7 +28,6 @@ public class ProfileService {
 
     private static final Logger LOGGER = Logger.getLogger(ProfileService.class.getName());
     private final ProfileRepository repository = new ProfileRepository();
-    private final CashLogRepository cashLogRepository = new CashLogRepository();
     private final ObjectMapper mapper = new ObjectMapper();
 
     private Optional<StatisticsService> getStatsService() {
@@ -285,6 +282,7 @@ public class ProfileService {
                     .lastClientVersion(clientVersion)
                     .lastClientType(clientType)
                     .cash(0)
+                    .pendingCash(0)
                     .roles(new ArrayList<>(List.of(PlayerRole.builder().roleName("default").status(PlayerRole.Status.ACTIVE).build())))
                     .primaryRoleName("default")
                     .premiumAccount(isPremium)
@@ -353,39 +351,52 @@ public class ProfileService {
         }, "set_username");
     }
 
-    private void createLog(UUID targetUuid, int amount, CashLog.Action action, UUID sourceUuid, String sourceName) {
-        try {
-            CashLog log = CashLog.builder()
-                    .targetUuid(targetUuid)
-                    .amount(amount)
-                    .action(action)
-                    .sourceUuid(sourceUuid)
-                    .sourceName(sourceName != null ? sourceName : "CONSOLE")
-                    .timestamp(System.currentTimeMillis())
-                    .build();
-            cashLogRepository.log(log);
-        } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Falha ao registrar log de cash para " + targetUuid, e);
-        }
-    }
-
     public void addCash(UUID targetUuid, int amount, UUID sourceUuid, String sourceName) {
         if (targetUuid == null || amount <= 0) return;
 
-        if (repository.atomicAddCash(targetUuid, amount)) {
-            createLog(targetUuid, amount, CashLog.Action.ADD, sourceUuid, sourceName);
-            updateLocalAndPublish(targetUuid, p -> p.setCash(p.getCash() + amount));
+        org.bson.conversions.Bson filter = Filters.eq("uuid", targetUuid);
+        org.bson.conversions.Bson update = Updates.combine(
+                Updates.inc("cash", amount),
+                Updates.inc("pendingCash", amount),
+                Updates.set("updatedAt", System.currentTimeMillis())
+        );
+
+        UpdateResult result = repository.collection().updateOne(filter, update);
+
+        if (result.getModifiedCount() > 0) {
+            try {
+                ObjectNode node = mapper.createObjectNode();
+                node.put("uuid", targetUuid.toString());
+                node.put("amount", amount);
+                RedisPublisher.publish(RedisChannel.CASH_NOTIFICATION, node.toString());
+            } catch (Exception e) {
+                LOGGER.warning("Failed to publish cash notification for " + targetUuid);
+            }
+
+            updateLocalAndPublish(targetUuid, p -> {
+                p.setCash(p.getCash() + amount);
+                p.setPendingCash(p.getPendingCash() + amount);
+            });
         } else {
             LOGGER.warning("Tentativa de adicionar cash a UUID inexistente: " + targetUuid);
         }
     }
 
+    public void resetPendingCash(UUID targetUuid) {
+        if (targetUuid == null) return;
+        update(targetUuid, p -> {
+            if (p.getPendingCash() > 0) {
+                p.setPendingCash(0);
+                return true;
+            }
+            return false;
+        }, "reset_pending_cash");
+    }
+
     public boolean removeCash(UUID targetUuid, int amount, UUID sourceUuid, String sourceName) {
         if (targetUuid == null || amount <= 0) return false;
 
-        com.mongodb.client.MongoCollection<Profile> col = repository.collection();
         long now = System.currentTimeMillis();
-
         org.bson.conversions.Bson filter = Filters.and(
                 Filters.eq("uuid", targetUuid),
                 Filters.gte("cash", amount)
@@ -395,10 +406,9 @@ public class ProfileService {
                 Updates.set("updatedAt", now)
         );
 
-        UpdateResult result = col.updateOne(filter, update);
+        UpdateResult result = repository.collection().updateOne(filter, update);
 
         if (result.getModifiedCount() > 0) {
-            createLog(targetUuid, -amount, CashLog.Action.REMOVE, sourceUuid, sourceName);
             updateLocalAndPublish(targetUuid, p -> p.setCash(p.getCash() - amount));
             return true;
         }
@@ -416,7 +426,6 @@ public class ProfileService {
             }
             return false;
         }, "cash_set");
-        createLog(targetUuid, amount, CashLog.Action.SET, sourceUuid, sourceName);
     }
 
     public void clearCash(UUID targetUuid, UUID sourceUuid, String sourceName) {
@@ -425,7 +434,6 @@ public class ProfileService {
             p.setCash(0);
             return true;
         }, "cash_clear");
-        createLog(targetUuid, 0, CashLog.Action.CLEAR, sourceUuid, sourceName);
     }
 
     private void updateLocalAndPublish(UUID uuid, Consumer<Profile> action) {
@@ -534,11 +542,6 @@ public class ProfileService {
 
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "[ProfileService] Failed to publish profile sync message for UUID: " + profile.getUuid(), e);
-        }
-    }
-
-    public void invalidateProfileCache(UUID uuid) {
-        if (uuid != null) {
         }
     }
 

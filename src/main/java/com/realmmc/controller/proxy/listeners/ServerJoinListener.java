@@ -24,6 +24,8 @@ import com.velocitypowered.api.proxy.server.RegisteredServer;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 @Listeners
@@ -67,7 +69,6 @@ public class ServerJoinListener {
             if (AuthenticationGuard.isConnecting(player.getUniqueId())) {
                 logger.finer("[ServerJoin] Denied connection for " + player.getUsername() + ": Still in CONNECTING state.");
             }
-            return;
         }
 
         com.velocitypowered.api.proxy.server.ServerInfo targetInfo = targetServer.getServerInfo();
@@ -80,7 +81,22 @@ public class ServerJoinListener {
         }
 
         ServerInfo serverInfo = serverInfoOpt.get();
+
         Optional<PlayerSessionData> sessionDataOpt = roleService.getSessionDataFromCache(player.getUniqueId());
+
+        if (sessionDataOpt.isEmpty()) {
+            Optional<CompletableFuture<PlayerSessionData>> futureOpt = roleService.getPreLoginFuture(player.getUniqueId());
+
+            if (futureOpt.isPresent()) {
+                try {
+                    PlayerSessionData loadedData = futureOpt.get().get(3, TimeUnit.SECONDS);
+                    sessionDataOpt = Optional.ofNullable(loadedData);
+                    logger.info("[ServerJoin] Dados carregados via espera (Future) para " + player.getUsername());
+                } catch (Exception e) {
+                    logger.warning("[ServerJoin] Timeout ao esperar dados do jogador " + player.getUsername());
+                }
+            }
+        }
 
         if (sessionDataOpt.isEmpty()) {
             logger.warning("[ServerJoin] Session Data not found for " + player.getUsername() + " when trying to connect to " + targetName + ". Denying.");

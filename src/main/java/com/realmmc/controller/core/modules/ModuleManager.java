@@ -20,13 +20,24 @@ public class ModuleManager {
     private final List<CoreModule> enabledModulesInOrder = new ArrayList<>();
     private final Logger logger;
 
+    private final Set<SystemType> claimedSystems = new HashSet<>();
+
     public ModuleManager(Logger logger) {
         this.logger = logger;
         instance = this;
     }
 
+    public void claimSystem(SystemType type) {
+        claimedSystems.add(type);
+        logger.info("[ModuleManager] O sistema " + type.name() + " foi reivindicado por um plugin externo. O módulo padrão Controller NÃO será ativado.");
+    }
+
+    public boolean isClaimed(SystemType type) {
+        return claimedSystems.contains(type);
+    }
+
     public void autoRegisterModules(AutoRegister.Platform platform, Class<?> mainClass) {
-        logger.info("A procurar por módulos de registo automático para a plataforma " + platform + "...");
+        logger.info("A procurar por módulos de registo automático para plataforma " + platform + "...");
         String basePackage = "com.realmmc.controller.modules";
 
         try {
@@ -34,6 +45,7 @@ public class ModuleManager {
             for (Class<?> clazz : classes) {
                 if (AbstractCoreModule.class.isAssignableFrom(clazz) && !clazz.isInterface() && clazz.isAnnotationPresent(AutoRegister.class)) {
                     AutoRegister annotation = clazz.getAnnotation(AutoRegister.class);
+
                     List<AutoRegister.Platform> platforms = Arrays.asList(annotation.platforms());
 
                     if (platforms.contains(AutoRegister.Platform.ALL) || platforms.contains(platform)) {
@@ -43,7 +55,7 @@ public class ModuleManager {
                             registerModule(module);
                         } catch (NoSuchMethodException ignored) {
                         } catch (Throwable e) {
-                            logger.log(Level.SEVERE, "Falha ao instanciar módulo de auto-registo " + clazz.getSimpleName(), e);
+                            logger.log(Level.SEVERE, "Falha ao instanciar módulo " + clazz.getSimpleName(), e);
                         }
                     }
                 }
@@ -104,7 +116,6 @@ public class ModuleManager {
 
             for (CoreModule module : sortedModules) {
                 enableModule(module);
-                enabledModulesInOrder.add(module);
             }
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Falha ao ordenar e habilitar módulos", e);
@@ -115,27 +126,38 @@ public class ModuleManager {
         ListIterator<CoreModule> iterator = enabledModulesInOrder.listIterator(enabledModulesInOrder.size());
         while (iterator.hasPrevious()) {
             CoreModule module = iterator.previous();
-            disableModule(module);
+            try {
+                if (module.isEnabled()) {
+                    module.disable();
+                    logger.info("Módulo desabilitado: " + module.getName());
+                }
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Erro ao desabilitar módulo " + module.getName(), e);
+            }
         }
         enabledModulesInOrder.clear();
     }
 
-    private void enableModule(CoreModule module) {
+    public void enableModule(CoreModule module) {
         try {
             if (!module.isEnabled()) {
                 module.enable();
                 logger.info("Módulo habilitado: " + module.getName());
+                if (!enabledModulesInOrder.contains(module)) {
+                    enabledModulesInOrder.add(module);
+                }
             }
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Erro ao habilitar módulo " + module.getName(), e);
         }
     }
 
-    private void disableModule(CoreModule module) {
+    public void disableModule(CoreModule module) {
         try {
             if (module.isEnabled()) {
                 module.disable();
                 logger.info("Módulo desabilitado: " + module.getName());
+                enabledModulesInOrder.remove(module);
             }
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Erro ao desabilitar módulo " + module.getName(), e);
@@ -165,7 +187,6 @@ public class ModuleManager {
         for (String dependencyName : module.getDependencies()) {
             CoreModule dependency = modules.get(dependencyName);
             if (dependency == null) {
-                logger.warning("A dependência '" + dependencyName + "' do módulo '" + moduleName + "' não foi encontrada.");
                 continue;
             }
             if (visiting.contains(dependencyName)) {

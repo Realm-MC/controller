@@ -56,7 +56,7 @@ public class SpigotModule extends AbstractCoreModule {
 
     @Override public String[] getDependencies() {
         return new String[]{
-                "Profile", "RoleModule", "SchedulerModule", "Command", "Preferences", "Particle"
+                "Profile", "RoleModule", "SchedulerModule", "Command", "Preferences", "Particle", "Statistics"
         };
     }
 
@@ -75,6 +75,7 @@ public class SpigotModule extends AbstractCoreModule {
 
         try { CommandManager.registerAll(plugin); }
         catch (Exception e) { logger.log(Level.SEVERE, "[SpigotModule] Failed to register Spigot commands!", e); }
+
         try { ListenersManager.registerAll(plugin); }
         catch (Exception e) { logger.log(Level.SEVERE, "[SpigotModule] Failed to register Spigot listeners!", e); }
 
@@ -254,14 +255,12 @@ public class SpigotModule extends AbstractCoreModule {
     }
 
     private void runHeartbeat(SessionTrackerService sessionTracker) {
-
         String serverName = System.getProperty("controller.serverId");
         if (serverName == null || serverName.isEmpty()) {
             serverName = System.getenv("CONTROLLER_SERVER_ID");
         }
         if (serverName == null || serverName.isEmpty()) {
             serverName = Bukkit.getServer().getName();
-            logger.warning("Aviso: 'controller.serverId' (propriedade Java) ou 'CONTROLLER_SERVER_ID' (variável de ambiente) não estão definidas! O Heartbeat está a reportar o nome do servidor como: " + serverName);
         }
 
         final String finalServerName = serverName;
@@ -276,26 +275,8 @@ public class SpigotModule extends AbstractCoreModule {
             try {
                 if(viaVersionApiAvailable) {
                     protocol = Via.getAPI().getPlayerVersion(uuid);
-                } else {
-                    try {
-                        Class<?> protocolSupportApi = Class.forName("protocolsupport.api.ProtocolSupportAPI");
-                        Object apiInstance = protocolSupportApi.getMethod("getAPI").invoke(null);
-                        protocol = (int) apiInstance.getClass().getMethod("getProtocolVersion", Player.class).invoke(apiInstance, player);
-                    } catch (Exception | NoClassDefFoundError ignored) {
-                        try {
-                            Object entityPlayer = player.getClass().getMethod("getHandle").invoke(player);
-                            Object connection = entityPlayer.getClass().getField("playerConnection").get(entityPlayer);
-                            Object networkManager = connection.getClass().getField("networkManager").get(connection);
-                            try {
-                                protocol = (int) networkManager.getClass().getMethod("getVersion").invoke(networkManager);
-                            } catch (NoSuchMethodException ex) {
-                                protocol = (int) networkManager.getClass().getMethod("getProtocolVersion").invoke(networkManager);
-                            }
-                        } catch (Exception | NoClassDefFoundError nmsEx) { protocol = -1;}
-                    }
                 }
-            } catch (Exception | NoClassDefFoundError ignored) { protocol = -1; }
-
+            } catch (Exception ignored) { protocol = -1; }
 
             try {
                 sessionTracker.updateHeartbeat(uuid, finalServerName, ping, protocol);

@@ -2,6 +2,7 @@ package com.realmmc.controller.core;
 
 import lombok.Getter;
 
+import java.util.TimeZone;
 import java.util.logging.Logger;
 
 public abstract class ControllerCore {
@@ -14,6 +15,9 @@ public abstract class ControllerCore {
     protected ControllerCore(Logger logger) {
         this.logger = logger;
         instance = this;
+
+        TimeZone.setDefault(TimeZone.getTimeZone("America/Sao_Paulo"));
+        logger.info("Fuso horário definido globalmente para: America/Sao_Paulo");
     }
 
     public abstract void initialize();

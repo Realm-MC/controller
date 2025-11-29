@@ -12,10 +12,9 @@ import lombok.NoArgsConstructor;
 public class PlayerRole {
 
     public enum Status {
-        ACTIVE,     // O role está ativo e contribui para permissões
-        EXPIRED,    // O tempo do role expirou
-        REMOVED     // O role foi removido manualmente (via /role remove ou /role clear)
-        // PAUSED não é um status aqui, é um boolean separado
+        ACTIVE,
+        EXPIRED,
+        REMOVED
     }
 
     private String roleName;
@@ -24,45 +23,32 @@ public class PlayerRole {
     private long addedAt = System.currentTimeMillis();
 
     @Builder.Default
-    private Long expiresAt = null; // null = permanente
+    private Long expiresAt = null;
 
     @Builder.Default
     private boolean paused = false;
 
     @Builder.Default
-    private Long pausedTimeRemaining = null; // Tempo restante quando pausado
+    private Long pausedTimeRemaining = null;
 
     @Builder.Default
-    private Status status = Status.ACTIVE; // <<<--- NOVO CAMPO STATUS
+    private Status status = Status.ACTIVE;
 
     @Builder.Default
-    private Long removedAt = null; // <<<--- NOVO CAMPO: Quando foi removido (opcional)
+    private Long removedAt = null;
+
+    @Builder.Default
+    private boolean pendingNotification = false;
 
     public boolean isPermanent() {
         return expiresAt == null && pausedTimeRemaining == null;
     }
 
-    /**
-     * Verifica se o grupo expirou naturalmente (NÃO considera status REMOVED).
-     * Um grupo pausado NÃO é considerado expirado aqui.
-     * @return true se o tempo passou E não está pausado, false caso contrário.
-     */
-    public boolean hasExpiredTime() {
+    public boolean hasExpired() {
         return !isPaused() && expiresAt != null && System.currentTimeMillis() > expiresAt;
     }
 
-    // Deprecated: Usar hasExpiredTime() e verificar status separadamente.
-    // Manter por compatibilidade temporária se necessário, mas ajustar lógica.
-    @Deprecated
-    public boolean hasExpired() {
-        return hasExpiredTime(); // Simplificado, cálculo principal verificará Status
-    }
-
-    /**
-     * Verifica se o role está atualmente ativo para cálculo de permissões.
-     * @return true se ACTIVE, não pausado e não expirado.
-     */
     public boolean isActive() {
-        return getStatus() == Status.ACTIVE && !isPaused() && !hasExpiredTime();
+        return status == Status.ACTIVE && !isPaused() && !hasExpired();
     }
 }

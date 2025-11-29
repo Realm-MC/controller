@@ -21,9 +21,30 @@ public class DatabaseModule extends AbstractCoreModule {
         super(logger);
     }
 
-    @Override public String getName() { return "Database"; }
-    @Override public String getVersion() { return "1.1.0"; }
-    @Override public String getDescription() { return "Módulo de conexão DB (Mongo/Redis) com Retry Logic"; }
+    @Override
+    public String getName() {
+        return "Database";
+    }
+
+    @Override
+    public String getVersion() {
+        return "1.1.1";
+    }
+
+    @Override
+    public String getDescription() {
+        return "Módulo de conexão DB (Mongo/Redis) com Retry Logic";
+    }
+
+    @Override
+    public String[] getDependencies() {
+        return new String[]{"SchedulerModule"};
+    }
+
+    @Override
+    public int getPriority() {
+        return 10;
+    }
 
     @Override
     protected void onEnable() throws Exception {
@@ -31,7 +52,6 @@ public class DatabaseModule extends AbstractCoreModule {
 
         String mongoUri = System.getProperty("MONGO_URI", "mongodb://admin:realmmc%40mongodb@mongo-db:27017");
         String mongoDb = System.getProperty("MONGO_DB", "RealmMC-controller");
-
         String redisHost = System.getProperty("REDIS_HOST", "redis-db");
         int redisPort = Integer.parseInt(System.getProperty("REDIS_PORT", "6379"));
         String redisPassword = System.getProperty("REDIS_PASSWORD", "realmmc@redis");
@@ -53,7 +73,10 @@ public class DatabaseModule extends AbstractCoreModule {
             } catch (Exception e) {
                 if (i < maxRetries - 1) {
                     logger.warning("MongoDB indisponível. Tentando novamente em 3s... (" + (i + 1) + "/" + maxRetries + ")");
-                    try { Thread.sleep(sleepTime); } catch (InterruptedException ignored) {}
+                    try {
+                        Thread.sleep(sleepTime);
+                    } catch (InterruptedException ignored) {
+                    }
                 } else {
                     logger.log(Level.SEVERE, "Falha crítica: Não foi possível conectar ao MongoDB após " + maxRetries + " tentativas.", e);
                     throw e;
@@ -85,7 +108,10 @@ public class DatabaseModule extends AbstractCoreModule {
                 RedisManager.shutdown();
                 if (i < maxRetries - 1) {
                     logger.warning("Redis indisponível. Tentando novamente em 3s... (" + (i + 1) + "/" + maxRetries + ")");
-                    try { Thread.sleep(sleepTime); } catch (InterruptedException ignored) {}
+                    try {
+                        Thread.sleep(sleepTime);
+                    } catch (InterruptedException ignored) {
+                    }
                 } else {
                     logger.log(Level.SEVERE, "Falha crítica: Não foi possível conectar ao Redis após " + maxRetries + " tentativas.", e);
                     throw e;
@@ -116,7 +142,4 @@ public class DatabaseModule extends AbstractCoreModule {
         MongoManager.shutdown();
         logger.info("Conexão MongoDB finalizada.");
     }
-
-    @Override
-    public int getPriority() { return 10; }
 }

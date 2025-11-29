@@ -27,6 +27,8 @@ public class Profile {
     private List<String> ipHistory = new ArrayList<>();
     private long firstLogin;
     private long lastLogin;
+    @Builder.Default
+    private long lastLogout = 0L;
     private String lastClientVersion;
     private String lastClientType;
     private String firstClientVersion;
@@ -36,6 +38,8 @@ public class Profile {
     private String primaryRoleName;
     @Builder.Default
     private int cash = 0;
+    @Builder.Default
+    private int pendingCash = 0;
     private Integer cashTopPosition;
     private Long cashTopPositionEnteredAt;
     @Builder.Default

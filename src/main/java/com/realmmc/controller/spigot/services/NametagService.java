@@ -1,4 +1,4 @@
-package com.realmmc.controller.spigot.entities.nametag;
+package com.realmmc.controller.spigot.services;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -7,6 +7,7 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTe
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.PlayerSessionData;
 import com.realmmc.controller.modules.role.RoleService;
+import com.realmmc.controller.modules.server.data.ServerType;
 import com.realmmc.controller.shared.cosmetics.medals.Medal;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileService;
@@ -38,12 +39,29 @@ public class NametagService implements Listener, RedisMessageListener {
     private final MiniMessage miniMessage;
     private final Map<UUID, String> playerTeams = new ConcurrentHashMap<>();
     private final ObjectMapper mapper = new ObjectMapper();
+    private final ServerType currentServerType;
 
     public NametagService() {
         this.logger = Main.getInstance().getLogger();
         this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
         this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
         this.miniMessage = MiniMessage.miniMessage();
+
+        String typeStr = System.getProperty("map.type");
+        ServerType tempType;
+
+        if (typeStr != null) {
+            try {
+                tempType = ServerType.valueOf(typeStr.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                logger.info("Tipo de mapa '" + typeStr + "' não é um ServerType padrão. Assumindo LOBBY para Nametag.");
+                tempType = ServerType.LOBBY;
+            }
+        } else {
+            tempType = ServerType.LOBBY;
+        }
+
+        this.currentServerType = tempType;
     }
 
     @Override
@@ -107,11 +125,14 @@ public class NametagService implements Listener, RedisMessageListener {
         String medalPrefix = "";
         String medalSuffix = "";
 
-        if (medalId != null && !medalId.equalsIgnoreCase("none")) {
+        if (medalId != null && !medalId.isEmpty() && !medalId.equalsIgnoreCase("none")) {
             Optional<Medal> medalOpt = Medal.fromId(medalId);
             if (medalOpt.isPresent()) {
-                medalPrefix = medalOpt.get().getPrefix();
-                medalSuffix = medalOpt.get().getSuffix();
+                Medal medal = medalOpt.get();
+                if (medal.isAllowedOn(this.currentServerType)) {
+                    medalPrefix = medal.getPrefix();
+                    medalSuffix = medal.getSuffix();
+                }
             }
         }
 
@@ -140,15 +161,19 @@ public class NametagService implements Listener, RedisMessageListener {
         roleService.getSessionDataFromCache(target.getUniqueId()).ifPresent(session -> {
             profileService.getByUuid(target.getUniqueId()).ifPresent(profile -> {
                 Role role = session.getPrimaryRole();
-                String medalId = profile.getEquippedMedal();
 
+                String medalId = profile.getEquippedMedal();
                 String medalPrefix = "";
                 String medalSuffix = "";
-                if (medalId != null && !medalId.equalsIgnoreCase("none")) {
+
+                if (medalId != null && !medalId.isEmpty() && !medalId.equalsIgnoreCase("none")) {
                     Optional<Medal> medalOpt = Medal.fromId(medalId);
                     if (medalOpt.isPresent()) {
-                        medalPrefix = medalOpt.get().getPrefix();
-                        medalSuffix = medalOpt.get().getSuffix();
+                        Medal medal = medalOpt.get();
+                        if (medal.isAllowedOn(this.currentServerType)) {
+                            medalPrefix = medal.getPrefix();
+                            medalSuffix = medal.getSuffix();
+                        }
                     }
                 }
 
@@ -197,6 +222,16 @@ public class NametagService implements Listener, RedisMessageListener {
                     Collections.emptyList()
             );
             PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, updatePacket);
+        } catch (Exception ignored) {}
+
+        try {
+            WrapperPlayServerTeams addEntityPacket = new WrapperPlayServerTeams(
+                    teamName,
+                    WrapperPlayServerTeams.TeamMode.ADD_ENTITIES,
+                    Optional.empty(),
+                    Collections.singletonList(target.getName())
+            );
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, addEntityPacket);
         } catch (Exception ignored) {}
     }
 
