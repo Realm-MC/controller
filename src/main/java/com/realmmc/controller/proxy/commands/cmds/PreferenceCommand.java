@@ -280,7 +280,7 @@ public class PreferenceCommand implements CommandInterface {
     }
 
     private CompletableFuture<Optional<Profile>> resolveProfileAsync(String input) {
-        Executor exec = roleService.getAsyncExecutor();
+        Executor exec = TaskScheduler.getAsyncExecutor();
         if (exec == null) exec = ForkJoinPool.commonPool();
         return CompletableFuture.supplyAsync(() -> {
             try {

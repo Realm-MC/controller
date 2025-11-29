@@ -1,5 +1,6 @@
 package com.realmmc.controller.shared.cosmetics;
 
+import com.realmmc.controller.shared.cosmetics.medals.UnlockedMedal;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,8 +22,5 @@ public class Cosmetics {
     private String name;
 
     @Builder.Default
-    private List<String> unlockedMedals = new ArrayList<>();
-
-    // Futuro: private List<String> unlockedParticles...
-    // Futuro: private List<String> unlockedTags...
+    private List<UnlockedMedal> unlockedMedals = new ArrayList<>();
 }

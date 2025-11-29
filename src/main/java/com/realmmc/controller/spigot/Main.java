@@ -1,21 +1,23 @@
 package com.realmmc.controller.spigot;
 
 import com.realmmc.controller.core.modules.AutoRegister;
+import com.realmmc.controller.core.modules.CoreModule;
 import com.realmmc.controller.core.modules.ModuleManager;
+import com.realmmc.controller.core.modules.SystemType;
 import com.realmmc.controller.core.services.ServiceRegistry;
 
+import com.realmmc.controller.modules.chat.SpigotChatModule;
+import com.realmmc.controller.modules.nametag.NametagModule;
 import com.realmmc.controller.modules.scheduler.SchedulerModule;
+import com.realmmc.controller.modules.scoreboard.SpigotScoreboardModule;
 import com.realmmc.controller.modules.spigot.SpigotModule;
+import com.realmmc.controller.modules.tablist.SpigotTablistModule;
 
 import com.realmmc.controller.shared.geoip.GeoIPService;
 import com.realmmc.controller.shared.messaging.MessagingSDK;
-import com.realmmc.controller.shared.storage.redis.RedisChannel;
-import com.realmmc.controller.shared.storage.redis.RedisSubscriber;
 
-import com.realmmc.controller.spigot.entities.cosmetics.MedalService;
 import com.realmmc.controller.spigot.entities.displayitems.DisplayItemService;
 import com.realmmc.controller.spigot.entities.holograms.HologramService;
-import com.realmmc.controller.spigot.entities.nametag.NametagService;
 import com.realmmc.controller.spigot.entities.npcs.NPCService;
 
 import com.github.retrooper.packetevents.PacketEvents;
@@ -48,14 +50,9 @@ public class Main extends JavaPlugin {
     private HologramService hologramService;
     @Getter
     private NPCService npcService;
-    @Getter
-    private NametagService nametagService;
-    @Getter
-    private MedalService medalService;
 
     private ModuleManager moduleManager;
     private ServiceRegistry serviceRegistry;
-
     private GeoIPService geoIPService;
 
     private Logger logger;
@@ -64,7 +61,7 @@ public class Main extends JavaPlugin {
     public void onLoad() {
         instance = this;
         this.logger = getLogger();
-        logger.info("Controller Core (Spigot - v2) carregando...");
+        logger.info("Controller Core (Spigot - v2.1 Hybrid) carregando...");
     }
 
     @Override
@@ -76,7 +73,7 @@ public class Main extends JavaPlugin {
                 return;
             }
 
-            logger.info("Inicializando Controller Core (Spigot - v2)...");
+            logger.info("Inicializando Controller Core (Spigot - v2.1)...");
 
             if (!getDataFolder().exists()) {
                 getDataFolder().mkdirs();
@@ -100,17 +97,11 @@ public class Main extends JavaPlugin {
 
             geoIPService = new GeoIPService(getDataFolder(), logger);
             serviceRegistry.registerService(GeoIPService.class, geoIPService);
-            logger.info("GeoIPService registrado.");
 
             if (!MessagingSDK.getInstance().isInitialized()) {
                 MessagingSDK.getInstance().initializeForSpigot(messagesDir);
                 logger.info("MessagingSDK inicializado para Spigot.");
-            } else {
-                logger.warning("Tentativa de reinicializar MessagingSDK ignorada.");
             }
-
-            // --- 1. ENTIDADES INDEPENDENTES ---
-            // Estas não dependem do ProfileService, então podem carregar antes dos módulos.
 
             displayItemService = new DisplayItemService();
             serviceRegistry.registerService(DisplayItemService.class, displayItemService);
@@ -122,56 +113,73 @@ public class Main extends JavaPlugin {
             serviceRegistry.registerService(NPCService.class, npcService);
             getServer().getPluginManager().registerEvents(npcService, this);
 
-            logger.info("Serviços de Entidades Base (Display, Hologram, NPC) inicializados.");
-
-            // --- 2. CARREGAMENTO DE MÓDULOS ---
-            // Isto inicializa Database, ProfileService, RoleService, etc.
+            logger.info("Serviços de Entidades Base inicializados.");
 
             moduleManager = new ModuleManager(logger);
+            serviceRegistry.registerService(ModuleManager.class, moduleManager);
+
             moduleManager.autoRegisterModules(AutoRegister.Platform.SPIGOT, getClass());
+
             moduleManager.registerModule(new SchedulerModule(null, this, logger));
             moduleManager.registerModule(new SpigotModule(this, logger));
 
             moduleManager.enableAllModules();
 
-            // --- 3. SERVIÇOS DEPENDENTES & REDIS ---
-            // Estes precisam do ProfileService (carregado acima) e do RedisSubscriber.
-
-            RedisSubscriber redisSubscriber = serviceRegistry.requireService(RedisSubscriber.class);
-
-            // MedalService
-            medalService = new MedalService();
-            getServer().getPluginManager().registerEvents(medalService, this);
-            // Regista no Redis para receber updates de "Equipar Medalha" instantaneamente
-            redisSubscriber.registerListener(RedisChannel.PROFILES_SYNC, medalService);
-            logger.info("MedalService inicializado, eventos Bukkit e Redis registrados.");
-
-            // NametagService
-            nametagService = new NametagService();
-            serviceRegistry.registerService(NametagService.class, nametagService);
-            getServer().getPluginManager().registerEvents(nametagService, this);
-            // Regista no Redis para receber updates de Prefixo instantaneamente
-            redisSubscriber.registerListener(RedisChannel.PROFILES_SYNC, nametagService);
-            logger.info("NametagService inicializado, eventos Bukkit e Redis registrados.");
-
-            logger.info("Serviços dependentes (Nametag, Medalhas) inicializados após módulos.");
-
-            // Atualização inicial para jogadores que já estão online (caso de /reload)
             for (Player p : Bukkit.getOnlinePlayers()) {
                 try {
                     npcService.resendAllTo(p);
-                    nametagService.updateTag(p);
-                    medalService.updateMedal(p);
                 } catch (Exception e) {
-                    logger.log(Level.WARNING, "Erro ao atualizar entidades para " + p.getName() + " no onEnable.", e);
+                    logger.log(Level.WARNING, "Erro ao atualizar NPCs para " + p.getName(), e);
                 }
             }
 
-            logger.info("Controller Core (Spigot - v2) inicializado com sucesso!");
+            getServer().getScheduler().runTask(this, this::activateOptionalModules);
+
+            logger.info("Controller Core inicializado. Aguardando reivindicação de subsistemas...");
 
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Erro fatal durante a inicialização do Controller!", e);
             getServer().getPluginManager().disablePlugin(this);
+        }
+    }
+
+    private void activateOptionalModules() {
+        logger.info("Verificando módulos opcionais...");
+
+        if (!moduleManager.isClaimed(SystemType.CHAT)) {
+            CoreModule chatModule = new SpigotChatModule(logger);
+            moduleManager.registerModule(chatModule);
+            moduleManager.enableModule(chatModule);
+            logger.info("-> SpigotChatModule ativado (Padrão).");
+        } else {
+            logger.info("-> SpigotChatModule IGNORADO (Sistema CHAT reivindicado externamente).");
+        }
+
+        if (!moduleManager.isClaimed(SystemType.TAGS)) {
+            CoreModule nametagModule = new NametagModule(logger);
+            moduleManager.registerModule(nametagModule);
+            moduleManager.enableModule(nametagModule);
+            logger.info("-> NametagModule ativado (Padrão).");
+        } else {
+            logger.info("-> NametagModule IGNORADO (Sistema TAGS reivindicado externamente).");
+        }
+
+        if (!moduleManager.isClaimed(SystemType.TABLIST)) {
+            CoreModule tablistModule = new SpigotTablistModule(logger);
+            moduleManager.registerModule(tablistModule);
+            moduleManager.enableModule(tablistModule);
+            logger.info("-> SpigotTablistModule ativado (Padrão).");
+        } else {
+            logger.info("-> SpigotTablistModule IGNORADO (Sistema TABLIST reivindicado externamente).");
+        }
+
+        if (!moduleManager.isClaimed(SystemType.SCOREBOARD)) {
+            CoreModule scoreboardModule = new SpigotScoreboardModule(logger);
+            moduleManager.registerModule(scoreboardModule);
+            moduleManager.enableModule(scoreboardModule);
+            logger.info("-> SpigotScoreboardModule ativado (Padrão).");
+        } else {
+            logger.info("-> SpigotScoreboardModule IGNORADO (Sistema SCOREBOARD reivindicado externamente).");
         }
     }
 
@@ -180,12 +188,10 @@ public class Main extends JavaPlugin {
         try {
             logger.info("Finalizando Controller Core (Spigot - v2)...");
 
-            // Desabilita módulos (Database, Profile, etc)
             if (moduleManager != null) {
                 moduleManager.disableAllModules();
             }
 
-            // Limpa entidades visuais
             if (displayItemService != null) {
                 try { displayItemService.cleanup(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao limpar DisplayItems.", e); }
             }
@@ -195,37 +201,29 @@ public class Main extends JavaPlugin {
             if (npcService != null) {
                 try { npcService.cleanup(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao limpar NPCs.", e); }
             }
-            if (medalService != null) {
-                try { medalService.removeAll(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao limpar Medalhas.", e); }
-            }
 
         } finally {
-            // Fecha conexões auxiliares
             if (geoIPService != null) {
                 try { geoIPService.close(); } catch (Exception e) { logger.log(Level.WARNING, "Erro ao fechar GeoIPService.", e); }
             }
             MessagingSDK.getInstance().shutdown();
 
-            // Remove serviços do registry
             ServiceRegistry currentRegistry = ServiceRegistry.getInstance();
             if (currentRegistry != null) {
-                try { currentRegistry.unregisterService(NametagService.class); } catch (Exception e) {}
                 try { currentRegistry.unregisterService(NPCService.class); } catch (Exception e) {}
                 try { currentRegistry.unregisterService(HologramService.class); } catch (Exception e) {}
                 try { currentRegistry.unregisterService(DisplayItemService.class); } catch (Exception e) {}
                 try { currentRegistry.unregisterService(GeoIPService.class); } catch (Exception e) {}
+                try { currentRegistry.unregisterService(ModuleManager.class); } catch (Exception e) {}
                 try { currentRegistry.unregisterService(Plugin.class); } catch (Exception e) {}
             }
 
-            // Limpa referências estáticas
             serviceRegistry = null;
             moduleManager = null;
             displayItemService = null;
             hologramService = null;
             npcService = null;
-            nametagService = null;
             geoIPService = null;
-            medalService = null;
 
             instance = null;
 

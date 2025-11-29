@@ -5,7 +5,6 @@ import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
-import com.github.retrooper.packetevents.protocol.entity.pose.EntityPose;
 import com.github.retrooper.packetevents.protocol.entity.type.EntityType;
 import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
@@ -381,7 +380,7 @@ public class NPCService implements Listener {
                 return;
             }
 
-            double height = (npc.entityType() == EntityTypes.PLAYER) ? 2.0 : 1.8;
+            double height = getNametagHeight(npc.entityType());
             Location base = npc.location().clone().add(0, height, 0);
 
             List<String> lines = null;
@@ -401,6 +400,26 @@ public class NPCService implements Listener {
             nameHolograms.put(npc.uuid(), ids);
         } catch (Throwable t) {
             Main.getInstance().getLogger().log(Level.SEVERE, "Falha ao criar holograma de nome para NPC " + npc.uuid(), t);
+        }
+    }
+
+    private double getNametagHeight(EntityType type) {
+        if (type.equals(EntityTypes.PLAYER)) {
+            return 2.3;
+        } else if (type.equals(EntityTypes.ENDERMAN)) {
+            return 3.2;
+        } else if (type.equals(EntityTypes.GHAST)) {
+            return 4.5;
+        } else if (type.equals(EntityTypes.GIANT)) {
+            return 12.5;
+        } else if (type.equals(EntityTypes.SLIME) || type.equals(EntityTypes.MAGMA_CUBE)) {
+            return 0.8;
+        } else if (type.equals(EntityTypes.SILVERFISH) || type.equals(EntityTypes.ENDERMITE)) {
+            return 0.5;
+        } else if (type.equals(EntityTypes.VILLAGER) || type.equals(EntityTypes.WITCH) || type.equals(EntityTypes.PILLAGER) || type.equals(EntityTypes.VINDICATOR)) {
+            return 2.6;
+        } else {
+            return 2.5;
         }
     }
 

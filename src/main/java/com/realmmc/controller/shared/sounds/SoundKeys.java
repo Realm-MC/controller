@@ -11,4 +11,5 @@ public final class SoundKeys {
     public static final String CLICK = "CLICK";
     public static final String SETTING_UPDATE = "SETTING_UPDATE";
     public static final String TELEPORT_WHOOSH = "TELEPORT_WHOOSH";
+    public static final String COSMETIC_EXPIRE = "COSMETIC_EXPIRE";
 }

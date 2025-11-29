@@ -12,9 +12,8 @@ import com.realmmc.controller.spigot.entities.config.DisplayEntry;
 import com.realmmc.controller.spigot.entities.npcs.NPCService;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.EntityType;
 import org.bukkit.util.StringUtil;
-import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
-import com.github.retrooper.packetevents.protocol.entity.type.EntityType;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -22,6 +21,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Cmd(cmd = "npc", aliases = {})
 public class NpcCommand implements CommandInterface {
@@ -44,7 +44,7 @@ public class NpcCommand implements CommandInterface {
         }
 
         if (args.length == 0 || (args.length > 0 && args[0].equalsIgnoreCase("help"))) {
-            showHelp(sender);
+            showHelp(sender, label);
             return;
         }
 
@@ -67,18 +67,48 @@ public class NpcCommand implements CommandInterface {
             case "addaction": handleAddAction(sender, args); break;
             case "removeaction": handleRemoveAction(sender, args); break;
             case "listactions": handleListActions(sender, args); break;
+            case "reload":
+                npcService.reloadAll();
+                Messages.send(sender, MessageKey.DISPLAY_RELOADED);
+                playSound(sender, SoundKeys.SUCCESS);
+                break;
             default:
-                showHelp(sender);
+                showHelp(sender, label);
                 playSound(sender, SoundKeys.USAGE_ERROR);
                 break;
         }
     }
 
+    private void showHelp(CommandSender sender, String label) {
+        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_HEADER).with("system", "NPCs"));
 
-    private void showHelp(CommandSender sender) {
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/npc settype <id> <tipo>").with("description", "Define o tipo de entidade (ex: ZOMBIE, PLAYER)."));
+        sendHelpLine(sender, label, "criar <id> <skin> [nome]", "Cria um novo NPC.");
+        sendHelpLine(sender, label, "remover <id>", "Remove um NPC.");
+        sendHelpLine(sender, label, "list", "Lista todos os NPCs.");
+        sendHelpLine(sender, label, "info <id>", "Mostra informações do NPC.");
+        sendHelpLine(sender, label, "tphere <id>", "Teleporta o NPC até você.");
+        sendHelpLine(sender, label, "clone <id> <novo_id>", "Clona um NPC.");
+        sendHelpLine(sender, label, "rename <id> <nome>", "Altera o nome do NPC.");
+        sendHelpLine(sender, label, "setskin <id> <skin>", "Altera a skin (nick, url ou 'default').");
+        sendHelpLine(sender, label, "settype <id> <tipo>", "Altera o tipo de entidade (PLAYER, ZOMBIE, etc).");
+        sendHelpLine(sender, label, "togglename <id>", "Mostra/Esconde o nome.");
+        sendHelpLine(sender, label, "togglelook <id>", "Ativa/Desativa olhar para o jogador.");
+        sendHelpLine(sender, label, "addline <id> <texto>", "Adiciona uma linha de holograma.");
+        sendHelpLine(sender, label, "setline <id> <linha> <texto>", "Edita uma linha.");
+        sendHelpLine(sender, label, "removeline <id> <linha>", "Remove uma linha.");
+        sendHelpLine(sender, label, "addaction <id> <ação>", "Adiciona uma ação ao clicar.");
+        sendHelpLine(sender, label, "removeaction <id> <index>", "Remove uma ação.");
+        sendHelpLine(sender, label, "listactions <id>", "Lista as ações.");
+        sendHelpLine(sender, label, "reload", "Recarrega os NPCs do disco.");
+
         Messages.send(sender, MessageKey.COMMON_HELP_FOOTER_FULL);
         playSound(sender, SoundKeys.NOTIFICATION);
+    }
+
+    private void sendHelpLine(CommandSender sender, String label, String args, String description) {
+        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE)
+                .with("usage", "/" + label + " " + args)
+                .with("description", description));
     }
 
     private void sendUsage(CommandSender sender, String usage) {
@@ -92,7 +122,6 @@ public class NpcCommand implements CommandInterface {
             soundPlayerOpt.ifPresent(sp -> sp.playSound(player, key));
         }
     }
-
 
     private void handleCreate(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) { Messages.send(sender, MessageKey.ONLY_PLAYERS); playSound(sender, SoundKeys.ERROR); return; }
@@ -213,11 +242,8 @@ public class NpcCommand implements CommandInterface {
         }
 
         try {
-            EntityType et = EntityTypes.getByName(type.toLowerCase());
-            if (et == null) throw new IllegalArgumentException();
+            com.github.retrooper.packetevents.protocol.entity.type.EntityTypes.getByName(type.toLowerCase());
         } catch (Exception e) {
-            Messages.send(sender, Message.of(MessageKey.PARTICLE_INVALID_TYPE).with("type", type));
-            playSound(sender, SoundKeys.ERROR); return;
         }
 
         npcService.setEntityType(id, type);
@@ -357,7 +383,7 @@ public class NpcCommand implements CommandInterface {
             StringUtil.copyPartialMatches(currentArg, Arrays.asList(
                     "criar", "clone", "remover", "list", "info", "tphere", "setskin", "settype", "rename",
                     "togglename", "togglelook", "addline", "setline", "removeline",
-                    "addaction", "removeaction", "listactions", "help"), completions);
+                    "addaction", "removeaction", "listactions", "help", "reload"), completions);
         } else if (args.length == 2) {
             String sub = args[0].toLowerCase();
             if (Arrays.asList("clone", "remover", "info", "tphere", "setskin", "settype", "rename",
@@ -370,7 +396,11 @@ public class NpcCommand implements CommandInterface {
             if (sub.equals("criar") || sub.equals("setskin")) {
                 StringUtil.copyPartialMatches(currentArg, Arrays.asList("player", "default", "http://"), completions);
             } else if (sub.equals("settype")) {
-                StringUtil.copyPartialMatches(currentArg, Arrays.asList("PLAYER", "ZOMBIE", "SKELETON", "VILLAGER", "CREEPER"), completions);
+                List<String> mobTypes = Stream.of(EntityType.values())
+                        .filter(et -> et.isAlive() && et.isSpawnable())
+                        .map(Enum::name)
+                        .collect(Collectors.toList());
+                StringUtil.copyPartialMatches(currentArg, mobTypes, completions);
             }
         }
 

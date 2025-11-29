@@ -36,10 +36,8 @@ public class PlayerJoinListener {
     private final StatisticsService statisticsService;
     private final Optional<SessionTrackerService> sessionTrackerServiceOpt;
     private final Logger logger;
-    private final ProxyServer proxyServer;
 
     public PlayerJoinListener() {
-        this.proxyServer = ServiceRegistry.getInstance().requireService(ProxyServer.class);
         this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
         this.preferencesService = ServiceRegistry.getInstance().requireService(PreferencesService.class);
         this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
@@ -64,13 +62,8 @@ public class PlayerJoinListener {
         roleService.startPreLoadingPlayerData(uuid);
 
         sessionTrackerServiceOpt.ifPresent(service -> {
-            String proxyId = System.getProperty("controller.proxyId");
-            if (proxyId == null || proxyId.isEmpty()) {
-                proxyId = System.getenv("PROXY_NAME");
-            }
-            if (proxyId == null || proxyId.isEmpty()) {
-                proxyId = "proxy_unknown";
-            }
+            String proxyId = System.getProperty("controller.proxyId", System.getenv("PROXY_NAME"));
+            if (proxyId == null) proxyId = "proxy_unknown";
 
             String ip = player.getRemoteAddress().getAddress().getHostAddress();
             int protocol = player.getProtocolVersion().getProtocol();
@@ -107,10 +100,14 @@ public class PlayerJoinListener {
                 service.setSessionField(uuid, "role", profile.getPrimaryRoleName());
                 service.setSessionField(uuid, "cash", String.valueOf(profile.getCash()));
                 service.setSessionField(uuid, "medal", profile.getEquippedMedal());
+                service.setSessionState(uuid, AuthenticationGuard.STATE_ONLINE);
             });
 
             preferencesService.loadAndCachePreferences(uuid);
+
             roleService.clearSentWarnings(uuid);
+
+            roleService.checkAndSendLoginExpirationWarning(player);
 
             Proxy.getInstance().getPremiumLoginStatus().remove(username.toLowerCase());
             Proxy.getInstance().getOfflineUuids().remove(username.toLowerCase());
@@ -140,5 +137,6 @@ public class PlayerJoinListener {
 
         preferencesService.removeCachedPreferences(uuid);
         roleService.invalidateSession(uuid);
+        roleService.clearSentWarnings(uuid);
     }
 }

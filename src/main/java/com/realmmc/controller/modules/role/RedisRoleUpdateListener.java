@@ -1,14 +1,9 @@
 package com.realmmc.controller.modules.role;
 
-import com.realmmc.controller.core.services.ServiceRegistry;
-import com.realmmc.controller.shared.role.PermissionRefresher;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisMessageListener;
 import com.realmmc.controller.shared.storage.redis.RedisSubscriber;
 
-import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -40,7 +35,7 @@ public class RedisRoleUpdateListener implements RedisMessageListener {
         try {
             LOGGER.info("[RoleUpdateListener] Received ROLES_UPDATE signal. Reloading all roles from MongoDB...");
 
-            roleService.loadRolesToCache(false);
+            roleService.loadRolesToCache();
 
             LOGGER.info("[RoleUpdateListener] Role cache (roleCache) successfully reloaded.");
 
