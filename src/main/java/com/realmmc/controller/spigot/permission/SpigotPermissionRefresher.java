@@ -20,9 +20,7 @@ public class SpigotPermissionRefresher implements PermissionRefresher {
     public SpigotPermissionRefresher(Plugin plugin, Logger logger) {
         this.plugin = plugin;
         this.logger = logger;
-        try { this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class); }
-        catch (IllegalStateException e) { logger.log(Level.SEVERE, "[PermissionRefresher] Critical Error: RoleService not found!", e); throw new RuntimeException("Failed: RoleService is missing.", e); }
-        logger.info("[PermissionRefresher] SpigotPermissionRefresher initialized.");
+        this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
     }
 
     @Override
@@ -33,28 +31,17 @@ public class SpigotPermissionRefresher implements PermissionRefresher {
             Player player = Bukkit.getPlayer(playerUuid);
 
             if (player != null && player.isOnline()) {
-                logger.info("[PermissionRefresher] Received refresh request for online Spigot player: " + player.getName() + ". Dispatching async recalculation...");
+                roleService.loadPlayerDataAsync(playerUuid).thenAccept(sessionData -> {
 
-                roleService.loadPlayerDataAsync(playerUuid)
-                        .whenComplete((sessionData, error) -> {
-                            Bukkit.getScheduler().runTask(plugin, () -> {
-                                if (!player.isOnline()) return;
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (!player.isOnline()) return;
 
-                                if (error != null) {
-                                    logger.log(Level.SEVERE, "[PermissionRefresher] Error during permission recalculation for " + player.getName(), error);
-                                } else {
-                                    logger.fine("[PermissionRefresher] Recalculation complete for " + player.getName() + ". Forcing Bukkit re-evaluation...");
-                                    try {
-                                        player.recalculatePermissions();
-                                        logger.fine("[PermissionRefresher] Bukkit recalculatePermissions() called for " + player.getName());
-                                    } catch (Exception e) {
-                                        logger.log(Level.WARNING, "[PermissionRefresher] Error calling recalculatePermissions() for " + player.getName(), e);
-                                    }
-                                }
-                            });
-                        });
-            } else {
-                logger.finest("[PermissionRefresher] Refresh request for player not online on this server: " + playerUuid);
+                        player.recalculatePermissions();
+                        player.updateCommands();
+
+                        logger.info("[PermissionRefresher] Permissões aplicadas e atualizadas para " + player.getName());
+                    });
+                });
             }
         });
     }

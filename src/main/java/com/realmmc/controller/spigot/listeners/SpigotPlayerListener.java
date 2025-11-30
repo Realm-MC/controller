@@ -7,6 +7,7 @@ import com.realmmc.controller.shared.auth.AuthenticationGuard;
 import com.realmmc.controller.shared.preferences.PreferencesService;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileService;
+import com.realmmc.controller.shared.role.RoleKickHandler;
 import com.realmmc.controller.shared.stats.StatisticsService;
 import com.realmmc.controller.shared.session.SessionTrackerService;
 import com.realmmc.controller.shared.utils.TaskScheduler;
@@ -20,16 +21,11 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerLoginEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
-import com.viaversion.viaversion.api.Via;
-import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
-
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.Optional;
 
 @Listeners
 public class SpigotPlayerListener implements Listener {
@@ -108,7 +104,7 @@ public class SpigotPlayerListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerJoinFinalize(PlayerJoinEvent event){
+    public void onPlayerJoinFinalize(PlayerJoinEvent event) {
         final Player player = event.getPlayer();
         final UUID uuid = player.getUniqueId();
 
@@ -120,17 +116,21 @@ public class SpigotPlayerListener implements Listener {
             try {
                 int currentPing = player.getPing();
                 service.setSessionField(uuid, "ping", String.valueOf(currentPing));
+
+                service.setSessionState(uuid, AuthenticationGuard.STATE_ONLINE);
+
             } catch (Exception e) {
                 logger.log(Level.FINEST, "Não foi possível atualizar ping inicial para " + player.getName(), e);
             }
         });
     }
 
-
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
         final Player player = event.getPlayer();
         final UUID uuid = player.getUniqueId();
+
+        RoleKickHandler.cancelKick(uuid);
 
         roleService.invalidateSession(uuid);
 
@@ -146,7 +146,15 @@ public class SpigotPlayerListener implements Listener {
             }
         }
 
+        TaskScheduler.runAsync(() -> {
+            profileService.getByUuid(uuid).ifPresent(profile -> {
+                profile.setLastLogout(System.currentTimeMillis());
+                profileService.save(profile);
+            });
+        });
+
         this.preferencesService.removeCachedPreferences(uuid);
         this.roleService.clearSentWarnings(uuid);
+
     }
 }

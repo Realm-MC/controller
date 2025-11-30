@@ -8,6 +8,7 @@ import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisMessageListener;
+import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -42,12 +43,12 @@ public class RoleBroadcastListener implements RedisMessageListener {
                     .with("player_color", playerColor)
                     .with("group_display", groupDisplay);
 
-            Messages.sendTitle(proxyServer.getAllPlayers(), titleMsg, subtitleMsg);
-
-            LOGGER.fine("Broadcast de role processado via Messages API.");
+            for (Player p : proxyServer.getAllPlayers()) {
+                Messages.sendTitle(p, titleMsg, subtitleMsg);
+            }
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Erro no RoleBroadcastListener: " + message, e);
+            LOGGER.log(Level.SEVERE, "Erro no RoleBroadcastListener (Proxy): " + message, e);
         }
     }
 }

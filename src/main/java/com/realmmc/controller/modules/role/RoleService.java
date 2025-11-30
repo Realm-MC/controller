@@ -2,8 +2,10 @@ package com.realmmc.controller.modules.role;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.mongodb.MongoException;
 import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.shared.messaging.Message;
+import com.realmmc.controller.shared.messaging.MessageKey;
+import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileService;
 import com.realmmc.controller.shared.role.DefaultRole;
@@ -17,9 +19,6 @@ import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
 import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.realmmc.controller.shared.utils.TimeUtils;
-import com.realmmc.controller.shared.messaging.Message;
-import com.realmmc.controller.shared.messaging.MessageKey;
-import com.realmmc.controller.shared.messaging.Messages;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -54,7 +53,6 @@ public class RoleService {
 
         startExpirationTask();
     }
-
 
 
     public void startPreLoadingPlayerData(UUID uuid) {
@@ -132,6 +130,7 @@ public class RoleService {
         });
     }
 
+
     private void updatePauseState(Profile profile) {
         if (profile.getRoles() == null) return;
 
@@ -147,7 +146,6 @@ public class RoleService {
         }
 
         long now = System.currentTimeMillis();
-        boolean changed = false;
 
         for (PlayerRole pr : profile.getRoles()) {
             if (pr.getStatus() != PlayerRole.Status.ACTIVE) continue;
@@ -157,22 +155,19 @@ public class RoleService {
             Role roleDef = roleDefOpt.get();
 
             if (roleDef.getType() == RoleType.VIP && !pr.isPermanent()) {
-
                 if (hasActiveStaff && !pr.isPaused()) {
                     long remaining = pr.getExpiresAt() - now;
                     if (remaining > 0) {
                         pr.setPaused(true);
                         pr.setPausedTimeRemaining(remaining);
                         pr.setExpiresAt(null);
-                        logger.info("[RoleService] Pausando VIP " + pr.getRoleName() + " de " + profile.getName() + " (Ganhou Staff). Tempo salvo: " + TimeUtils.formatDuration(remaining));
-                        changed = true;
+                        logger.info("[RoleService] Pausando VIP " + pr.getRoleName() + " de " + profile.getName());
                     }
                 } else if (!hasActiveStaff && pr.isPaused() && pr.getPausedTimeRemaining() != null) {
                     pr.setPaused(false);
                     pr.setExpiresAt(now + pr.getPausedTimeRemaining());
                     pr.setPausedTimeRemaining(null);
-                    logger.info("[RoleService] Despausando VIP " + pr.getRoleName() + " de " + profile.getName() + " (Saiu da Staff).");
-                    changed = true;
+                    logger.info("[RoleService] Despausando VIP " + pr.getRoleName() + " de " + profile.getName());
                 }
             }
         }
@@ -207,7 +202,6 @@ public class RoleService {
             profile.setRoles(roles);
 
             updatePauseState(profile);
-
             recalculatePrimaryRole(profile);
 
             profileService.save(profile);
@@ -230,7 +224,6 @@ public class RoleService {
 
             if (removed) {
                 updatePauseState(profile);
-
                 ensureDefaultRole(profile);
                 recalculatePrimaryRole(profile);
 
@@ -265,9 +258,7 @@ public class RoleService {
             }
 
             profile.setRoles(roles);
-
             updatePauseState(profile);
-
             recalculatePrimaryRole(profile);
 
             profileService.save(profile);
@@ -328,7 +319,6 @@ public class RoleService {
 
             if (changed) {
                 updatePauseState(profile);
-
                 ensureDefaultRole(profile);
                 recalculatePrimaryRole(profile);
                 profileService.save(profile);
@@ -442,10 +432,14 @@ public class RoleService {
 
     public void loadRolesToCache() {
         roleCache.clear();
+
         roleRepository.collection().find().forEach(role -> {
-            role.setCachedEffectivePermissions(calculateEffectivePermissionsForRole(role));
             roleCache.put(role.getName().toLowerCase(), role);
         });
+
+        for (Role role : roleCache.values()) {
+            role.setCachedEffectivePermissions(calculateEffectivePermissionsForRole(role));
+        }
 
         if (!roleCache.containsKey("default")) {
             Role def = DefaultRole.DEFAULT.toRole();
@@ -453,15 +447,31 @@ public class RoleService {
             roleCache.put("default", def);
         }
 
-        logger.info("[RoleService] Roles carregados: " + roleCache.size());
+        logger.info("[RoleService] Roles carregados e calculados: " + roleCache.size());
     }
 
+
     private Set<String> calculateEffectivePermissionsForRole(Role role) {
+        return calculatePermissionsRecursive(role, new HashSet<>());
+    }
+
+    private Set<String> calculatePermissionsRecursive(Role role, Set<String> visitedRoles) {
         Set<String> perms = new HashSet<>();
-        if (role.getPermissions() != null) perms.addAll(role.getPermissions());
+
+        if (!visitedRoles.add(role.getName().toLowerCase())) {
+            logger.warning("[RoleService] CICLO DE HERANÇA DETECTADO! Grupo '" + role.getName() + "' ignorado.");
+            return perms;
+        }
+
+        if (role.getPermissions() != null) {
+            perms.addAll(role.getPermissions());
+        }
+
         if (role.getInheritance() != null) {
-            for (String parent : role.getInheritance()) {
-                getRole(parent).ifPresent(r -> perms.addAll(calculateEffectivePermissionsForRole(r)));
+            for (String parentName : role.getInheritance()) {
+                getRole(parentName).ifPresent(parentRole -> {
+                    perms.addAll(calculatePermissionsRecursive(parentRole, visitedRoles));
+                });
             }
         }
         return perms;

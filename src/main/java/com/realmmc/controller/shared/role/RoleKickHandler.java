@@ -19,9 +19,9 @@ public class RoleKickHandler {
     private static final Logger LOGGER = Logger.getLogger(RoleKickHandler.class.getName());
     private static final long CHECK_INTERVAL_SECONDS = 2;
 
-    private static final long KICK_DELAY_SECONDS_ADD_SET = 15;
-    private static final long KICK_DELAY_SECONDS_REMOVED = 15;
-    private static final long KICK_DELAY_SECONDS_EXPIRED = 15;
+    private static final long KICK_DELAY_SECONDS_ADD_SET = 10;
+    private static final long KICK_DELAY_SECONDS_REMOVED = 10;
+    private static final long KICK_DELAY_SECONDS_EXPIRED = 10;
 
     private static final Map<UUID, KickInfo> scheduledKicks = new ConcurrentHashMap<>();
     private static ScheduledFuture<?> checkTask = null;
@@ -54,10 +54,7 @@ public class RoleKickHandler {
     }
 
     public static synchronized void initialize(PlatformKicker kicker) {
-        if (running) {
-            LOGGER.warning("[RoleKickHandler] Already initialized.");
-            return;
-        }
+        if (running) return;
         Objects.requireNonNull(kicker, "PlatformKicker cannot be null.");
         platformKicker = kicker;
 
@@ -67,12 +64,9 @@ public class RoleKickHandler {
                     CHECK_INTERVAL_SECONDS,
                     TimeUnit.SECONDS);
             running = true;
-            LOGGER.info("[RoleKickHandler] Initialized. Checking kicks every " + CHECK_INTERVAL_SECONDS + " seconds.");
-        } catch (IllegalStateException e) {
-            LOGGER.log(Level.SEVERE, "[RoleKickHandler] Failed to initialize: TaskScheduler not available?", e);
-            running = false;
+            LOGGER.info("[RoleKickHandler] Initialized.");
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[RoleKickHandler] Unexpected error scheduling kick check task.", e);
+            LOGGER.log(Level.SEVERE, "[RoleKickHandler] Error starting task.", e);
             running = false;
         }
     }
@@ -80,54 +74,47 @@ public class RoleKickHandler {
     public static synchronized void shutdown() {
         running = false;
         if (checkTask != null) {
-            try {
-                checkTask.cancel(false);
-            } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "[RoleKickHandler] Error cancelling kick check task.", e);
-            }
+            checkTask.cancel(false);
             checkTask = null;
         }
         scheduledKicks.clear();
         platformKicker = null;
-        LOGGER.info("[RoleKickHandler] Finalized.");
     }
 
     public static void scheduleKick(UUID uuid, RoleType roleType, KickReason reason, String groupDisplayName) {
-        if (!running || uuid == null || roleType == null || reason == null || groupDisplayName == null) {
-            if (!running) LOGGER.warning("[RoleKickHandler] Attempt to schedule kick while not running.");
-            return;
-        }
+        if (!running || uuid == null) return;
 
         long delayMillis;
         switch (reason) {
             case ADD_SET: delayMillis = TimeUnit.SECONDS.toMillis(KICK_DELAY_SECONDS_ADD_SET); break;
             case REMOVED: delayMillis = TimeUnit.SECONDS.toMillis(KICK_DELAY_SECONDS_REMOVED); break;
-            case EXPIRED: delayMillis = TimeUnit.SECONDS.toMillis(KICK_DELAY_SECONDS_EXPIRED); break;
-            default: delayMillis = TimeUnit.SECONDS.toMillis(15);
+            default: delayMillis = TimeUnit.SECONDS.toMillis(KICK_DELAY_SECONDS_EXPIRED);
         }
         long kickAt = System.currentTimeMillis() + delayMillis;
 
         KickInfo info = new KickInfo(roleType, reason, groupDisplayName, kickAt);
         scheduledKicks.put(uuid, info);
-        LOGGER.fine("[RoleKickHandler] Kick scheduled for UUID " + uuid + " (Reason: " + reason + ", Group: " + groupDisplayName + ") in " + delayMillis + "ms.");
+        LOGGER.info("[RoleKickHandler] Kick agendado para " + uuid + " em " + (delayMillis/1000) + "s.");
+    }
+
+    public static void cancelKick(UUID uuid) {
+        if (scheduledKicks.remove(uuid) != null) {
+            LOGGER.info("[RoleKickHandler] Kick cancelado para " + uuid + " (Jogador reconectou ou saiu).");
+        }
     }
 
     private static void checkScheduledKicks() {
-        if (!running || scheduledKicks.isEmpty() || platformKicker == null) {
-            return;
-        }
+        if (!running || scheduledKicks.isEmpty() || platformKicker == null) return;
 
         long now = System.currentTimeMillis();
         new ConcurrentHashMap<>(scheduledKicks).forEach((uuid, info) -> {
             if (now >= info.kickAtMillis) {
                 if (scheduledKicks.remove(uuid, info)) {
-                    LOGGER.fine("[RoleKickHandler] Processing scheduled kick for UUID: " + uuid + " (Reason: " + info.reason + ")");
                     String kickMessage = formatKickMessage(info);
                     try {
                         platformKicker.kickPlayer(uuid, kickMessage);
-                        LOGGER.info("[RoleKickHandler] Kick executed for UUID: " + uuid);
                     } catch (Exception e) {
-                        LOGGER.log(Level.SEVERE, "[RoleKickHandler] Error executing kick via PlatformKicker for UUID: " + uuid, e);
+                        LOGGER.warning("Erro ao kickar " + uuid);
                     }
                 }
             }
@@ -140,15 +127,13 @@ public class RoleKickHandler {
             switch (info.reason) {
                 case ADD_SET: key = MessageKey.ROLE_KICK_ADD_SET_VIP; break;
                 case REMOVED: key = MessageKey.ROLE_KICK_REMOVED_VIP; break;
-                case EXPIRED: key = MessageKey.ROLE_KICK_EXPIRED_VIP; break;
-                default: key = MessageKey.ROLE_KICK_GENERIC;
+                default: key = MessageKey.ROLE_KICK_EXPIRED_VIP;
             }
         } else {
             switch (info.reason) {
                 case ADD_SET: key = MessageKey.ROLE_KICK_ADD_SET_STAFF; break;
                 case REMOVED: key = MessageKey.ROLE_KICK_REMOVED_STAFF; break;
-                case EXPIRED: key = MessageKey.ROLE_KICK_EXPIRED_STAFF; break;
-                default: key = MessageKey.ROLE_KICK_GENERIC;
+                default: key = MessageKey.ROLE_KICK_EXPIRED_STAFF;
             }
         }
         return Messages.translate(Message.of(key).with("group", info.groupDisplayName));
