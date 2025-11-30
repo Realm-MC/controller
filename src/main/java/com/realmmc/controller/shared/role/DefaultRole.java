@@ -2,48 +2,41 @@ package com.realmmc.controller.shared.role;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Arrays; // Import Arrays
+import java.util.Arrays;
+import java.util.Collections;
 
 public enum DefaultRole {
 
     // Formato: (name, displayName, prefix, suffix, color, type, weight, permissions, inheritance)
     MASTER("master", "<gold>Master", "<gold>[Master] ", "", "<gold>", RoleType.STAFF, 1000,
-            Arrays.asList("*"), // Usar Arrays.asList ou List.of() se Java 9+
+            Arrays.asList("*"),
             Arrays.asList("manager")),
 
     MANAGER("manager", "<dark_red>Gerente", "<dark_red>[Gerente] ", "", "<dark_red>", RoleType.STAFF, 900,
             Arrays.asList("controller.manager"),
             Arrays.asList("administrator")),
 
-    ADMINISTRATOR("administrator", "<red>Admin", "<red>[Admin] ", "", "<red>", RoleType.STAFF, 800,
+    ADMINISTRATOR("administrator", "<red>Administrador", "<red>[Admin] ", "", "<red>", RoleType.STAFF, 800,
             Arrays.asList("controller.administrator"),
             Arrays.asList("moderator")),
 
-    MODERATOR("moderator", "<green>Moderador", "<green>[Moderador] ", "", "<green>", RoleType.STAFF, 700,
+    MODERATOR("moderator", "<dark_green>Moderador", "<dark_green>[Moderador] ", "", "<dark_green>", RoleType.STAFF, 700,
             Arrays.asList("controller.moderator"),
             Arrays.asList("helper")),
 
     HELPER("helper", "<yellow>Ajudante", "<yellow>[Ajudante] ", "", "<yellow>", RoleType.STAFF, 600,
             Arrays.asList("controller.helper"),
-            Arrays.asList("staff")), // Helper herda de Staff (base)
+            Arrays.asList("partner")),
 
-    PARTNER("partner", "<dark_aqua>Parceiro", "<dark_aqua>[Parceiro] ", "", "<dark_aqua>", RoleType.STAFF, 550, // Cor e Peso ajustados
+    PARTNER("partner", "<red>Parceiro", "<red>[Parceiro] ", "", "<red>", RoleType.VIP, 500,
             Arrays.asList("controller.partner"),
-            Arrays.asList("supreme")), // Partner herda de Supreme
+            Arrays.asList("supreme")),
 
-    BUILDER("builder", "<blue>Construtor", "<blue>[Construtor] ", "", "<blue>", RoleType.STAFF, 500,
-            Arrays.asList("controller.builder"),
-            Arrays.asList("staff")), // Builder herda de Staff (base)
-
-    STAFF("staff", "<blue>Equipe", "<blue>[Equipe] ", "", "<blue>", RoleType.STAFF, 400,
-            Arrays.asList("controller.staff"), // Grupo base da staff
-            Arrays.asList("default")), // Staff herda de Default (para perms básicas)
-
-    SUPREME("supreme", "<dark_red>Supremo", "<dark_red>[Supremo] ", "", "<dark_red>", RoleType.VIP, 300,
-            Arrays.asList("controller.supreme"), // Permissões VIP
+    SUPREME("supreme", "<dark_red>Supremo", "<dark_red>[Supremo] ", "", "<dark_red>", RoleType.VIP, 400,
+            Arrays.asList("controller.supreme"),
             Arrays.asList("legendary")),
 
-    LEGENDARY("legendary", "<green>Lendário", "<green>[Lendário] ", "", "<green>", RoleType.VIP, 250,
+    LEGENDARY("legendary", "<dark_green>Lendário", "<dark_green>[Lendário] ", "", "<dark_green>", RoleType.VIP, 300,
             Arrays.asList("controller.legendary"),
             Arrays.asList("hero")),
 
@@ -51,13 +44,13 @@ public enum DefaultRole {
             Arrays.asList("controller.hero"),
             Arrays.asList("champion")),
 
-    CHAMPION("champion", "<blue>Campeão", "<blue>[Campeão] ", "", "<blue>", RoleType.VIP, 150,
+    CHAMPION("champion", "<blue>Campeão", "<dark_blue>[Campeão] ", "", "<dark_blue>", RoleType.VIP, 100,
             Arrays.asList("controller.champion"),
-            Arrays.asList("default")), // VIPs herdam de Default
+            Arrays.asList("default")),
 
     DEFAULT("default", "<gray>Membro", "<gray>", "", "<gray>", RoleType.DEFAULT, 0,
-            Arrays.asList("controller.default"), // Permissões básicas para todos
-            Arrays.asList()); // Grupo base, não herda de ninguém
+            Arrays.asList("controller.default"),
+            Collections.emptyList());
 
     private final String name;
     private final String displayName;
@@ -89,26 +82,23 @@ public enum DefaultRole {
     public String getColor() { return color; }
     public RoleType getType() { return type; }
     public int getWeight() { return weight; }
-    public List<String> getPermissions() { return new ArrayList<>(permissions); } // Retorna cópia
-    public List<String> getInheritance() { return new ArrayList<>(inheritance); } // Retorna cópia
+    public List<String> getPermissions() { return new ArrayList<>(permissions); }
+    public List<String> getInheritance() { return new ArrayList<>(inheritance); }
 
-    /**
-     * Converte este enum num objeto Role (POJO) para o MongoDB.
-     */
     public Role toRole() {
         long now = System.currentTimeMillis();
         return Role.builder()
-                .name(name.toLowerCase()) // Garante ID minúsculo
+                .name(name.toLowerCase())
                 .displayName(displayName)
                 .prefix(prefix)
                 .suffix(suffix)
                 .color(color)
                 .type(type)
                 .weight(weight)
-                .permissions(new ArrayList<>(permissions)) // Cria nova lista
-                .inheritance(new ArrayList<>(inheritance)) // Cria nova lista
-                .createdAt(now) // Define createdAt
-                .updatedAt(now) // Define updatedAt
+                .permissions(new ArrayList<>(permissions))
+                .inheritance(new ArrayList<>(inheritance))
+                .createdAt(now)
+                .updatedAt(now)
                 .build();
     }
 }

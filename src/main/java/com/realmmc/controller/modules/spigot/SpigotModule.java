@@ -13,6 +13,7 @@ import com.realmmc.controller.shared.storage.redis.RedisSubscriber;
 import com.realmmc.controller.spigot.cash.SpigotCashCache;
 import com.realmmc.controller.spigot.commands.CommandManager;
 import com.realmmc.controller.spigot.listeners.ListenersManager;
+import com.realmmc.controller.spigot.listeners.RoleBroadcastListener;
 import com.realmmc.controller.spigot.permission.SpigotPermissionInjector;
 import com.realmmc.controller.spigot.permission.SpigotPermissionRefresher;
 import com.realmmc.controller.spigot.sounds.SpigotSoundPlayer;
@@ -39,6 +40,7 @@ public class SpigotModule extends AbstractCoreModule {
     private Optional<SessionTrackerService> sessionTrackerServiceOpt;
     private ScheduledFuture<?> heartbeatTaskFuture = null;
     private final boolean viaVersionApiAvailable;
+    private RoleBroadcastListener roleBroadcastListener;
 
     private SpigotCashCache spigotCashCacheInstance;
 
@@ -109,9 +111,13 @@ public class SpigotModule extends AbstractCoreModule {
             RedisSubscriber redisSubscriber = ServiceRegistry.getInstance().requireService(RedisSubscriber.class);
             redisSubscriber.registerListener(RedisChannel.PROFILES_SYNC, this.spigotCashCacheInstance);
 
-            logger.info("[SpigotModule] SpigotCashCache (para cache de cash e PAPI) registrado e ouvindo Redis.");
+            this.roleBroadcastListener = new RoleBroadcastListener();
+            redisSubscriber.registerListener(RedisChannel.ROLE_BROADCAST, this.roleBroadcastListener);
+            logger.info("[SpigotModule] RoleBroadcastListener registered on Redis.");
+
+            logger.info("[SpigotModule] SpigotCashCache registrado e ouvindo Redis.");
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "[SpigotModule] Falha ao registrar SpigotCashCache!", e);
+            logger.log(Level.SEVERE, "[SpigotModule] Falha ao registrar Listeners Redis!", e);
             this.spigotCashCacheInstance = null;
         }
 
@@ -198,15 +204,25 @@ public class SpigotModule extends AbstractCoreModule {
             permissionInjectorInstance = null;
         }
 
+        RedisSubscriber redisSubscriber = ServiceRegistry.getInstance().getService(RedisSubscriber.class).orElse(null);
+
         if (spigotCashCacheInstance != null) {
             try {
                 HandlerList.unregisterAll(spigotCashCacheInstance);
-                ServiceRegistry.getInstance().getService(RedisSubscriber.class)
-                        .ifPresent(sub -> sub.unregisterListener(RedisChannel.PROFILES_SYNC));
+                if (redisSubscriber != null) redisSubscriber.unregisterListener(RedisChannel.PROFILES_SYNC);
             } catch (Exception e) {
                 logger.log(Level.WARNING, "[SpigotModule] Error unregistering SpigotCashCache.", e);
             }
             spigotCashCacheInstance = null;
+        }
+
+        if (roleBroadcastListener != null) {
+            try {
+                if (redisSubscriber != null) redisSubscriber.unregisterListener(RedisChannel.ROLE_BROADCAST);
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "[SpigotModule] Error unregistering RoleBroadcastListener.", e);
+            }
+            roleBroadcastListener = null;
         }
 
         try { HandlerList.unregisterAll(plugin); logger.info("[SpigotModule] Other Spigot listeners unregistered."); }

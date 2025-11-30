@@ -1,5 +1,7 @@
 package com.realmmc.controller.proxy.commands.cmds;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.PlayerSessionData;
 import com.realmmc.controller.modules.role.RoleService;
@@ -18,6 +20,8 @@ import com.realmmc.controller.shared.role.RoleKickHandler;
 import com.realmmc.controller.shared.role.RoleType;
 import com.realmmc.controller.shared.sounds.SoundKeys;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
+import com.realmmc.controller.shared.storage.redis.RedisChannel;
+import com.realmmc.controller.shared.storage.redis.RedisPublisher;
 import com.realmmc.controller.shared.utils.NicknameFormatter;
 import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.realmmc.controller.shared.utils.TimeUtils;
@@ -42,6 +46,7 @@ public class RoleCommand implements CommandInterface {
     private final Optional<SoundPlayer> soundPlayerOpt;
     private final Logger logger;
     private final ProxyServer proxyServer;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public RoleCommand() {
         this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
@@ -201,6 +206,11 @@ public class RoleCommand implements CommandInterface {
         String roleName = args[2].toLowerCase();
         String durationStr = (args.length > 3) ? args[3] : null;
 
+        boolean hiddenArg = (args.length > 0 && args[args.length - 1].equalsIgnoreCase("-hidden"));
+        if (hiddenArg && durationStr != null && durationStr.equalsIgnoreCase("-hidden")) {
+            durationStr = null;
+        }
+
         Optional<Role> targetRoleOpt = roleService.getRole(roleName);
         if (targetRoleOpt.isEmpty()) {
             Messages.send(sender, Message.of(MessageKey.ROLE_ERROR_GROUP_NOT_FOUND).with("group", roleName));
@@ -216,7 +226,7 @@ public class RoleCommand implements CommandInterface {
         }
 
         Long durationMillis = null;
-        if (durationStr != null) {
+        if (durationStr != null && !durationStr.equalsIgnoreCase("-hidden")) {
             long parsed = TimeUtils.parseDuration(durationStr);
             if (parsed <= 0) {
                 Messages.send(sender, MessageKey.ROLE_ERROR_INVALID_DURATION);
@@ -255,8 +265,8 @@ public class RoleCommand implements CommandInterface {
             }
 
             String durationMsg = (finalDuration == null) ?
-                    Messages.translate(MessageKey.ROLE_INFO_STATUS_PERMANENT, locale) :
-                    TimeUtils.formatDuration(finalDuration);
+                    Messages.translate(MessageKey.ROLE_INFO_STATUS_PERMANENT, locale).replaceAll("<[^>]*>", "") :
+                    " por " + TimeUtils.formatDuration(finalDuration);
 
             switch (type) {
                 case ADD:
@@ -264,6 +274,7 @@ public class RoleCommand implements CommandInterface {
                     Messages.send(sender, Message.of(MessageKey.ROLE_SUCCESS_ADD)
                             .with("player", targetFormatted)
                             .with("group_display", targetRole.getDisplayName())
+                            .with("group_name", targetRole.getName())
                             .with("duration_msg", durationMsg));
                     break;
                 case SET:
@@ -271,16 +282,22 @@ public class RoleCommand implements CommandInterface {
                     Messages.send(sender, Message.of(MessageKey.ROLE_SUCCESS_SET)
                             .with("player", targetFormatted)
                             .with("group_display", targetRole.getDisplayName())
+                            .with("group_name", targetRole.getName())
                             .with("duration_msg", durationMsg));
                     break;
                 case REMOVE:
                     roleService.removeRole(uuid, roleName);
                     Messages.send(sender, Message.of(MessageKey.ROLE_SUCCESS_REMOVE)
                             .with("player", targetFormatted)
-                            .with("group_display", targetRole.getDisplayName()));
+                            .with("group_display", targetRole.getDisplayName())
+                            .with("group_name", targetRole.getName()));
                     break;
             }
             playSound(sender, SoundKeys.SUCCESS);
+
+            if (!hiddenArg && (type == RoleModificationType.ADD || type == RoleModificationType.SET)) {
+                publishRoleBroadcast(uuid, profile.getName(), targetRole);
+            }
 
             if (proxyServer.getPlayer(uuid).isPresent()) {
                 RoleKickHandler.KickReason reason = (type == RoleModificationType.REMOVE)
@@ -296,6 +313,21 @@ public class RoleCommand implements CommandInterface {
             Messages.send(sender, MessageKey.COMMAND_ERROR);
             return null;
         });
+    }
+
+    private void publishRoleBroadcast(UUID playerUuid, String playerName, Role newRole) {
+        try {
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("playerUuid", playerUuid.toString());
+            node.put("playerName", playerName);
+            node.put("playerColor", newRole.getColor());
+            node.put("groupDisplay", newRole.getDisplayName());
+
+            String jsonMessage = node.toString();
+            RedisPublisher.publish(RedisChannel.ROLE_BROADCAST, jsonMessage);
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Erro ao enviar broadcast de role", e);
+        }
     }
 
     private void handleClear(CommandSource sender, String[] args, String label) {
