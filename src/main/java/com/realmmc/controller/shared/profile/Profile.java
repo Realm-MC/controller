@@ -23,12 +23,19 @@ public class Profile {
     private String username;
     private String firstIp;
     private String lastIp;
+    private String lastAuthorizedIp;
     @Builder.Default
     private List<String> ipHistory = new ArrayList<>();
     private long firstLogin;
     private long lastLogin;
     @Builder.Default
     private long lastLogout = 0L;
+    private String passwordHash;
+    private String passwordSalt;
+    @Builder.Default
+    private boolean autoLogin = false;
+    @Builder.Default
+    private boolean sessionActive = false;
     private String lastClientVersion;
     private String lastClientType;
     private String firstClientVersion;

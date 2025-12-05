@@ -28,6 +28,8 @@ public class PreferencesService {
 
     private final Map<UUID, Language> languageCache = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> staffChatCache = new ConcurrentHashMap<>();
+    private final Map<UUID, Boolean> autoLoginCache = new ConcurrentHashMap<>();
+    private final Map<UUID, Boolean> sessionCache = new ConcurrentHashMap<>();
 
     public Optional<Preferences> getPreferences(UUID uuid) {
         return repository.findByUuid(uuid);
@@ -47,7 +49,7 @@ public class PreferencesService {
             throw new IllegalArgumentException("Profile cannot be null for ensurePreferences");
         }
         return repository.findById(profile.getId()).orElseGet(() -> {
-            LOGGER.info("Creating default preferences for profile ID: " + profile.getId() + " (UUID: " + profile.getUuid() + ")");
+            LOGGER.info("Creating default preferences for profile ID: " + profile.getId());
             Language langToSet = (initialLanguage != null) ? initialLanguage : Language.getDefault();
 
             Preferences newPrefs = Preferences.builder()
@@ -56,10 +58,12 @@ public class PreferencesService {
                     .name(profile.getName())
                     .serverLanguage(langToSet)
                     .staffChatEnabled(true)
+                    .autoLogin(true)
+                    .sessionActive(true)
                     .build();
 
             repository.upsert(newPrefs);
-            updateCachedPreferences(profile.getUuid(), langToSet, true);
+            updateCachedPreferences(profile.getUuid(), langToSet, true, true, true);
             return newPrefs;
         });
     }
@@ -71,56 +75,61 @@ public class PreferencesService {
     public Language toggleLanguage(UUID uuid) {
         Optional<Preferences> prefsOpt = getOrLoadPreferences(uuid);
         if (prefsOpt.isEmpty()) throw new IllegalStateException("Preferences not found for " + uuid);
-
         Preferences prefs = prefsOpt.get();
-        Language current = prefs.getServerLanguage();
-        Language next = (current == Language.PORTUGUESE) ? Language.ENGLISH : Language.PORTUGUESE;
-
+        Language next = (prefs.getServerLanguage() == Language.PORTUGUESE) ? Language.ENGLISH : Language.PORTUGUESE;
         prefs.setServerLanguage(next);
         save(prefs);
-
         return next;
     }
 
     public boolean toggleStaffChat(UUID uuid) {
         Optional<Preferences> prefsOpt = getOrLoadPreferences(uuid);
         if (prefsOpt.isEmpty()) throw new IllegalStateException("Preferences not found for " + uuid);
-
         Preferences prefs = prefsOpt.get();
         boolean newState = !prefs.isStaffChatEnabled();
-
         prefs.setStaffChatEnabled(newState);
         save(prefs);
+        return newState;
+    }
 
+    public boolean toggleAutoLogin(UUID uuid) {
+        Optional<Preferences> prefsOpt = getOrLoadPreferences(uuid);
+        if (prefsOpt.isEmpty()) throw new IllegalStateException("Preferences not found for " + uuid);
+        Preferences prefs = prefsOpt.get();
+        boolean newState = !prefs.isAutoLogin();
+        prefs.setAutoLogin(newState);
+        save(prefs);
+        return newState;
+    }
+
+    public boolean toggleSession(UUID uuid) {
+        Optional<Preferences> prefsOpt = getOrLoadPreferences(uuid);
+        if (prefsOpt.isEmpty()) throw new IllegalStateException("Preferences not found for " + uuid);
+        Preferences prefs = prefsOpt.get();
+        boolean newState = !prefs.isSessionActive();
+        prefs.setSessionActive(newState);
+        save(prefs);
         return newState;
     }
 
     public void updateIdentification(Profile profile) {
         if (profile == null) return;
         Preferences prefs = ensurePreferences(profile);
-        boolean changed = false;
         if (profile.getName() != null && !profile.getName().equals(prefs.getName())) {
             prefs.setName(profile.getName());
-            changed = true;
-        }
-        if (changed) {
             save(prefs);
         }
     }
 
-    public void setLanguage(UUID uuid, Language language) {
-        repository.findByUuid(uuid).ifPresent(prefs -> {
-            if (prefs.getServerLanguage() != language) {
-                prefs.setServerLanguage(language);
-                save(prefs);
-                LOGGER.info("Set language to " + language + " for UUID: " + uuid);
-            }
-        });
-    }
-
     public void save(Preferences preferences) {
         repository.upsert(preferences);
-        updateCachedPreferences(preferences.getUuid(), preferences.getServerLanguage(), preferences.isStaffChatEnabled());
+        updateCachedPreferences(
+                preferences.getUuid(),
+                preferences.getServerLanguage(),
+                preferences.isStaffChatEnabled(),
+                preferences.isAutoLogin(),
+                preferences.isSessionActive()
+        );
         publishUpdate(preferences);
     }
 
@@ -130,34 +139,41 @@ public class PreferencesService {
             node.put("uuid", preferences.getUuid().toString());
             node.put("language", preferences.getServerLanguage().name());
             node.put("staffChatEnabled", preferences.isStaffChatEnabled());
+            node.put("autoLogin", preferences.isAutoLogin());
+            node.put("sessionActive", preferences.isSessionActive());
 
-            String json = node.toString();
-            RedisPublisher.publish(RedisChannel.PREFERENCES_SYNC, json);
+            RedisPublisher.publish(RedisChannel.PREFERENCES_SYNC, node.toString());
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to publish preferences sync message for " + preferences.getUuid(), e);
+            LOGGER.log(Level.SEVERE, "Failed to publish preferences sync", e);
         }
     }
 
     public Optional<Language> getCachedLanguage(UUID uuid) {
         return Optional.ofNullable(languageCache.get(uuid));
     }
-
     public Optional<Boolean> getCachedStaffChatEnabled(UUID uuid) {
         return Optional.ofNullable(staffChatCache.get(uuid));
     }
+    public Optional<Boolean> getCachedAutoLogin(UUID uuid) {
+        return Optional.ofNullable(autoLoginCache.get(uuid));
+    }
+    public Optional<Boolean> getCachedSessionActive(UUID uuid) {
+        return Optional.ofNullable(sessionCache.get(uuid));
+    }
 
-    public void updateCachedPreferences(UUID uuid, Language language, boolean staffChatEnabled) {
+    public void updateCachedPreferences(UUID uuid, Language language, boolean staffChat, boolean autoLogin, boolean session) {
         if (uuid == null) return;
-
         if (language != null) languageCache.put(uuid, language);
-        else languageCache.remove(uuid);
-
-        staffChatCache.put(uuid, staffChatEnabled);
+        staffChatCache.put(uuid, staffChat);
+        autoLoginCache.put(uuid, autoLogin);
+        sessionCache.put(uuid, session);
     }
 
     public void removeCachedPreferences(UUID uuid) {
         languageCache.remove(uuid);
         staffChatCache.remove(uuid);
+        autoLoginCache.remove(uuid);
+        sessionCache.remove(uuid);
     }
 
     public void loadAndCachePreferences(UUID uuid) {
@@ -165,20 +181,17 @@ public class PreferencesService {
 
         Language lang = prefsOpt.map(Preferences::getServerLanguage).orElse(Language.getDefault());
         boolean staffChat = prefsOpt.map(Preferences::isStaffChatEnabled).orElse(true);
+        boolean autoLogin = prefsOpt.map(Preferences::isAutoLogin).orElse(true);
+        boolean session = prefsOpt.map(Preferences::isSessionActive).orElse(true);
 
-        updateCachedPreferences(uuid, lang, staffChat);
+        updateCachedPreferences(uuid, lang, staffChat, autoLogin, session);
     }
 
     public void checkAndSendStaffChatWarning(Object playerObject, UUID uuid) {
         try {
-            boolean isEnabled = getCachedStaffChatEnabled(uuid).orElse(true);
-
-            if (isEnabled) {
-                return;
-            }
+            if (getCachedStaffChatEnabled(uuid).orElse(true)) return;
 
             RoleService roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
-
             roleService.getSessionDataFromCache(uuid).ifPresent(sessionData -> {
                 if (sessionData.getPrimaryRole().getType() == RoleType.STAFF) {
                     Messages.send(playerObject, MessageKey.STAFFCHAT_WARN_DISABLED);
@@ -186,9 +199,8 @@ public class PreferencesService {
                             .ifPresent(sp -> sp.playSound(playerObject, SoundKeys.NOTIFICATION));
                 }
             });
-
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Falha ao verificar ou enviar aviso de StaffChat para " + uuid, e);
+            LOGGER.log(Level.WARNING, "Falha ao verificar aviso de StaffChat", e);
         }
     }
 }

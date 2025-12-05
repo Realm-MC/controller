@@ -1,7 +1,6 @@
 package com.realmmc.controller.proxy.commands.cmds;
 
 import com.realmmc.controller.core.services.ServiceRegistry;
-import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.proxy.Proxy;
 import com.realmmc.controller.proxy.commands.CommandInterface;
 import com.realmmc.controller.shared.annotations.Cmd;
@@ -47,11 +46,7 @@ public class MedalCommand implements CommandInterface {
         this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
         this.cosmeticsService = ServiceRegistry.getInstance().requireService(CosmeticsService.class);
         this.soundPlayerOpt = ServiceRegistry.getInstance().getService(SoundPlayer.class);
-
-        Logger l;
-        try { l = Proxy.getInstance().getLogger(); }
-        catch (NoClassDefFoundError | IllegalStateException e) { l = Logger.getLogger("MedalCommand"); }
-        this.logger = l;
+        this.logger = Proxy.getInstance().getLogger();
     }
 
     @Override
@@ -81,7 +76,6 @@ public class MedalCommand implements CommandInterface {
     private void handleList(Object playerObj) {
         final UUID uuid;
         if (playerObj instanceof Player) uuid = ((Player) playerObj).getUniqueId();
-        else if (playerObj instanceof org.bukkit.entity.Player) uuid = ((org.bukkit.entity.Player) playerObj).getUniqueId();
         else return;
 
         TaskScheduler.runAsync(() -> {
@@ -177,8 +171,6 @@ public class MedalCommand implements CommandInterface {
             Messages.send(sender, Message.of(MessageKey.MEDAL_INFO_HEADER).with("id", m.getId()));
             Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Nome").with("value", m.name()));
             Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Display").with("value", m.getDisplayName()));
-            Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Prefix").with("value", m.getPrefix()));
-            Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Suffix").with("value", m.getSuffix()));
             playSound(sender, SoundKeys.NOTIFICATION);
         } else {
             resolveProfileAsync(target).thenAccept(profileOpt -> {
@@ -188,13 +180,15 @@ public class MedalCommand implements CommandInterface {
                     return;
                 }
                 Profile p = profileOpt.get();
+                String name = NicknameFormatter.getNickname(p, true);
+
                 cosmeticsService.ensureCosmetics(p);
                 List<String> medals = cosmeticsService.getCachedMedals(p.getUuid());
 
                 String equippedId = p.getEquippedMedal();
                 String equippedDisplay = Medal.fromId(equippedId).map(Medal::getDisplayName).orElse("<gray>Nenhuma");
 
-                Messages.send(sender, Message.of(MessageKey.COMMON_INFO_HEADER).with("subject", "Medalhas de " + p.getName()));
+                Messages.send(sender, Message.of(MessageKey.COMMON_INFO_HEADER).with("subject", "Medalhas de " + name));
                 Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Equipada Atual").with("value", equippedDisplay));
                 Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", "Desbloqueadas").with("count", medals.size()));
 
@@ -239,11 +233,14 @@ public class MedalCommand implements CommandInterface {
                     return;
                 }
                 Profile p = pOpt.get();
+
                 p.setEquippedMedal(mOpt.get().getId());
                 profileService.save(p);
+
+                String name = NicknameFormatter.getNickname(p, true);
                 Messages.send(sender, Message.of(MessageKey.MEDAL_ADMIN_EQUIP)
                         .with("medal", mOpt.get().getDisplayName())
-                        .with("player", p.getName()));
+                        .with("player", name));
                 playSound(sender, SoundKeys.SUCCESS);
             });
             return;
@@ -251,7 +248,6 @@ public class MedalCommand implements CommandInterface {
 
         final UUID playerUuid;
         if (sender instanceof Player) playerUuid = ((Player) sender).getUniqueId();
-        else if (sender instanceof org.bukkit.entity.Player) playerUuid = ((org.bukkit.entity.Player) sender).getUniqueId();
         else { Messages.send(sender, MessageKey.ONLY_PLAYERS); return; }
 
         String medalId = args[1];
@@ -263,6 +259,11 @@ public class MedalCommand implements CommandInterface {
         }
 
         TaskScheduler.runAsync(() -> {
+            if (!com.realmmc.controller.shared.auth.AuthenticationGuard.isAuthenticated(playerUuid)) {
+                Messages.send(sender, MessageKey.AUTH_STILL_CONNECTING);
+                return;
+            }
+
             if (!cosmeticsService.hasMedal(playerUuid, medalId)) {
                 Messages.send(sender, Message.of(MessageKey.MEDAL_NOT_OWNED).with("medal", mOpt.get().getDisplayName()));
                 playSound(sender, SoundKeys.ERROR);
@@ -286,9 +287,11 @@ public class MedalCommand implements CommandInterface {
                     return;
                 }
                 Profile p = pOpt.get();
+
                 p.setEquippedMedal("none");
                 profileService.save(p);
-                Messages.send(sender, Message.of(MessageKey.MEDAL_ADMIN_UNEQUIP).with("player", p.getName()));
+                String name = NicknameFormatter.getNickname(p, true);
+                Messages.send(sender, Message.of(MessageKey.MEDAL_ADMIN_UNEQUIP).with("player", name));
                 playSound(sender, SoundKeys.SUCCESS);
             });
             return;
@@ -296,10 +299,13 @@ public class MedalCommand implements CommandInterface {
 
         final UUID playerUuid;
         if (sender instanceof Player) playerUuid = ((Player) sender).getUniqueId();
-        else if (sender instanceof org.bukkit.entity.Player) playerUuid = ((org.bukkit.entity.Player) sender).getUniqueId();
         else { Messages.send(sender, MessageKey.ONLY_PLAYERS); return; }
 
         TaskScheduler.runAsync(() -> {
+            if (!com.realmmc.controller.shared.auth.AuthenticationGuard.isAuthenticated(playerUuid)) {
+                Messages.send(sender, MessageKey.AUTH_STILL_CONNECTING);
+                return;
+            }
             Profile p = profileService.getByUuid(playerUuid).orElseThrow();
             if ("none".equals(p.getEquippedMedal())) return;
             p.setEquippedMedal("none");
@@ -321,10 +327,12 @@ public class MedalCommand implements CommandInterface {
         resolveProfileAsync(target).thenAccept(pOpt -> {
             if (pOpt.isEmpty()) { Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NEVER_JOINED).with("player", target)); playSound(sender, SoundKeys.ERROR); return; }
             Profile p = pOpt.get();
+
             if (cosmeticsService.hasMedal(p.getUuid(), medalId)) { Messages.send(sender, MessageKey.MEDAL_ALREADY_OWNED); playSound(sender, SoundKeys.ERROR); return; }
 
             cosmeticsService.addMedal(p.getUuid(), p.getName(), medalId);
-            Messages.send(sender, Message.of(MessageKey.MEDAL_ADMIN_ADD).with("medal", mOpt.get().getDisplayName()).with("player", p.getName()));
+            String name = NicknameFormatter.getNickname(p, true);
+            Messages.send(sender, Message.of(MessageKey.MEDAL_ADMIN_ADD).with("medal", mOpt.get().getDisplayName()).with("player", name));
             playSound(sender, SoundKeys.SUCCESS);
         });
     }
@@ -341,12 +349,14 @@ public class MedalCommand implements CommandInterface {
         resolveProfileAsync(target).thenAccept(pOpt -> {
             if (pOpt.isEmpty()) { Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NEVER_JOINED).with("player", target)); playSound(sender, SoundKeys.ERROR); return; }
             Profile p = pOpt.get();
+
             cosmeticsService.removeMedal(p.getUuid(), medalId);
             if (p.getEquippedMedal().equalsIgnoreCase(medalId)) {
                 p.setEquippedMedal("none");
                 profileService.save(p);
             }
-            Messages.send(sender, Message.of(MessageKey.MEDAL_ADMIN_REMOVE).with("medal", mOpt.get().getDisplayName()).with("player", p.getName()));
+            String name = NicknameFormatter.getNickname(p, true);
+            Messages.send(sender, Message.of(MessageKey.MEDAL_ADMIN_REMOVE).with("medal", mOpt.get().getDisplayName()).with("player", name));
             playSound(sender, SoundKeys.SUCCESS);
         });
     }
@@ -354,19 +364,16 @@ public class MedalCommand implements CommandInterface {
     private void showHelp(CommandSource sender, String label) {
         Locale locale = Messages.determineLocale(sender);
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_HEADER).with("system", "Medalhas"));
-
         Map<String, MessageKey> helps = new LinkedHashMap<>();
         helps.put("/" + label, MessageKey.MEDAL_HELP_LIST);
         helps.put("/" + label + " equipar <id>", MessageKey.MEDAL_HELP_EQUIP);
         helps.put("/" + label + " desequipar", MessageKey.MEDAL_HELP_UNEQUIP);
-
         if (sender.hasPermission(PERM_ADMIN)) helps.put("/" + label + " info <id|user>", MessageKey.MEDAL_HELP_INFO);
         if (sender.hasPermission(PERM_MANAGER)) {
             helps.put("/" + label + " add <user> <id>", MessageKey.MEDAL_HELP_ADD);
             helps.put("/" + label + " remove <user> <id>", MessageKey.MEDAL_HELP_REMOVE);
             helps.put("/" + label + " equipar <user>:<id>", MessageKey.MEDAL_HELP_ADMIN_EQUIP);
         }
-
         for (var entry : helps.entrySet()) {
             Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", entry.getKey()).with("description", Messages.translate(entry.getValue(), locale)));
         }
@@ -376,7 +383,6 @@ public class MedalCommand implements CommandInterface {
 
     private void playSound(Object sender, String key) {
         if (sender instanceof Player) soundPlayerOpt.ifPresent(sp -> sp.playSound(sender, key));
-        else if (sender instanceof org.bukkit.entity.Player) soundPlayerOpt.ifPresent(sp -> sp.playSound(sender, key));
     }
 
     private CompletableFuture<Optional<Profile>> resolveProfileAsync(String input) {
@@ -397,13 +403,7 @@ public class MedalCommand implements CommandInterface {
                 return Arrays.stream(Medal.values()).map(Medal::getId).filter(s -> s.startsWith(args[1].toLowerCase())).collect(Collectors.toList());
             }
             if (sub.equals("add") || sub.equals("remove") || sub.equals("info") || sub.equals("desequipar")) {
-                try {
-                    return Proxy.getInstance().getServer().getAllPlayers().stream().map(Player::getUsername).filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase())).collect(Collectors.toList());
-                } catch (NoClassDefFoundError | IllegalStateException e) {
-                    try {
-                        return org.bukkit.Bukkit.getOnlinePlayers().stream().map(org.bukkit.entity.Player::getName).filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase())).collect(Collectors.toList());
-                    } catch (NoClassDefFoundError ex) { return Collections.emptyList(); }
-                }
+                return Proxy.getInstance().getServer().getAllPlayers().stream().map(Player::getUsername).filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase())).collect(Collectors.toList());
             }
         }
         if (args.length == 3) {

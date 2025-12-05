@@ -81,7 +81,6 @@ public class NpcCommand implements CommandInterface {
 
     private void showHelp(CommandSender sender, String label) {
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_HEADER).with("system", "NPCs"));
-
         sendHelpLine(sender, label, "criar <id> <skin> [nome]", "Cria um novo NPC.");
         sendHelpLine(sender, label, "remover <id>", "Remove um NPC.");
         sendHelpLine(sender, label, "list", "Lista todos os NPCs.");

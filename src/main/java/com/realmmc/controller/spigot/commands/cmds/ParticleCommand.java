@@ -345,8 +345,7 @@ public class ParticleCommand implements CommandInterface {
         CompletableFuture.supplyAsync(() -> ProfileResolver.resolve(finalTargetNameInput), TaskScheduler.getAsyncExecutor())
                 .thenAcceptAsync(targetProfileOpt -> {
                     if (targetProfileOpt.isEmpty()) {
-                        Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NEVER_JOINED)
-                                .with("player", finalTargetNameInput));
+                        Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NEVER_JOINED).with("player", finalTargetNameInput));
                         playSound(sender, SoundKeys.ERROR);
                         return;
                     }
@@ -357,9 +356,8 @@ public class ParticleCommand implements CommandInterface {
                     Player targetOnline = Bukkit.getPlayer(targetUuid);
 
                     if (targetOnline == null || !targetOnline.isOnline()) {
-                        String formattedNick = NicknameFormatter.getNickname(targetUuid, true, targetProfile.getName());
-                        Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NOT_ONLINE)
-                                .with("player", formattedNick));
+                        String formattedNick = NicknameFormatter.getNickname(targetProfile, true);
+                        Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NOT_ONLINE).with("player", formattedNick));
                         playSound(sender, SoundKeys.ERROR);
                         return;
                     }
@@ -372,7 +370,7 @@ public class ParticleCommand implements CommandInterface {
                     }
 
                     if (particleService.spawnForPlayerOnce(targetOnline, particleId)) {
-                        String formattedNick = NicknameFormatter.getNickname(targetUuid, true, targetProfile.getName());
+                        String formattedNick = NicknameFormatter.getNickname(targetProfile, true);
                         Messages.send(sender, Message.of(MessageKey.PARTICLE_TESTED)
                                 .with("id", particleId)
                                 .with("player", formattedNick));

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.proxy.commands.CommandInterface;
 import com.realmmc.controller.shared.annotations.Cmd;
+import com.realmmc.controller.shared.auth.AuthenticationGuard;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
@@ -51,16 +52,20 @@ public class StaffChatCommand implements CommandInterface {
         }
 
         Player player = (Player) sender;
+        UUID uuid = player.getUniqueId();
+
+        Optional<MessageKey> authError = AuthenticationGuard.validatePlayerReady(uuid);
+        if (authError.isPresent()) {
+            Messages.send(sender, authError.get());
+            return;
+        }
 
         if (args.length == 0) {
             sendUsage(sender, label, "<mensagem>");
             return;
         }
 
-        UUID uuid = player.getUniqueId();
-
         boolean isStaffChatEnabled = preferencesService.getCachedStaffChatEnabled(uuid).orElse(true);
-
         if (!isStaffChatEnabled) {
             Messages.send(player, MessageKey.STAFFCHAT_ERROR_DISABLED);
             playSound(player, SoundKeys.ERROR);
@@ -70,12 +75,9 @@ public class StaffChatCommand implements CommandInterface {
         String message = String.join(" ", args);
         String playerName = player.getUsername();
 
-        String serverName = player.getCurrentServer()
-                .map(ServerConnection::getServerInfo)
-                .map(ServerInfo::getName)
-                .orElse("Unknown");
+        String serverName = player.getCurrentServer().map(ServerConnection::getServerInfo).map(ServerInfo::getName).orElse("Unknown");
 
-        String formattedName = NicknameFormatter.getNickname(uuid, true, playerName);
+        String formattedName = NicknameFormatter.getRankFormattedName(uuid);
 
         try {
             ObjectNode payload = objectMapper.createObjectNode();
@@ -83,9 +85,7 @@ public class StaffChatCommand implements CommandInterface {
             payload.put("playerName", playerName);
             payload.put("formattedName", formattedName);
             payload.put("message", message);
-
             RedisPublisher.publish(RedisChannel.STAFF_CHAT, payload.toString());
-
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Falha ao publicar mensagem do StaffChat no Redis", e);
             Messages.send(sender, MessageKey.COMMAND_ERROR);
@@ -97,15 +97,9 @@ public class StaffChatCommand implements CommandInterface {
         Messages.send(sender, Message.of(MessageKey.COMMON_USAGE).with("usage", "/" + label + " " + usage));
         playSound(sender, SoundKeys.USAGE_ERROR);
     }
-
     private void playSound(CommandSource sender, String key) {
-        if (sender instanceof Player player) {
-            soundPlayerOpt.ifPresent(sp -> sp.playSound(player, key));
-        }
+        if (sender instanceof Player player) soundPlayerOpt.ifPresent(sp -> sp.playSound(player, key));
     }
-
     @Override
-    public List<String> tabComplete(CommandSource sender, String[] args) {
-        return Collections.emptyList();
-    }
+    public List<String> tabComplete(CommandSource sender, String[] args) { return Collections.emptyList(); }
 }

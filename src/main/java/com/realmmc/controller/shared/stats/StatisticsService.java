@@ -11,7 +11,6 @@ public class StatisticsService {
     private final StatisticsRepository repository = new StatisticsRepository();
     private static final Logger LOGGER = Logger.getLogger(StatisticsService.class.getName());
 
-
     public Statistics ensureStatistics(Profile profile) {
         return repository.findById(profile.getId()).orElseGet(() -> {
             Statistics newStats = Statistics.builder()
@@ -37,16 +36,7 @@ public class StatisticsService {
             stats.setOnlineTime(stats.getOnlineTime() + sessionMillis);
             repository.upsert(stats);
         } else {
-            Logger loggerToUse = LOGGER;
-            try {
-                loggerToUse = com.realmmc.controller.proxy.Proxy.getInstance().getLogger();
-            } catch (NoClassDefFoundError | IllegalStateException e) {
-                try {
-                    loggerToUse = com.realmmc.controller.spigot.Main.getInstance().getLogger();
-                } catch (NoClassDefFoundError | IllegalStateException e2) {
-                }
-            }
-            loggerToUse.warning("Tentativa de adicionar tempo online para o UUID " + uuid + ", mas o registo de estatísticas não foi encontrado!");
+            LOGGER.warning("Tentativa de adicionar tempo online para o UUID " + uuid + ", mas o registo de estatísticas não foi encontrado!");
         }
     }
 

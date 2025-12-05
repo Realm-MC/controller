@@ -76,7 +76,9 @@ public final class NicknameFormatter {
     private static String resolveMedalId(UUID uuid) {
         String medalId = "none";
         if (sessionTrackerService != null) {
-            medalId = sessionTrackerService.getSessionField(uuid, "medal").orElse("none");
+            try {
+                medalId = sessionTrackerService.getSessionField(uuid, "medal").orElse("none");
+            } catch (Exception ignored) {}
         }
 
         if ("none".equals(medalId) && profileService != null) {
@@ -102,10 +104,10 @@ public final class NicknameFormatter {
         return color + name + "<reset>";
     }
 
-    /**
-     * Retorna o nickname completo formatado:
-     * [MedalPrefix] [RolePrefix] Name [RoleSuffix] [MedalSuffix]
-     */
+    public static String getNickname(UUID uuid, boolean includePrefixes) {
+        return getNickname(uuid, includePrefixes, null);
+    }
+
     public static String getNickname(UUID uuid, boolean includePrefixes, String fallbackName) {
         String name = (fallbackName != null) ? fallbackName : resolveName(uuid);
         if (name.equals("Unknown")) return name;
@@ -114,6 +116,62 @@ public final class NicknameFormatter {
         if (data.isEmpty()) return name;
 
         Role role = data.get().getPrimaryRole();
+        String medalId = includePrefixes ? resolveMedalId(uuid) : null;
+
+        return format(name, role, medalId, includePrefixes, true);
+    }
+
+    public static String getRankFormattedName(UUID uuid) {
+        String name = resolveName(uuid);
+        if (name.equals("Unknown")) return name;
+
+        Optional<PlayerSessionData> data = getSessionDataOrLoad(uuid);
+        if (data.isEmpty()) return name;
+
+        Role role = data.get().getPrimaryRole();
+        return format(name, role, null, true, false);
+    }
+
+    public static String getNickname(Profile profile, boolean includePrefixes) {
+        ensureServices();
+        if (profile == null) return "Unknown";
+
+        String name = profile.getName();
+        String roleName = profile.getPrimaryRoleName();
+        String medalId = profile.getEquippedMedal();
+
+        Role role = null;
+        if (roleService != null) {
+            role = roleService.getRole(roleName).orElse(null);
+        }
+
+        if (role == null) {
+            return "<gray>" + name;
+        }
+
+        return format(name, role, medalId, includePrefixes, true);
+    }
+
+    public static String getRankFormattedName(Profile profile) {
+        ensureServices();
+        if (profile == null) return "Unknown";
+
+        String name = profile.getName();
+        String roleName = profile.getPrimaryRoleName();
+
+        Role role = null;
+        if (roleService != null) {
+            role = roleService.getRole(roleName).orElse(null);
+        }
+
+        if (role == null) {
+            return "<gray>" + name;
+        }
+
+        return format(name, role, null, true, false);
+    }
+
+    private static String format(String name, Role role, String medalId, boolean includePrefixes, boolean showMedal) {
         String rolePrefix = role.getPrefix() != null ? role.getPrefix() : "";
         String roleSuffix = role.getSuffix() != null ? role.getSuffix() : "";
         String color = role.getColor() != null ? role.getColor() : "<gray>";
@@ -121,10 +179,8 @@ public final class NicknameFormatter {
         StringBuilder sb = new StringBuilder();
 
         if (includePrefixes) {
-            String medalId = resolveMedalId(uuid);
             Medal medal = null;
-
-            if (medalId != null && !medalId.isEmpty() && !medalId.equalsIgnoreCase("none")) {
+            if (showMedal && medalId != null && !medalId.isEmpty() && !medalId.equalsIgnoreCase("none")) {
                 medal = Medal.fromId(medalId).orElse(null);
                 if (medal != null && !medal.getPrefix().isEmpty()) {
                     sb.append(medal.getPrefix());
@@ -145,7 +201,7 @@ public final class NicknameFormatter {
                 sb.append(roleSuffix);
             }
 
-            if (medal != null && !medal.getSuffix().isEmpty()) {
+            if (showMedal && medal != null && !medal.getSuffix().isEmpty()) {
                 sb.append(medal.getSuffix());
             }
         } else {
@@ -153,10 +209,6 @@ public final class NicknameFormatter {
         }
 
         return sb.toString();
-    }
-
-    public static String getNickname(UUID uuid, boolean includePrefixes) {
-        return getNickname(uuid, includePrefixes, null);
     }
 
     public static String getFullFormattedNick(UUID uuid) {

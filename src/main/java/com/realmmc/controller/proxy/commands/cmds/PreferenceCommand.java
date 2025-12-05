@@ -1,11 +1,11 @@
 package com.realmmc.controller.proxy.commands.cmds;
 
 import com.realmmc.controller.core.services.ServiceRegistry;
-import com.realmmc.controller.modules.role.PlayerSessionData;
 import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.proxy.Proxy;
 import com.realmmc.controller.proxy.commands.CommandInterface;
 import com.realmmc.controller.shared.annotations.Cmd;
+import com.realmmc.controller.shared.auth.AuthenticationGuard;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
@@ -14,6 +14,7 @@ import com.realmmc.controller.shared.preferences.Preferences;
 import com.realmmc.controller.shared.preferences.PreferencesService;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileResolver;
+import com.realmmc.controller.shared.profile.ProfileService;
 import com.realmmc.controller.shared.sounds.SoundKeys;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.realmmc.controller.shared.utils.NicknameFormatter;
@@ -36,15 +37,13 @@ public class PreferenceCommand implements CommandInterface {
     private final Logger logger;
     private final PreferencesService preferencesService;
     private final RoleService roleService;
+    private final ProfileService profileService;
     private final Optional<SoundPlayer> soundPlayerOpt;
 
     private final String permManager = "controller.manager";
     private final String permAdmin = "controller.administrator";
     private final String permHelper = "controller.helper";
-
-    private final String groupManager = "Gerente";
-    private final String groupAdmin = "Administrador";
-    private final String groupHelper = "Ajudante";
+    private final String permVip = "controller.vip";
 
     private final MessageKey KEY_ENABLED = MessageKey.COMMON_ENABLED;
     private final MessageKey KEY_DISABLED = MessageKey.COMMON_DISABLED;
@@ -55,6 +54,7 @@ public class PreferenceCommand implements CommandInterface {
         this.logger = Proxy.getInstance().getLogger();
         this.preferencesService = ServiceRegistry.getInstance().requireService(PreferencesService.class);
         this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
+        this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
         this.soundPlayerOpt = ServiceRegistry.getInstance().getService(SoundPlayer.class);
     }
 
@@ -82,132 +82,57 @@ public class PreferenceCommand implements CommandInterface {
 
     private void handleInfo(CommandSource sender, String[] args) {
         if (!sender.hasPermission(permAdmin)) {
-            Messages.send(sender, Message.of(MessageKey.COMMON_NO_PERMISSION_GROUP).with("group", groupAdmin));
+            Messages.send(sender, Message.of(MessageKey.COMMON_NO_PERMISSION_GENERIC));
             playSound(sender, SoundKeys.USAGE_ERROR);
             return;
         }
-
         if (args.length < 2) {
             Messages.send(sender, Message.of(MessageKey.COMMON_USAGE).with("usage", "/preferencia info <usuário>"));
             playSound(sender, SoundKeys.USAGE_ERROR);
             return;
         }
-
         String targetName = args[1];
 
-        resolveProfileAsync(targetName).thenCompose(targetProfileOpt -> {
-            if (targetProfileOpt.isEmpty()) {
+        resolveProfileAsync(targetName).thenAccept(profileOpt -> {
+            if (profileOpt.isEmpty()) {
                 Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NEVER_JOINED).with("player", targetName));
-                playSound(sender, SoundKeys.ERROR);
-                return CompletableFuture.completedFuture(null);
-            }
-
-            Profile profile = targetProfileOpt.get();
-
-            return roleService.loadPlayerDataAsync(profile.getUuid())
-                    .thenApply(sessionData -> new AbstractMap.SimpleImmutableEntry<>(profile, sessionData));
-
-        }).thenAccept(entry -> {
-            if (entry == null) return;
-
-            Profile profile = entry.getKey();
-            PlayerSessionData sessionData = entry.getValue();
-
-            if (sessionData == null) sessionData = roleService.getDefaultSessionData(profile.getUuid());
-
-            Preferences prefs = preferencesService.ensurePreferences(profile);
-
-            String formattedName = NicknameFormatter.getNickname(profile.getUuid(), true, profile.getName());
-
-            Messages.send(sender, Message.of(MessageKey.PREF_INFO_HEADER).with("player", formattedName));
-
-            Locale senderLocale = Messages.determineLocale(sender);
-            String langVal = translateLanguage(prefs.getServerLanguage(), senderLocale);
-            String staffChatVal = Messages.translate(
-                    prefs.isStaffChatEnabled() ? KEY_ENABLED : KEY_DISABLED,
-                    senderLocale
-            );
-
-            Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Linguagem").with("value", langVal));
-            Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "StaffChat").with("value", staffChatVal));
-
-            sender.sendMessage(Component.empty());
-            playSound(sender, SoundKeys.NOTIFICATION);
-
-        }).exceptionally(ex -> {
-            logger.log(Level.SEVERE, "Error processing info command", ex);
-            Messages.send(sender, MessageKey.COMMAND_ERROR);
-            return null;
-        });
-    }
-
-    private void handleAdminChange(CommandSource sender, String input) {
-        if (!sender.hasPermission(permManager)) {
-            Messages.send(sender, Message.of(MessageKey.COMMON_NO_PERMISSION_GROUP).with("group", groupManager));
-            playSound(sender, SoundKeys.USAGE_ERROR);
-            return;
-        }
-
-        int lastColonIndex = input.lastIndexOf(':');
-        if (lastColonIndex == -1 || lastColonIndex == 0 || lastColonIndex == input.length() - 1) {
-            Messages.send(sender, Message.of(MessageKey.COMMON_USAGE).with("usage", "/preferencia <usuário>:<preferência>"));
-            playSound(sender, SoundKeys.ERROR);
-            return;
-        }
-
-        String targetName = input.substring(0, lastColonIndex);
-        String prefKey = input.substring(lastColonIndex + 1).toLowerCase();
-
-        resolveProfileAsync(targetName).thenCompose(targetProfileOpt -> {
-            if (targetProfileOpt.isEmpty()) {
-                Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NEVER_JOINED).with("player", targetName));
-                playSound(sender, SoundKeys.ERROR);
-                return CompletableFuture.completedFuture(null);
-            }
-            Profile profile = targetProfileOpt.get();
-            return roleService.loadPlayerDataAsync(profile.getUuid())
-                    .thenApply(sessionData -> new AbstractMap.SimpleImmutableEntry<>(profile, sessionData));
-        }).thenAccept(entry -> {
-            if (entry == null) return;
-            Profile profile = entry.getKey();
-            PlayerSessionData sessionData = entry.getValue();
-            if (sessionData == null) sessionData = roleService.getDefaultSessionData(profile.getUuid());
-
-            Preferences prefs = preferencesService.ensurePreferences(profile);
-            boolean changed = false;
-            Message newValMsg = null;
-
-            if (prefKey.equals("linguagem") || prefKey.equals("language")) {
-                Language newLang = preferencesService.toggleLanguage(profile.getUuid());
-                newValMsg = Message.of(newLang == Language.PORTUGUESE ? KEY_LANG_PT : KEY_LANG_EN);
-                changed = true;
-            } else if (prefKey.equals("staffchat") || prefKey.equals("chatstaff")) {
-                boolean newState = preferencesService.toggleStaffChat(profile.getUuid());
-                newValMsg = Message.of(newState ? KEY_ENABLED : KEY_DISABLED);
-                changed = true;
-            } else {
-                Messages.send(sender, Message.of(MessageKey.PREF_UNKNOWN).with("pref", prefKey));
                 playSound(sender, SoundKeys.ERROR);
                 return;
             }
+            Profile profile = profileOpt.get();
+            Preferences prefs = preferencesService.ensurePreferences(profile);
 
-            if (changed) {
-                preferencesService.save(prefs);
+            String name = NicknameFormatter.getNickname(profile, true);
 
-                preferencesService.updateCachedPreferences(profile.getUuid(), prefs.getServerLanguage(), prefs.isStaffChatEnabled());
+            Locale loc = Messages.determineLocale(sender);
 
-                String formattedName = NicknameFormatter.getNickname(profile.getUuid(), true, profile.getName());
-                Locale senderLocale = Messages.determineLocale(sender);
-                String valTranslated = Messages.translate(newValMsg, senderLocale);
+            Messages.send(sender, Message.of(MessageKey.PREF_INFO_HEADER).with("player", name));
 
-                Messages.send(sender, Message.of(MessageKey.PREF_UPDATED_OTHER)
-                        .with("player", formattedName)
-                        .with("pref", prefKey)
-                        .with("value", valTranslated));
-                playSound(sender, SoundKeys.SUCCESS);
-            }
+            String langVal = translateLanguage(prefs.getServerLanguage(), loc);
+            String scVal = Messages.translate(prefs.isStaffChatEnabled() ? KEY_ENABLED : KEY_DISABLED, loc);
+            String alVal = Messages.translate(prefs.isAutoLogin() ? KEY_ENABLED : KEY_DISABLED, loc);
+            String sessVal = Messages.translate(prefs.isSessionActive() ? KEY_ENABLED : KEY_DISABLED, loc);
+
+            Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE)
+                    .with("key", Messages.translate(MessageKey.PREF_LABEL_LANGUAGE, loc))
+                    .with("value", langVal));
+
+            Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE)
+                    .with("key", Messages.translate(MessageKey.PREF_LABEL_STAFFCHAT, loc))
+                    .with("value", scVal));
+
+            Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE)
+                    .with("key", Messages.translate(MessageKey.PREF_LABEL_AUTOLOGIN, loc))
+                    .with("value", alVal));
+
+            Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE)
+                    .with("key", Messages.translate(MessageKey.PREF_LABEL_SESSION, loc))
+                    .with("value", sessVal));
+
+            sender.sendMessage(Component.empty());
+            playSound(sender, SoundKeys.NOTIFICATION);
         }).exceptionally(ex -> {
-            logger.log(Level.SEVERE, "Error admin change pref", ex);
+            logger.log(Level.SEVERE, "Error processing preference info command", ex);
             Messages.send(sender, MessageKey.COMMAND_ERROR);
             return null;
         });
@@ -219,17 +144,23 @@ public class PreferenceCommand implements CommandInterface {
             return;
         }
 
+        if (!AuthenticationGuard.isAuthenticated(player.getUniqueId())) {
+            Messages.send(sender, MessageKey.AUTH_STILL_CONNECTING);
+            return;
+        }
+
         UUID uuid = player.getUniqueId();
         String key = prefKey.toLowerCase();
 
         TaskScheduler.runAsync(() -> {
             try {
-                if (preferencesService.getOrLoadPreferences(uuid).isEmpty()) {
+                Optional<Profile> profileOpt = profileService.getByUuid(uuid);
+                if (profileOpt.isEmpty()) {
                     Messages.send(sender, MessageKey.KICK_GENERIC_PROFILE_ERROR);
                     return;
                 }
-
-                Preferences prefs = preferencesService.getPreferences(uuid).get();
+                Profile profile = profileOpt.get();
+                preferencesService.ensurePreferences(profile);
 
                 boolean changed = false;
                 MessageKey valKey = null;
@@ -237,22 +168,38 @@ public class PreferenceCommand implements CommandInterface {
                 if (key.equals("linguagem") || key.equals("language")) {
                     Language newLang = preferencesService.toggleLanguage(uuid);
                     valKey = (newLang == Language.PORTUGUESE) ? KEY_LANG_PT : KEY_LANG_EN;
-
-                    preferencesService.updateCachedPreferences(uuid, newLang, preferencesService.getCachedStaffChatEnabled(uuid).orElse(true));
                     changed = true;
 
                 } else if (key.equals("staffchat") || key.equals("chatstaff")) {
                     if (!player.hasPermission(permHelper)) {
-                        Messages.send(sender, Message.of(MessageKey.COMMON_NO_PERMISSION_GROUP).with("group", groupHelper));
+                        Messages.send(sender, Message.of(MessageKey.COMMON_NO_PERMISSION_GROUP).with("group", "Ajudante"));
                         playSound(sender, SoundKeys.ERROR);
                         return;
                     }
                     boolean newState = preferencesService.toggleStaffChat(uuid);
                     valKey = newState ? KEY_ENABLED : KEY_DISABLED;
-
-                    prefs.setStaffChatEnabled(newState);
-                    preferencesService.updateCachedPreferences(uuid, prefs.getServerLanguage(), newState);
                     changed = true;
+
+                } else if (key.equals("autologin")) {
+                    if (!profile.isPremiumAccount()) {
+                        Messages.send(player, MessageKey.PREF_ERROR_AUTOLOGIN_PREMIUM_ONLY);
+                        playSound(sender, SoundKeys.ERROR);
+                        return;
+                    }
+                    boolean newState = preferencesService.toggleAutoLogin(uuid);
+                    valKey = newState ? KEY_ENABLED : KEY_DISABLED;
+                    changed = true;
+
+                } else if (key.equals("sessao") || key.equals("session")) {
+                    if (!player.hasPermission(permVip)) {
+                        Messages.send(player, MessageKey.PREF_ERROR_SESSION_VIP_ONLY);
+                        playSound(sender, SoundKeys.ERROR);
+                        return;
+                    }
+                    boolean newState = preferencesService.toggleSession(uuid);
+                    valKey = newState ? KEY_ENABLED : KEY_DISABLED;
+                    changed = true;
+
                 } else {
                     Messages.send(sender, Message.of(MessageKey.PREF_UNKNOWN).with("pref", key));
                     playSound(sender, SoundKeys.ERROR);
@@ -268,10 +215,86 @@ public class PreferenceCommand implements CommandInterface {
                             .with("value", valTranslated));
                     playSound(sender, SoundKeys.SUCCESS);
                 }
+
             } catch (Exception e) {
-                logger.log(Level.SEVERE, "Error altering preferences for: " + player.getUsername(), e);
+                logger.log(Level.SEVERE, "Error altering preferences self for " + player.getUsername(), e);
                 Messages.send(sender, MessageKey.COMMAND_ERROR);
             }
+        });
+    }
+
+    private void handleAdminChange(CommandSource sender, String input) {
+        if (!sender.hasPermission(permManager)) {
+            Messages.send(sender, Message.of(MessageKey.COMMON_NO_PERMISSION_GENERIC));
+            playSound(sender, SoundKeys.USAGE_ERROR);
+            return;
+        }
+
+        int lastColon = input.lastIndexOf(':');
+        if (lastColon == -1 || lastColon == 0 || lastColon == input.length() - 1) {
+            Messages.send(sender, Message.of(MessageKey.COMMON_USAGE).with("usage", "/preferencia <usuário>:<preferência>"));
+            playSound(sender, SoundKeys.ERROR);
+            return;
+        }
+
+        String targetName = input.substring(0, lastColon);
+        String prefKey = input.substring(lastColon + 1).toLowerCase();
+
+        resolveProfileAsync(targetName).thenAccept(profileOpt -> {
+            if (profileOpt.isEmpty()) {
+                Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NEVER_JOINED).with("player", targetName));
+                playSound(sender, SoundKeys.ERROR);
+                return;
+            }
+
+            Profile p = profileOpt.get();
+            UUID uuid = p.getUuid();
+            preferencesService.ensurePreferences(p);
+
+            boolean changed = false;
+            MessageKey valKey = null;
+
+            try {
+                if (prefKey.equals("linguagem") || prefKey.equals("language")) {
+                    Language newLang = preferencesService.toggleLanguage(uuid);
+                    valKey = (newLang == Language.PORTUGUESE) ? KEY_LANG_PT : KEY_LANG_EN;
+                    changed = true;
+                } else if (prefKey.equals("staffchat") || prefKey.equals("chatstaff")) {
+                    boolean v = preferencesService.toggleStaffChat(uuid);
+                    valKey = v ? KEY_ENABLED : KEY_DISABLED;
+                    changed = true;
+                } else if (prefKey.equals("autologin")) {
+                    boolean v = preferencesService.toggleAutoLogin(uuid);
+                    valKey = v ? KEY_ENABLED : KEY_DISABLED;
+                    changed = true;
+                } else if (prefKey.equals("sessao") || prefKey.equals("session")) {
+                    boolean v = preferencesService.toggleSession(uuid);
+                    valKey = v ? KEY_ENABLED : KEY_DISABLED;
+                    changed = true;
+                } else {
+                    Messages.send(sender, Message.of(MessageKey.PREF_UNKNOWN).with("pref", prefKey));
+                    playSound(sender, SoundKeys.ERROR);
+                    return;
+                }
+
+                if (changed && valKey != null) {
+                    String val = Messages.translate(valKey, Messages.determineLocale(sender));
+                    String formattedName = NicknameFormatter.getNickname(p, true);
+
+                    Messages.send(sender, Message.of(MessageKey.PREF_UPDATED_OTHER)
+                            .with("player", formattedName)
+                            .with("pref", prefKey)
+                            .with("value", val));
+                    playSound(sender, SoundKeys.SUCCESS);
+                }
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Error in admin preference change for " + targetName, e);
+                Messages.send(sender, MessageKey.COMMAND_ERROR);
+            }
+        }).exceptionally(ex -> {
+            logger.log(Level.SEVERE, "Error resolving profile for admin preference change", ex);
+            Messages.send(sender, MessageKey.COMMAND_ERROR);
+            return null;
         });
     }
 
@@ -300,42 +323,49 @@ public class PreferenceCommand implements CommandInterface {
     @Override
     public List<String> tabComplete(CommandSource sender, String[] args) {
         List<String> suggestions = new ArrayList<>();
-
         if (args.length == 1) {
             String current = args[0].toLowerCase();
             suggestions.add("linguagem");
 
-            if (sender.hasPermission(permHelper)) {
-                suggestions.add("staffchat");
+            if (sender instanceof Player) {
+                suggestions.add("autologin");
+                if (sender.hasPermission(permVip)) suggestions.add("sessao");
+                if (sender.hasPermission(permHelper)) suggestions.add("staffchat");
             }
+
             if (sender.hasPermission(permAdmin)) {
                 suggestions.add("info");
             }
 
             if (sender.hasPermission(permManager)) {
-                if (!current.contains(":")) {
-                    Proxy.getInstance().getServer().getAllPlayers().forEach(p -> {
-                        if (p.getUsername().toLowerCase().startsWith(current)) {
-                            suggestions.add(p.getUsername() + ":");
-                        }
-                    });
-                } else {
+                if (current.contains(":")) {
                     String[] parts = current.split(":");
-                    String namePart = parts[0];
-                    String prefPart = parts.length > 1 ? parts[1] : "";
+                    if (parts.length > 0) {
+                        String namePart = parts[0];
+                        String prefPart = (parts.length > 1) ? parts[1] : "";
 
-                    if ("linguagem".startsWith(prefPart)) suggestions.add(namePart + ":linguagem");
-                    if ("staffchat".startsWith(prefPart)) suggestions.add(namePart + ":staffchat");
+                        if ("linguagem".startsWith(prefPart)) suggestions.add(namePart + ":linguagem");
+                        if ("autologin".startsWith(prefPart)) suggestions.add(namePart + ":autologin");
+                        if ("sessao".startsWith(prefPart)) suggestions.add(namePart + ":sessao");
+                        if ("staffchat".startsWith(prefPart)) suggestions.add(namePart + ":staffchat");
+                    }
+                } else {
+                    Proxy.getInstance().getServer().getAllPlayers().stream()
+                            .map(Player::getUsername)
+                            .filter(name -> name.toLowerCase().startsWith(current))
+                            .forEach(name -> suggestions.add(name + ":"));
                 }
             }
-            return suggestions.stream().filter(s -> s.toLowerCase().startsWith(current)).collect(Collectors.toList());
+            return suggestions.stream()
+                    .filter(s -> s.toLowerCase().startsWith(current))
+                    .collect(Collectors.toList());
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("info") && sender.hasPermission(permAdmin)) {
             String current = args[1].toLowerCase();
             return Proxy.getInstance().getServer().getAllPlayers().stream()
                     .map(Player::getUsername)
-                    .filter(s -> s.toLowerCase().startsWith(current))
+                    .filter(name -> name.toLowerCase().startsWith(current))
                     .collect(Collectors.toList());
         }
 

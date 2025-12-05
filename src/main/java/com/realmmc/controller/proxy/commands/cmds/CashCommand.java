@@ -71,30 +71,14 @@ public class CashCommand implements CommandInterface {
         String subCommand = args[0].toLowerCase();
 
         switch (subCommand) {
-            case "add":
-                handleModify(sender, args, label, ModifyType.ADD);
-                break;
-            case "remove":
-                handleModify(sender, args, label, ModifyType.REMOVE);
-                break;
-            case "set":
-                handleModify(sender, args, label, ModifyType.SET);
-                break;
-            case "clear":
-                handleModify(sender, args, label, ModifyType.CLEAR);
-                break;
-            case "top":
-                handleTop(sender, label);
-                break;
-            case "info":
-                handleInfo(sender, args, label);
-                break;
-            case "help":
-                showHelp(sender, label);
-                break;
-            default:
-                handleInfo(sender, new String[]{"info", args[0]}, label);
-                break;
+            case "add": handleModify(sender, args, label, ModifyType.ADD); break;
+            case "remove": handleModify(sender, args, label, ModifyType.REMOVE); break;
+            case "set": handleModify(sender, args, label, ModifyType.SET); break;
+            case "clear": handleModify(sender, args, label, ModifyType.CLEAR); break;
+            case "top": handleTop(sender, label); break;
+            case "info": handleInfo(sender, args, label); break;
+            case "help": showHelp(sender, label); break;
+            default: handleInfo(sender, new String[]{"info", args[0]}, label); break;
         }
     }
 
@@ -146,14 +130,14 @@ public class CashCommand implements CommandInterface {
                     playSound(sender, SoundKeys.ERROR);
                     return;
                 }
-
                 Profile targetProfile = targetProfileOpt.get();
+
                 UUID targetUuid = targetProfile.getUuid();
                 int oldBalance = targetProfile.getCash();
                 int newBalance = 0;
 
                 boolean isSelf = (sourceUuid != null && sourceUuid.equals(targetUuid));
-                String formattedName = NicknameFormatter.getNickname(targetUuid, true, targetProfile.getName());
+                String formattedName = NicknameFormatter.getNickname(targetProfile, true);
                 MessageKey successKey = MessageKey.COMMAND_ERROR;
 
                 switch (type) {
@@ -201,47 +185,20 @@ public class CashCommand implements CommandInterface {
     }
 
     private void handleTop(CommandSource sender, String label) {
-        UUID senderUuid = (sender instanceof Player) ? ((Player) sender).getUniqueId() : null;
         Locale locale = Messages.determineLocale(sender);
 
         TaskScheduler.runAsync(() -> {
             try {
                 List<Profile> top10 = cashService.getCachedTop10();
                 long nextUpdate = cashService.getNextUpdateTimestamp();
-                long diff = nextUpdate - System.currentTimeMillis();
-                String timeRemaining = TimeUtils.formatDuration(Math.max(0, diff));
-
-                Profile selfProfile = null;
-                long selfRank = -1;
-                boolean selfInTop10 = false;
-
-                if (senderUuid != null) {
-                    for (int i = 0; i < top10.size(); i++) {
-                        if (top10.get(i).getUuid().equals(senderUuid)) {
-                            selfInTop10 = true;
-                            selfRank = i + 1;
-                            selfProfile = top10.get(i);
-                            break;
-                        }
-                    }
-                    if (!selfInTop10) {
-                        selfProfile = profileService.getByUuid(senderUuid).orElse(null);
-                        if (selfProfile != null && selfProfile.getCash() > 0) {
-                            selfRank = profileService.getPlayerRank(selfProfile.getCash());
-                        }
-                    }
-                }
-
-                final Profile finalSelfProfile = selfProfile;
-                final long finalSelfRank = selfRank;
-                final boolean finalSelfInTop10 = selfInTop10;
+                String timeRemaining = TimeUtils.formatDuration(Math.max(0, nextUpdate - System.currentTimeMillis()));
 
                 Messages.send(sender, MessageKey.CASH_TOP_HEADER);
                 Messages.send(sender, Message.of(MessageKey.CASH_TOP_UPDATE_TIMER).with("time", timeRemaining));
 
                 int position = 1;
                 for (Profile p : top10) {
-                    String formattedName = NicknameFormatter.getNickname(p.getUuid(), true, p.getName());
+                    String formattedName = NicknameFormatter.getNickname(p, true); // PREFIXO COMPLETO
                     String formattedCash = formatCash(p.getCash());
 
                     String lineFormat = Messages.translate(Message.of(MessageKey.CASH_TOP_LINE)
@@ -261,22 +218,7 @@ public class CashCommand implements CommandInterface {
                     position++;
                 }
 
-                if (sender instanceof Player && !finalSelfInTop10 && finalSelfRank > 10 && finalSelfProfile != null) {
-                    String formattedName = NicknameFormatter.getNickname(finalSelfProfile.getUuid(), true, finalSelfProfile.getName());
-                    String formattedCash = formatCash(finalSelfProfile.getCash());
-
-                    String lineFormat = Messages.translate(Message.of(MessageKey.CASH_TOP_LINE_SELF)
-                            .with("position", finalSelfRank)
-                            .with("player_name", formattedName)
-                            .with("cash", formattedCash), locale);
-
-                    Component lineComponent = miniMessage.deserialize(lineFormat)
-                            .clickEvent(ClickEvent.runCommand("/cash info " + finalSelfProfile.getName()));
-
-                    sender.sendMessage(lineComponent);
-                } else {
-                    Messages.send(sender, MessageKey.CASH_TOP_FOOTER);
-                }
+                Messages.send(sender, MessageKey.CASH_TOP_FOOTER);
                 playSound(sender, SoundKeys.NOTIFICATION);
 
             } catch (Exception e) {
@@ -303,7 +245,7 @@ public class CashCommand implements CommandInterface {
                 }
 
                 Profile targetProfile = targetProfileOpt.get();
-                String formattedName = NicknameFormatter.getNickname(targetProfile.getUuid(), true, targetProfile.getName());
+                String formattedName = NicknameFormatter.getNickname(targetProfile, true); // PREFIXO COMPLETO
 
                 Messages.send(sender, Message.of(MessageKey.CASH_INFO_HEADER).with("player_name", formattedName));
                 Messages.send(sender, Message.of(MessageKey.CASH_INFO_LINE_TOTAL).with("cash", formatCash(targetProfile.getCash())));
@@ -328,7 +270,6 @@ public class CashCommand implements CommandInterface {
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_HEADER).with("system", "Cash"));
         Messages.send(sender, MessageKey.CASH_HELP_VIEW);
         Messages.send(sender, MessageKey.CASH_HELP_TOP);
-
         if (sender.hasPermission(adminPermission)) {
             Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " info <usuário>").with("description", "Vê saldo e pendentes de um jogador."));
             Messages.send(sender, MessageKey.CASH_HELP_ADD);
@@ -336,38 +277,27 @@ public class CashCommand implements CommandInterface {
             Messages.send(sender, MessageKey.CASH_HELP_SET);
             Messages.send(sender, MessageKey.CASH_HELP_CLEAR);
         }
-
         Messages.send(sender, MessageKey.COMMON_HELP_FOOTER_FULL);
         playSound(sender, SoundKeys.NOTIFICATION);
     }
 
-    private String formatCash(int cash) {
-        return numberFormatter.format(cash);
-    }
-
+    private String formatCash(int cash) { return numberFormatter.format(cash); }
     private void sendUsage(CommandSource sender, String label, String usage) {
         Messages.send(sender, Message.of(MessageKey.COMMON_USAGE).with("usage", "/" + label + " " + usage));
         playSound(sender, SoundKeys.USAGE_ERROR);
     }
-
     private void playSound(CommandSource sender, String key) {
         if (sender instanceof Player player) {
             soundPlayerOpt.ifPresent(sp -> sp.playSound(player, key));
         }
     }
-
     @Override
     public List<String> tabComplete(CommandSource sender, String[] args) {
         final List<String> completions = new ArrayList<>();
         final String currentArg = (args.length > 0) ? args[args.length - 1].toLowerCase() : "";
-
         if (args.length == 1) {
-            completions.add("top");
-            completions.add("help");
-            completions.add("info");
-            if (sender.hasPermission(adminPermission)) {
-                completions.addAll(Arrays.asList("add", "remove", "set", "clear"));
-            }
+            completions.add("top"); completions.add("help"); completions.add("info");
+            if (sender.hasPermission(adminPermission)) completions.addAll(Arrays.asList("add", "remove", "set", "clear"));
             proxyServer.getAllPlayers().stream().map(Player::getUsername).forEach(completions::add);
         } else if (args.length == 2) {
             String subCmd = args[0].toLowerCase();
@@ -380,7 +310,6 @@ public class CashCommand implements CommandInterface {
                 completions.addAll(Arrays.asList("100", "500", "1000", "5000", "10000"));
             }
         }
-
         return completions.stream().filter(s -> s.toLowerCase().startsWith(currentArg)).distinct().sorted().collect(Collectors.toList());
     }
 }

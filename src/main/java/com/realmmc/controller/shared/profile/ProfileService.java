@@ -115,6 +115,30 @@ public class ProfileService {
         }
     }
 
+    public int calculateOfflineEarnings(UUID uuid, long lastLogout) {
+        return 0;
+    }
+
+    public long countAccountsByIp(String ip) {
+        if (ip == null) return 0;
+        try {
+            return repository.collection().countDocuments(Filters.eq("firstIp", ip));
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    public void updateLastLogout(UUID uuid) {
+        if (uuid == null) return;
+        long now = System.currentTimeMillis();
+        try {
+            repository.collection().updateOne(Filters.eq("uuid", uuid),
+                    Updates.combine(Updates.set("lastLogout", now), Updates.set("updatedAt", now)));
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to update lastLogout for " + uuid, e);
+        }
+    }
+
     public void save(Profile profile) {
         Objects.requireNonNull(profile, "Profile cannot be null for saving.");
         long now = System.currentTimeMillis();
@@ -134,8 +158,8 @@ public class ProfileService {
             publish("upsert", profile);
             updateSessionData(profile.getUuid(), profile.getCash(), profile.getPrimaryRoleName(), profile.getEquippedMedal());
 
-            LOGGER.log(Level.INFO, "[ProfileService] Profile {0} (UUID: {1}) saved/updated successfully. ID: {2}",
-                    new Object[]{profile.getName(), profile.getUuid(), profile.getId()});
+            LOGGER.log(Level.INFO, "[ProfileService] Profile {0} (UUID: {1}) saved/updated successfully.",
+                    new Object[]{profile.getName(), profile.getUuid()});
 
         } catch (MongoException e) {
             LOGGER.log(Level.SEVERE, "[ProfileService] MongoDB error saving profile for UUID: " + profile.getUuid(), e);
@@ -265,7 +289,14 @@ public class ProfileService {
         } else {
             long now = System.currentTimeMillis();
             int profileId = MongoSequences.getNext("profiles");
-            final Language initialLang = Messages.determineInitialLanguage(playerObject);
+
+            Language initialLangTemp = Language.getDefault();
+            try {
+                initialLangTemp = Messages.determineInitialLanguage(playerObject);
+            } catch (Exception e) {}
+
+            // CORREÇÃO: Variável final para uso no lambda
+            final Language initialLang = initialLangTemp;
 
             profileToReturn = Profile.builder()
                     .id(profileId)
@@ -296,6 +327,7 @@ public class ProfileService {
 
             final Profile finalProfileForServices = profileToReturn;
             getStatsService().ifPresent(stats -> stats.ensureStatistics(finalProfileForServices));
+
             getPreferencesService().ifPresent(prefs -> prefs.ensurePreferences(finalProfileForServices, initialLang));
         }
 
@@ -303,17 +335,12 @@ public class ProfileService {
             try {
                 save(profileToReturn);
             } catch (MongoException e) {
-                if (e.getCode() == 11000 && e.getMessage() != null && (e.getMessage().contains("index: username_1") || e.getMessage().contains("index: uuid_1"))) {
-                    LOGGER.log(Level.WARNING, "[ProfileService] Duplicate key error saving profile for {0}. Attempting reload.", usernameLower);
-                    profileToReturn = getByUuid(loginUuid)
-                            .orElseThrow(() -> new RuntimeException("Failed to reload profile after duplicate key error", e));
+                if (e.getCode() == 11000) {
+                    LOGGER.log(Level.WARNING, "[ProfileService] Duplicate key error saving profile. Reloading.");
+                    profileToReturn = getByUuid(loginUuid).orElseThrow();
                 } else {
-                    LOGGER.log(Level.SEVERE, "[ProfileService] MongoDB error saving profile during ensureProfile", e);
                     throw e;
                 }
-            } catch (Exception e) {
-                LOGGER.log(Level.SEVERE, "[ProfileService] Unexpected error saving profile during ensureProfile", e);
-                throw new RuntimeException("Unexpected failure saving profile", e);
             }
         }
 
@@ -369,16 +396,12 @@ public class ProfileService {
                 node.put("uuid", targetUuid.toString());
                 node.put("amount", amount);
                 RedisPublisher.publish(RedisChannel.CASH_NOTIFICATION, node.toString());
-            } catch (Exception e) {
-                LOGGER.warning("Failed to publish cash notification for " + targetUuid);
-            }
+            } catch (Exception e) {}
 
             updateLocalAndPublish(targetUuid, p -> {
                 p.setCash(p.getCash() + amount);
                 p.setPendingCash(p.getPendingCash() + amount);
             });
-        } else {
-            LOGGER.warning("Tentativa de adicionar cash a UUID inexistente: " + targetUuid);
         }
     }
 
@@ -395,7 +418,6 @@ public class ProfileService {
 
     public boolean removeCash(UUID targetUuid, int amount, UUID sourceUuid, String sourceName) {
         if (targetUuid == null || amount <= 0) return false;
-
         long now = System.currentTimeMillis();
         org.bson.conversions.Bson filter = Filters.and(
                 Filters.eq("uuid", targetUuid),
@@ -405,20 +427,16 @@ public class ProfileService {
                 Updates.inc("cash", -amount),
                 Updates.set("updatedAt", now)
         );
-
         UpdateResult result = repository.collection().updateOne(filter, update);
-
         if (result.getModifiedCount() > 0) {
             updateLocalAndPublish(targetUuid, p -> p.setCash(p.getCash() - amount));
             return true;
         }
-
         return false;
     }
 
     public void setCash(UUID targetUuid, int amount, UUID sourceUuid, String sourceName) {
         if (targetUuid == null || amount < 0) return;
-
         update(targetUuid, p -> {
             if (p.getCash() != amount) {
                 p.setCash(amount);
@@ -442,7 +460,6 @@ public class ProfileService {
             Profile p = localOpt.get();
             action.accept(p);
             p.setUpdatedAt(System.currentTimeMillis());
-
             publish("upsert", p);
             updateSessionData(uuid, p.getCash(), p.getPrimaryRoleName(), p.getEquippedMedal());
         }
@@ -450,29 +467,28 @@ public class ProfileService {
 
     private void update(UUID uuid, ProfileModifier modifier, String actionContext) {
         if (uuid == null || modifier == null) return;
-        Optional<Profile> profileOpt = getByUuid(uuid);
-        profileOpt.ifPresentOrElse(
-                profile -> {
-                    boolean changed = false;
-                    try {
-                        changed = modifier.modify(profile);
-                    } catch (Exception e) {
-                        LOGGER.log(Level.SEVERE, "[ProfileService] Error during modification ('" + actionContext + "') for UUID: " + uuid, e);
-                        return;
-                    }
 
-                    if (changed) {
-                        try {
-                            save(profile);
-                        } catch (Exception e) {
-                            LOGGER.log(Level.SEVERE, "[ProfileService] Error saving profile after '" + actionContext + "' for UUID: " + uuid, e);
-                        }
-                    }
-                },
-                () -> {
-                    LOGGER.warning("[ProfileService] Attempt to '" + actionContext + "' failed: Profile not found for UUID: " + uuid);
+        Optional<Profile> profileOpt = getByUuid(uuid);
+        if (profileOpt.isPresent()) {
+            Profile profile = profileOpt.get();
+            boolean changed = false;
+            try {
+                changed = modifier.modify(profile);
+            } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Error during modification " + actionContext, e);
+                return;
+            }
+
+            if (changed) {
+                try {
+                    save(profile);
+                } catch (Exception e) {
+                    LOGGER.log(Level.SEVERE, "Error saving profile after " + actionContext, e);
                 }
-        );
+            }
+        } else {
+            LOGGER.warning("[ProfileService] Attempt to '" + actionContext + "' failed: Profile not found for UUID: " + uuid);
+        }
     }
 
     @FunctionalInterface
@@ -481,9 +497,7 @@ public class ProfileService {
     }
 
     private void publish(String action, Profile profile) {
-        if (profile == null || profile.getUuid() == null || action == null) {
-            return;
-        }
+        if (profile == null || profile.getUuid() == null || action == null) return;
 
         try {
             ObjectNode node = mapper.createObjectNode();
@@ -491,24 +505,30 @@ public class ProfileService {
             node.put("uuid", profile.getUuid().toString());
 
             if ("upsert".equals(action)) {
-                if (profile.getId() != null) node.put("id", profile.getId()); else node.putNull("id");
+                if (profile.getId() != null) node.put("id", profile.getId());
                 node.put("name", profile.getName());
                 node.put("username", profile.getUsername());
                 node.put("cash", profile.getCash());
+                node.put("pendingCash", profile.getPendingCash());
                 node.put("premium", profile.isPremiumAccount());
                 node.put("equippedMedal", profile.getEquippedMedal());
-                if (profile.getCashTopPosition() != null) node.put("cashTopPosition", profile.getCashTopPosition()); else node.putNull("cashTopPosition");
-                if (profile.getCashTopPositionEnteredAt() != null) node.put("cashTopPositionEnteredAt", profile.getCashTopPositionEnteredAt()); else node.putNull("cashTopPositionEnteredAt");
+
+                if (profile.getPasswordHash() != null) node.put("passwordHash", profile.getPasswordHash());
+                if (profile.getPasswordSalt() != null) node.put("passwordSalt", profile.getPasswordSalt());
+                if (profile.getLastAuthorizedIp() != null) node.put("lastAuthorizedIp", profile.getLastAuthorizedIp());
+
+                if (profile.getCashTopPosition() != null) node.put("cashTopPosition", profile.getCashTopPosition());
                 node.put("firstIp", profile.getFirstIp());
                 node.put("lastIp", profile.getLastIp());
-                if (profile.getIpHistory() != null) { ArrayNode ipHistoryNode = node.putArray("ipHistory"); profile.getIpHistory().forEach(ipHistoryNode::add); } else { node.putArray("ipHistory"); }
+
+                if (profile.getIpHistory() != null) {
+                    ArrayNode ipHistoryNode = node.putArray("ipHistory");
+                    profile.getIpHistory().forEach(ipHistoryNode::add);
+                }
+
                 node.put("firstLogin", profile.getFirstLogin());
                 node.put("lastLogin", profile.getLastLogin());
-
-                node.put("firstClientVersion", profile.getFirstClientVersion());
-                node.put("firstClientType", profile.getFirstClientType());
-                node.put("lastClientVersion", profile.getLastClientVersion());
-                node.put("lastClientType", profile.getLastClientType());
+                node.put("lastLogout", profile.getLastLogout());
 
                 node.put("primaryRoleName", profile.getPrimaryRoleName());
 
@@ -516,50 +536,33 @@ public class ProfileService {
                 if (roles != null) {
                     ArrayNode rolesNode = node.putArray("roles");
                     for (PlayerRole pr : roles) {
-                        if (pr == null || pr.getRoleName() == null) continue;
                         ObjectNode roleInfo = rolesNode.addObject();
                         roleInfo.put("roleName", pr.getRoleName());
-                        roleInfo.put("status", pr.getStatus() != null ? pr.getStatus().name() : PlayerRole.Status.ACTIVE.name());
-                        if (pr.getExpiresAt() != null) roleInfo.put("expiresAt", pr.getExpiresAt()); else roleInfo.putNull("expiresAt");
+                        roleInfo.put("status", pr.getStatus().name());
+                        if (pr.getExpiresAt() != null) roleInfo.put("expiresAt", pr.getExpiresAt());
                         roleInfo.put("paused", pr.isPaused());
-                        if (pr.getPausedTimeRemaining() != null) roleInfo.put("pausedTimeRemaining", pr.getPausedTimeRemaining()); else roleInfo.putNull("pausedTimeRemaining");
-                        roleInfo.put("addedAt", pr.getAddedAt());
-                        if (pr.getRemovedAt() != null) roleInfo.put("removedAt", pr.getRemovedAt()); else roleInfo.putNull("removedAt");
+                        if (pr.getPausedTimeRemaining() != null) roleInfo.put("pausedTimeRemaining", pr.getPausedTimeRemaining());
+                        roleInfo.put("pendingNotification", pr.isPendingNotification());
                     }
-                } else {
-                    node.putArray("roles");
                 }
-
                 node.put("createdAt", profile.getCreatedAt());
                 node.put("updatedAt", profile.getUpdatedAt());
-
-            } else if ("delete".equals(action)) {
-                if (profile.getId() != null) node.put("id", profile.getId());
             }
 
-            String jsonMessage = node.toString();
-            RedisPublisher.publish(RedisChannel.PROFILES_SYNC, jsonMessage);
+            RedisPublisher.publish(RedisChannel.PROFILES_SYNC, node.toString());
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] Failed to publish profile sync message for UUID: " + profile.getUuid(), e);
+            LOGGER.log(Level.SEVERE, "Failed to publish profile sync message", e);
         }
     }
 
     public List<Profile> getTopCash(int limit) {
-        try {
-            return repository.findTopByCash(limit);
-        } catch (MongoException e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] MongoDB error fetching top cash", e);
-            return Collections.emptyList();
-        }
+        try { return repository.findTopByCash(limit); }
+        catch (Exception e) { return Collections.emptyList(); }
     }
 
     public long getPlayerRank(int playerCash) {
-        try {
-            return repository.countByCashGreaterThan(playerCash) + 1;
-        } catch (MongoException e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] MongoDB error fetching player cash rank", e);
-            return -1;
-        }
+        try { return repository.countByCashGreaterThan(playerCash) + 1; }
+        catch (Exception e) { return -1; }
     }
 }

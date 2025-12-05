@@ -21,4 +21,8 @@ public class Preferences {
     private Language serverLanguage = Language.getDefault();
     @Builder.Default
     private boolean staffChatEnabled = true;
+    @Builder.Default
+    private boolean autoLogin = true;
+    @Builder.Default
+    private boolean sessionActive = true;
 }

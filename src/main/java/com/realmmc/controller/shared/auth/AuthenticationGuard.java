@@ -2,26 +2,19 @@ package com.realmmc.controller.shared.auth;
 
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.shared.messaging.MessageKey;
-import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.session.SessionTrackerService;
+import com.velocitypowered.api.proxy.ProxyServer;
 
 import java.util.Optional;
 import java.util.UUID;
-import java.util.logging.Logger;
 
 public final class AuthenticationGuard {
 
-    private static final Logger LOGGER = Logger.getLogger(AuthenticationGuard.class.getName());
-
+    public static final String STATE_OFFLINE = "OFFLINE";
     public static final String STATE_CONNECTING = "CONNECTING";
+    public static final String STATE_REGISTER_REQUIRED = "REGISTER_REQUIRED";
+    public static final String STATE_LOGIN_REQUIRED = "LOGIN_REQUIRED";
     public static final String STATE_ONLINE = "ONLINE";
-    public static final MessageKey NOT_AUTHENTICATED_MESSAGE_KEY = MessageKey.AUTH_STILL_CONNECTING;
-
-    public enum PlayerState {
-        OFFLINE,
-        CONNECTING,
-        ONLINE
-    }
 
     private AuthenticationGuard() {}
 
@@ -29,36 +22,40 @@ public final class AuthenticationGuard {
         return ServiceRegistry.getInstance().getService(SessionTrackerService.class);
     }
 
-    public static PlayerState getPlayerState(UUID uuid) {
-        if (uuid == null) return PlayerState.OFFLINE;
+    public static Optional<MessageKey> validatePlayerReady(UUID uuid) {
+        Optional<SessionTrackerService> tracker = getSessionTracker();
+        if (tracker.isEmpty()) return Optional.empty();
 
-        return getSessionTracker()
-                .flatMap(service -> service.getSessionField(uuid, "state"))
-                .map(stateStr -> {
-                    if (STATE_ONLINE.equals(stateStr)) return PlayerState.ONLINE;
-                    if (STATE_CONNECTING.equals(stateStr)) return PlayerState.CONNECTING;
-                    return PlayerState.OFFLINE;
-                })
-                .orElse(PlayerState.OFFLINE);
+        Optional<String> stateOpt = tracker.get().getSessionField(uuid, "state");
+
+        if (stateOpt.isEmpty()) return Optional.empty();
+
+        String state = stateOpt.get();
+
+        if (state.equals(STATE_CONNECTING) ||
+                state.equals(STATE_LOGIN_REQUIRED) ||
+                state.equals(STATE_REGISTER_REQUIRED)) {
+            return Optional.of(MessageKey.AUTH_STILL_CONNECTING);
+        }
+
+        return Optional.empty();
     }
 
     public static boolean isAuthenticated(UUID uuid) {
-        return getPlayerState(uuid) == PlayerState.ONLINE;
+        return getSessionTracker()
+                .flatMap(s -> s.getSessionField(uuid, "state"))
+                .map(st -> st.equals(STATE_ONLINE))
+                .orElse(false);
     }
 
     public static boolean isConnecting(UUID uuid) {
-        return getPlayerState(uuid) == PlayerState.CONNECTING;
+        return getSessionTracker()
+                .flatMap(s -> s.getSessionField(uuid, "state"))
+                .map(st -> st.equals(STATE_CONNECTING))
+                .orElse(false);
     }
 
     public static Optional<String> checkCanInteractWith(UUID targetUuid) {
-        PlayerState state = getPlayerState(targetUuid);
-
-        if (state == PlayerState.ONLINE) {
-            return Optional.empty();
-        } else if (state == PlayerState.CONNECTING) {
-            return Optional.of(Messages.translate(NOT_AUTHENTICATED_MESSAGE_KEY));
-        } else {
-            return Optional.of(Messages.translate(MessageKey.COMMON_PLAYER_NOT_ONLINE));
-        }
+        return Optional.empty();
     }
 }

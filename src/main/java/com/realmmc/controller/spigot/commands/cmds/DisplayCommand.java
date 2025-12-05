@@ -83,23 +83,9 @@ public class DisplayCommand implements CommandInterface {
     private void showHelp(CommandSender sender) {
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_HEADER).with("system", "Display Items"));
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display criar <id> <material>").with("description", "Cria um novo item flutuante."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display clone <id original> <novo id>").with("description", "Duplica um item flutuante."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display remover <id>").with("description", "Remove um item flutuante."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display list").with("description", "Lista todos os itens flutuantes."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display info <id>").with("description", "Mostra informações de um item."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display tphere <id>").with("description", "Teleporta um item para a sua localização."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display setitem <id> <material>").with("description", "Altera o item exibido."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display setscale <id> <escala>").with("description", "Altera o tamanho do item (ex: 1.5)."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display setbillboard <id> <tipo>").with("description", "Altera como o item encara o jogador."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display toggleglow <id>").with("description", "Ativa/desativa o brilho do item."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display togglelines <id>").with("description", "Mostra/esconde as linhas de texto."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display addline <id> <texto>").with("description", "Adiciona uma linha de texto."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display setline <id> <linha> <texto>").with("description", "Modifica uma linha de texto."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display removeline <id> <linha>").with("description", "Remove uma linha de texto."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display addaction <id> <ação>").with("description", "Adiciona uma ação de clique."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display removeaction <id> <linha>").with("description", "Remove uma ação de clique."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display listactions <id>").with("description", "Lista as ações de um item."));
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display reload").with("description", "Recarrega todos os Display Items do ficheiro."));
+        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display list").with("description", "Lista itens."));
+        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display info <id>").with("description", "Info do item."));
+        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/display tphere <id>").with("description", "Teleporta para ti."));
         Messages.send(sender, MessageKey.COMMON_HELP_FOOTER_REQUIRED);
         playSound(sender, SoundKeys.NOTIFICATION);
     }
@@ -432,7 +418,7 @@ public class DisplayCommand implements CommandInterface {
             playSound(sender, SoundKeys.ERROR); return;
         }
         List<String> actions = entry.getActions() != null ? entry.getActions() : Collections.emptyList();
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", "Ações de Clique para '" + id + "'").with("count", actions.size()));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", "Ações de Clique").with("count", actions.size()));
         if (actions.isEmpty()) { Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY); }
         else { for (int i = 0; i < actions.size(); i++) { Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_ITEM).with("index", i + 1).with("value", actions.get(i))); } }
         playSound(sender, SoundKeys.NOTIFICATION);

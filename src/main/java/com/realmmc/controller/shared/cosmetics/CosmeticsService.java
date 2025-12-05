@@ -12,7 +12,6 @@ import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileService;
 import com.realmmc.controller.shared.sounds.SoundKeys;
 import com.realmmc.controller.shared.sounds.SoundPlayer;
-import com.realmmc.controller.shared.storage.mongodb.MongoSequences;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisMessageListener;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
@@ -129,7 +128,7 @@ public class CosmeticsService implements RedisMessageListener {
             return c;
         } else {
             Cosmetics newCosmetics = Cosmetics.builder()
-                    .id(MongoSequences.getNext("cosmetics"))
+                    .id(profile.getId())
                     .uuid(profile.getUuid())
                     .name(profile.getName())
                     .unlockedMedals(new ArrayList<>())
@@ -171,8 +170,11 @@ public class CosmeticsService implements RedisMessageListener {
         Optional<Cosmetics> opt = repository.findByUuid(uuid);
         Cosmetics cosmetics;
         if (opt.isEmpty()) {
+            Profile profile = profileService.getByUuid(uuid)
+                    .orElseThrow(() -> new IllegalStateException("Perfil não encontrado para criar cosméticos"));
+
             cosmetics = Cosmetics.builder()
-                    .id(MongoSequences.getNext("cosmetics"))
+                    .id(profile.getId())
                     .uuid(uuid)
                     .name(name)
                     .unlockedMedals(new ArrayList<>())
