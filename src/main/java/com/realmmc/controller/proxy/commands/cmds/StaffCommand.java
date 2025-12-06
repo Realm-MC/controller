@@ -6,7 +6,6 @@ import com.realmmc.controller.modules.server.data.ServerInfo;
 import com.realmmc.controller.modules.server.data.ServerInfoRepository;
 import com.realmmc.controller.proxy.commands.CommandInterface;
 import com.realmmc.controller.shared.annotations.Cmd;
-import com.realmmc.controller.shared.auth.AuthenticationGuard;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
@@ -60,13 +59,6 @@ public class StaffCommand implements CommandInterface {
             return;
         }
 
-        if (sender instanceof Player) {
-            if (!AuthenticationGuard.isAuthenticated(((Player) sender).getUniqueId())) {
-                Messages.send(sender, MessageKey.AUTH_STILL_CONNECTING);
-                return;
-            }
-        }
-
         if (args.length > 0) {
             Messages.send(sender, Message.of(MessageKey.COMMON_USAGE).with("usage", "/" + label));
             playSound(sender, SoundKeys.USAGE_ERROR);
@@ -96,9 +88,7 @@ public class StaffCommand implements CommandInterface {
                                                                             .orElse(id))
                                                                     .orElse("Desconhecido");
 
-                                                            String formattedName = NicknameFormatter.getRankFormattedName(profile);
-
-                                                            return new StaffInfo(profile.getUuid(), profile.getName(), formattedName, sessionData.getPrimaryRole().getWeight(), serverName);
+                                                            return new StaffInfo(profile.getUuid(), profile.getName(), sessionData.getPrimaryRole().getWeight(), serverName);
                                                         }
                                                         return null;
                                                     })
@@ -128,47 +118,58 @@ public class StaffCommand implements CommandInterface {
     private void sendListToSender(CommandSource sender, List<StaffInfo> sortedStaff) {
         try {
             int count = sortedStaff.size();
-            if (count == 0) Messages.send(sender, MessageKey.STAFF_LIST_HEADER_EMPTY);
-            else if (count == 1) Messages.send(sender, MessageKey.STAFF_LIST_HEADER_ONE);
-            else Messages.send(sender, Message.of(MessageKey.STAFF_LIST_HEADER_MULTIPLE).with("count", count));
+
+            if (count == 0) {
+                Messages.send(sender, MessageKey.STAFF_LIST_HEADER_EMPTY);
+            } else if (count == 1) {
+                Messages.send(sender, MessageKey.STAFF_LIST_HEADER_ONE);
+            } else {
+                Messages.send(sender, Message.of(MessageKey.STAFF_LIST_HEADER_MULTIPLE).with("count", count));
+            }
 
             for (StaffInfo info : sortedStaff) {
+                String formattedName = NicknameFormatter.getNickname(info.getUuid(), true, info.getUsername());
+
                 String lineFormat = Messages.translate(
                         Message.of(MessageKey.STAFF_LIST_LINE)
-                                .with("staff_member", info.getFormattedName())
+                                .with("staff_member", formattedName)
                                 .with("server_name", info.getServerName())
                 );
-                Component lineComponent = miniMessage.deserialize(lineFormat).clickEvent(ClickEvent.suggestCommand("/btp " + info.getRawName()));
+
+                Component lineComponent = miniMessage.deserialize(lineFormat)
+                        .clickEvent(ClickEvent.suggestCommand("/btp " + info.getUsername()));
+
                 sender.sendMessage(lineComponent);
             }
+
             Messages.send(sender, MessageKey.STAFF_LIST_FOOTER);
             playSound(sender, SoundKeys.NOTIFICATION);
+
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Erro ao enviar lista de staff", e);
         }
     }
 
     private void playSound(CommandSource sender, String key) {
-        if (sender instanceof Player player) soundPlayerOpt.ifPresent(sp -> sp.playSound(player, key));
+        if (sender instanceof Player player) {
+            soundPlayerOpt.ifPresent(sp -> sp.playSound(player, key));
+        }
     }
 
     private static class StaffInfo {
         private final UUID uuid;
-        private final String rawName;
-        private final String formattedName;
+        private final String username;
         private final int weight;
         private final String serverName;
 
-        public StaffInfo(UUID uuid, String rawName, String formattedName, int weight, String serverName) {
+        public StaffInfo(UUID uuid, String username, int weight, String serverName) {
             this.uuid = uuid;
-            this.rawName = rawName;
-            this.formattedName = formattedName;
+            this.username = username;
             this.weight = weight;
             this.serverName = serverName;
         }
         public UUID getUuid() { return uuid; }
-        public String getRawName() { return rawName; }
-        public String getFormattedName() { return formattedName; }
+        public String getUsername() { return username; }
         public int getWeight() { return weight; }
         public String getServerName() { return serverName; }
     }

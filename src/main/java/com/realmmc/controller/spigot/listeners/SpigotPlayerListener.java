@@ -116,7 +116,9 @@ public class SpigotPlayerListener implements Listener {
             try {
                 int currentPing = player.getPing();
                 service.setSessionField(uuid, "ping", String.valueOf(currentPing));
+
                 service.setSessionState(uuid, AuthenticationGuard.STATE_ONLINE);
+
             } catch (Exception e) {
                 logger.log(Level.FINEST, "Não foi possível atualizar ping inicial para " + player.getName(), e);
             }
@@ -129,6 +131,7 @@ public class SpigotPlayerListener implements Listener {
         final UUID uuid = player.getUniqueId();
 
         RoleKickHandler.cancelKick(uuid);
+
         roleService.invalidateSession(uuid);
 
         Long loginTime = loginTimestamps.remove(uuid);
@@ -143,12 +146,15 @@ public class SpigotPlayerListener implements Listener {
             }
         }
 
-        // CORREÇÃO: Atualização atômica/parcial para evitar sobrescrever a senha
         TaskScheduler.runAsync(() -> {
-            profileService.updateLastLogout(uuid);
+            profileService.getByUuid(uuid).ifPresent(profile -> {
+                profile.setLastLogout(System.currentTimeMillis());
+                profileService.save(profile);
+            });
         });
 
         this.preferencesService.removeCachedPreferences(uuid);
         this.roleService.clearSentWarnings(uuid);
+
     }
 }
