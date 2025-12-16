@@ -172,20 +172,22 @@ public class HologramCommand implements CommandInterface {
             playSound(sender, SoundKeys.ERROR);
             return;
         }
+        java.util.Locale locale = Messages.determineLocale(sender);
+
         String locationStr = String.format("%.2f, %.2f, %.2f em %s",
                 entry.getX() != null ? entry.getX() : 0.0,
                 entry.getY() != null ? entry.getY() : 0.0,
                 entry.getZ() != null ? entry.getZ() : 0.0,
                 entry.getWorld() != null ? entry.getWorld() : "N/A");
-        String glow = Messages.translate(Boolean.TRUE.equals(entry.getGlow()) ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE);
+        String glow = Messages.translate(Boolean.TRUE.equals(entry.getGlow()) ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE, locale);
 
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_HEADER).with("subject", "Holograma '" + id + "'"));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "ID").with("value", entry.getId()));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Localização Base").with("value", locationStr));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Brilho (Glow)").with("value", glow));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_ID, locale)).with("value", entry.getId()));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_LOCATION, locale)).with("value", locationStr));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_GLOW, locale)).with("value", glow));
 
         List<String> lines = entry.getLines() != null ? entry.getLines() : Collections.emptyList();
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", "Linhas de Texto").with("count", lines.size()));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", Messages.translate(MessageKey.LABEL_TEXT_LINES, locale)).with("count", lines.size()));
         if (lines.isEmpty()) {
             Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY);
         } else {

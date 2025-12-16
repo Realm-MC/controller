@@ -3,6 +3,7 @@ package com.realmmc.controller.proxy.listeners;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.shared.annotations.Listeners;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
@@ -13,6 +14,7 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+@Listeners
 public class RoleBroadcastListener implements RedisMessageListener {
 
     private static final Logger LOGGER = Logger.getLogger(RoleBroadcastListener.class.getName());

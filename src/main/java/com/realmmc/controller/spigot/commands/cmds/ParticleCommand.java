@@ -183,19 +183,22 @@ public class ParticleCommand implements CommandInterface {
         String id = args[1];
         ParticleEntry entry = particleService.getParticleEntry(id);
         if (entry == null) { Messages.send(sender, Message.of(MessageKey.PARTICLE_NOT_FOUND).with("id", id)); playSound(sender, SoundKeys.ERROR); return; }
-        String longDist = Messages.translate(entry.isLongDistance() ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE);
-        String animation = entry.getAnimationType() != null ? entry.getAnimationType() : Messages.translate(MessageKey.PARTICLE_INFO_ANIM_NONE);
-        String particleData = entry.getParticleData() != null ? entry.getParticleData() : Messages.translate(MessageKey.PARTICLE_INFO_DATA_NONE);
+
+        java.util.Locale locale = Messages.determineLocale(sender);
+
+        String longDist = Messages.translate(entry.isLongDistance() ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE, locale);
+        String animation = entry.getAnimationType() != null ? entry.getAnimationType() : Messages.translate(MessageKey.PARTICLE_INFO_ANIM_NONE, locale);
+        String particleData = entry.getParticleData() != null ? entry.getParticleData() : Messages.translate(MessageKey.PARTICLE_INFO_DATA_NONE, locale);
 
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_HEADER).with("subject", "Efeito de Partícula '" + id + "'"));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.PARTICLE_INFO_TYPE)).with("value", entry.getParticleType()));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.PARTICLE_INFO_ANIMATION)).with("value", animation));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.PARTICLE_INFO_AMOUNT)).with("value", entry.getAmount()));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.PARTICLE_INFO_INTERVAL)).with("value", entry.getUpdateInterval() + " ticks"));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.PARTICLE_INFO_SPEED)).with("value", String.format("%.3f", entry.getSpeed())));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.PARTICLE_INFO_OFFSET)).with("value", String.format("X:%.2f, Y:%.2f, Z:%.2f", entry.getOffsetX(), entry.getOffsetY(), entry.getOffsetZ())));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.PARTICLE_INFO_DATA)).with("value", particleData));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.PARTICLE_INFO_LONGDISTANCE)).with("value", longDist));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_TYPE, locale)).with("value", entry.getParticleType()));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_ANIMATION, locale)).with("value", animation));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_AMOUNT, locale)).with("value", entry.getAmount()));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_INTERVAL, locale)).with("value", entry.getUpdateInterval() + " ticks"));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_SPEED, locale)).with("value", String.format("%.3f", entry.getSpeed())));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_OFFSET, locale)).with("value", String.format("X:%.2f, Y:%.2f, Z:%.2f", entry.getOffsetX(), entry.getOffsetY(), entry.getOffsetZ())));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_DATA, locale)).with("value", particleData));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_LONG_DISTANCE, locale)).with("value", longDist));
         Messages.send(sender, "<white>");
         playSound(sender, SoundKeys.NOTIFICATION);
     }

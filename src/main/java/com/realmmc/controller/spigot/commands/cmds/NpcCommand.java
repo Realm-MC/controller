@@ -198,8 +198,11 @@ public class NpcCommand implements CommandInterface {
             Messages.send(sender, Message.of(MessageKey.NPC_NOT_FOUND).with("id", id));
             playSound(sender, SoundKeys.ERROR); return;
         }
+        java.util.Locale locale = Messages.determineLocale(sender);
+
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_HEADER).with("subject", "NPC '" + id + "'"));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Tipo").with("value", entry.getEntityType() != null ? entry.getEntityType() : "PLAYER"));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_ID, locale)).with("value", id));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_TYPE, locale)).with("value", entry.getEntityType() != null ? entry.getEntityType() : "PLAYER"));
         Messages.send(sender, "<white>");
         playSound(sender, SoundKeys.NOTIFICATION);
     }
@@ -366,7 +369,10 @@ public class NpcCommand implements CommandInterface {
             playSound(sender, SoundKeys.ERROR); return;
         }
         List<String> actions = entry.getActions() != null ? entry.getActions() : Collections.emptyList();
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", Messages.translate(MessageKey.NPC_INFO_ACTIONS) + " para '" + id + "'").with("count", actions.size()));
+
+        java.util.Locale locale = Messages.determineLocale(sender);
+
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", Messages.translate(MessageKey.LABEL_CLICK_ACTIONS, locale) + " (" + id + ")").with("count", actions.size()));
         if (actions.isEmpty()) { Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY); }
         else { for (int i = 0; i < actions.size(); i++) { Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_ITEM).with("index", i + 1).with("value", actions.get(i))); } }
         playSound(sender, SoundKeys.NOTIFICATION);

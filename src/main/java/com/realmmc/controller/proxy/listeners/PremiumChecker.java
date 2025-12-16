@@ -2,6 +2,7 @@ package com.realmmc.controller.proxy.listeners;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.realmmc.controller.shared.annotations.Listeners;
 import com.velocitypowered.api.util.GameProfile;
 
 import java.io.BufferedReader;
@@ -13,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+@Listeners
 public class PremiumChecker {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

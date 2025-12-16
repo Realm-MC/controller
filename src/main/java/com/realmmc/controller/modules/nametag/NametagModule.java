@@ -13,7 +13,6 @@ import org.bukkit.event.HandlerList;
 
 import java.util.logging.Logger;
 
-@AutoRegister(platforms = {AutoRegister.Platform.SPIGOT})
 public class NametagModule extends AbstractCoreModule {
 
     private NametagService nametagService;

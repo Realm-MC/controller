@@ -177,30 +177,32 @@ public class DisplayCommand implements CommandInterface {
             Messages.send(sender, Message.of(MessageKey.DISPLAY_NOT_FOUND).with("id", id));
             playSound(sender, SoundKeys.ERROR); return;
         }
+        java.util.Locale locale = Messages.determineLocale(sender);
+
         String locationStr = String.format("%.2f, %.2f, %.2f em %s",
                 entry.getX() != null ? entry.getX() : 0.0,
                 entry.getY() != null ? entry.getY() : 0.0,
                 entry.getZ() != null ? entry.getZ() : 0.0,
                 entry.getWorld() != null ? entry.getWorld() : "N/A");
-        String glow = Messages.translate(Boolean.TRUE.equals(entry.getGlow()) ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE);
-        String linesVisible = Messages.translate(Boolean.TRUE.equals(entry.getHologramVisible()) ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE);
+        String glow = Messages.translate(Boolean.TRUE.equals(entry.getGlow()) ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE, locale);
+        String linesVisible = Messages.translate(Boolean.TRUE.equals(entry.getHologramVisible()) ? MessageKey.COMMON_INFO_BOOLEAN_TRUE : MessageKey.COMMON_INFO_BOOLEAN_FALSE, locale);
 
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_HEADER).with("subject", "Display Item '" + id + "'"));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "ID").with("value", entry.getId()));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Item").with("value", entry.getItem() != null ? entry.getItem() : "N/A"));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Localização").with("value", locationStr));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Escala").with("value", entry.getScale() != null ? entry.getScale() : "N/A"));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Billboard").with("value", entry.getBillboard() != null ? entry.getBillboard() : "N/A"));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Brilho (Glow)").with("value", glow));
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "Visibilidade das Linhas").with("value", linesVisible));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_ID, locale)).with("value", entry.getId()));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_ITEM, locale)).with("value", entry.getItem() != null ? entry.getItem() : "N/A"));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_LOCATION, locale)).with("value", locationStr));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_SCALE, locale)).with("value", entry.getScale() != null ? entry.getScale() : "N/A"));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_BILLBOARD, locale)).with("value", entry.getBillboard() != null ? entry.getBillboard() : "N/A"));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_GLOW, locale)).with("value", glow));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.LABEL_LINES_VISIBLE, locale)).with("value", linesVisible));
 
         List<String> lines = entry.getLines() != null ? entry.getLines() : Collections.emptyList();
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", "Linhas de Texto").with("count", lines.size()));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", Messages.translate(MessageKey.LABEL_TEXT_LINES, locale)).with("count", lines.size()));
         if (lines.isEmpty()) { Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY); }
         else { for (int i = 0; i < lines.size(); i++) { Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_ITEM).with("index", i + 1).with("value", lines.get(i))); } }
 
         List<String> actions = entry.getActions() != null ? entry.getActions() : Collections.emptyList();
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", "Ações de Clique").with("count", actions.size()));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", Messages.translate(MessageKey.LABEL_CLICK_ACTIONS, locale)).with("count", actions.size()));
         if (actions.isEmpty()) { Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY); }
         else { for (int i = 0; i < actions.size(); i++) { Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_ITEM).with("index", i + 1).with("value", actions.get(i))); } }
 
@@ -418,7 +420,7 @@ public class DisplayCommand implements CommandInterface {
             playSound(sender, SoundKeys.ERROR); return;
         }
         List<String> actions = entry.getActions() != null ? entry.getActions() : Collections.emptyList();
-        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", "Ações de Clique").with("count", actions.size()));
+        Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER).with("key", Messages.translate(MessageKey.LABEL_CLICK_ACTIONS, Messages.determineLocale(sender))).with("count", actions.size()));
         if (actions.isEmpty()) { Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY); }
         else { for (int i = 0; i < actions.size(); i++) { Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_ITEM).with("index", i + 1).with("value", actions.get(i))); } }
         playSound(sender, SoundKeys.NOTIFICATION);

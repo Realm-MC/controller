@@ -20,9 +20,6 @@ public class TablistService implements Listener {
     private final MiniMessage mm = MiniMessage.miniMessage();
 
     private int animationIndex = 0;
-    private static final int STATE_SITE = 0;
-    private static final int STATE_STORE = 1;
-    private static final int STATE_DISCORD = 2;
     private static final int TOTAL_STATES = 3;
 
     public TablistService(Main plugin) {
@@ -46,37 +43,25 @@ public class TablistService implements Listener {
 
     private void sendTablist(Player player) {
         Locale locale = Messages.determineLocale(player);
-
         String headerString = Messages.translate(Message.of(MessageKey.TABLIST_HEADER), locale);
-
-        String footerNavBar;
-        String footerLink;
+        String footerString;
 
         switch (animationIndex) {
-            case STATE_SITE:
-                footerNavBar = "<gold>▼ Site <gray>▼ Loja ▼ Discord";
-                footerLink = "palacesky.com";
+            case 0:
+                footerString = Messages.translate(Message.of(MessageKey.TABLIST_FOOTER_SITE), locale);
                 break;
-            case STATE_STORE:
-                footerNavBar = "<gray>▼ Site <gold>▼ Loja <gray>▼ Discord";
-                footerLink = "loja.palacesky.com";
+            case 1:
+                footerString = Messages.translate(Message.of(MessageKey.TABLIST_FOOTER_STORE), locale);
                 break;
-            case STATE_DISCORD:
-                footerNavBar = "<gray>▼ Site ▼ Loja <gold>▼ Discord";
-                footerLink = "discord.palacesky.com";
+            case 2:
+                footerString = Messages.translate(Message.of(MessageKey.TABLIST_FOOTER_DISCORD), locale);
                 break;
             default:
-                footerNavBar = "<gray>▼ Site ▼ Loja ▼ Discord";
-                footerLink = "palacesky.com";
+                footerString = Messages.translate(Message.of(MessageKey.TABLIST_FOOTER_SITE), locale);
                 break;
         }
 
-        String footerString = "\n" + footerNavBar + "\n<white>" + footerLink + "\n";
-
-        Component header = mm.deserialize(headerString);
-        Component footer = mm.deserialize(footerString);
-
-        player.sendPlayerListHeaderAndFooter(header, footer);
+        player.sendPlayerListHeaderAndFooter(mm.deserialize(headerString), mm.deserialize(footerString));
     }
 
     @EventHandler

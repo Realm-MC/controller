@@ -5,10 +5,11 @@ import lombok.Getter;
 @Getter
 public enum DefaultServer {
 
-    // Formato: (name, displayName, ip, port, pterodactylId, maxPlayers, maxPlayersVip, minGroup, type)
-    LOGIN("login-1", "Login", "181.214.48.24", 25566, "67827339-e73d-48de-823c-8e23fc4c41ff", 500, 500, "default", ServerType.LOGIN),
-    LOBBY("lobby-1", "Lobby 1", "181.214.48.24", 25567, "680712e1-d63f-4c91-a8ef-68324783185c", 100, 150, "default", ServerType.LOBBY),
-    BUILD("build-1", "Construção", "181.214.48.24", 25568, "b11fdc52-3cbe-4529-b3f0-776915fae3b8", 100, 100, "administrator", ServerType.PERSISTENT);
+    // IPs definidos como 127.0.0.1 para segurança. O ServerManager deve atualizar isso se dinâmico.
+    LOGIN("login-1", "Login", "31.97.90.152", 25566, "d79f737e", 500, 500, "default", ServerType.LOGIN),
+    LOBBY("lobby-1", "Lobby 1", "31.97.90.152", 25567, "727c7884", 100, 150, "default", ServerType.LOBBY),
+    BUILD("build-1", "Construção", "31.97.90.152", 25569, "384ce2a7", 100, 100, "administrator", ServerType.PERSISTENT),
+    RANKUP("rankup-1", "Rankup", "31.97.90.152", 25568, "856fbec5", 300, 500, "default", ServerType.PERSISTENT);
 
     private final String name;
     private final String displayName;
@@ -44,6 +45,8 @@ public enum DefaultServer {
                 .minGroup(minGroup)
                 .type(type)
                 .status(ServerStatus.OFFLINE)
+                .gameState(GameState.UNKNOWN)
+                .canShutdown(true)
                 .playerCount(0)
                 .build();
     }

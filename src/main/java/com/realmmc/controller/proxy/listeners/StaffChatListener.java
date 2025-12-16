@@ -6,6 +6,10 @@ import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.modules.server.data.ServerInfo;
 import com.realmmc.controller.modules.server.data.ServerInfoRepository;
+import com.realmmc.controller.shared.annotations.Listeners;
+import com.realmmc.controller.shared.messaging.Message;
+import com.realmmc.controller.shared.messaging.MessageKey;
+import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.preferences.PreferencesService;
 import com.realmmc.controller.shared.role.RoleType;
 import com.realmmc.controller.shared.sounds.SoundKeys;
@@ -16,16 +20,15 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 
 import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+@Listeners
 public class StaffChatListener implements RedisMessageListener {
 
     private static final Logger LOGGER = Logger.getLogger(StaffChatListener.class.getName());
-
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
     private final ProxyServer proxyServer;
@@ -44,13 +47,10 @@ public class StaffChatListener implements RedisMessageListener {
 
     @Override
     public void onMessage(String channel, String message) {
-        if (!RedisChannel.STAFF_CHAT.getName().equals(channel)) {
-            return;
-        }
+        if (!RedisChannel.STAFF_CHAT.getName().equals(channel)) return;
 
         try {
             JsonNode node = objectMapper.readTree(message);
-
             String serverName = node.path("serverName").asText("unknown");
             String playerName = node.path("playerName").asText("Unknown");
             String formattedName = node.path("formattedName").asText(playerName);
@@ -60,15 +60,13 @@ public class StaffChatListener implements RedisMessageListener {
                     .map(ServerInfo::getDisplayName)
                     .orElse(serverName);
 
-            String format = "<light_purple>[Staff] <dark_gray>[<server>] <reset><formatted_name><light_purple>: <white><message>";
+            String format = Messages.translate(Message.of(MessageKey.STAFFCHAT_FORMAT)
+                    .with("server", serverDisplayName)
+                    .with("formatted_name", formattedName)
+                    .with("message", textMessage));
 
-            Component formattedMessage = miniMessage.deserialize(format,
-                    Placeholder.component("server", Component.text(serverDisplayName)),
-                    Placeholder.component("formatted_name", miniMessage.deserialize(formattedName)),
-                    Placeholder.component("message", Component.text(textMessage))
-            );
-
-            Component messageWithClick = formattedMessage.clickEvent(ClickEvent.suggestCommand("/btp " + playerName));
+            Component formattedComponent = miniMessage.deserialize(format);
+            Component messageWithClick = formattedComponent.clickEvent(ClickEvent.suggestCommand("/btp " + playerName));
 
             proxyServer.getAllPlayers().stream()
                     .filter(player -> roleService.getSessionDataFromCache(player.getUniqueId())

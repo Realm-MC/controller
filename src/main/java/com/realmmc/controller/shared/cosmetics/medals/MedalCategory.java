@@ -1,18 +1,19 @@
 package com.realmmc.controller.shared.cosmetics.medals;
 
+import com.realmmc.controller.shared.messaging.MessageKey;
 import lombok.Getter;
 
 @Getter
 public enum MedalCategory {
-    GERAL("Geral"),
-    PVP("PvP"),
-    EVENTOS("Eventos"),
-    VIP("VIP"),
-    ESPECIAL("Especial");
+    GERAL(MessageKey.MEDAL_CATEGORY_GENERAL),
+    PVP(MessageKey.MEDAL_CATEGORY_PVP),
+    EVENTOS(MessageKey.MEDAL_CATEGORY_EVENT),
+    VIP(MessageKey.MEDAL_CATEGORY_VIP),
+    ESPECIAL(MessageKey.MEDAL_CATEGORY_SPECIAL);
 
-    private final String displayName;
+    private final MessageKey displayKey;
 
-    MedalCategory(String displayName) {
-        this.displayName = displayName;
+    MedalCategory(MessageKey displayKey) {
+        this.displayKey = displayKey;
     }
 }

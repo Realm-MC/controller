@@ -9,6 +9,7 @@ import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.chat.SpigotChatModule;
 import com.realmmc.controller.modules.nametag.NametagModule;
 import com.realmmc.controller.modules.scheduler.SchedulerModule;
+import com.realmmc.controller.modules.scoreboard.SpigotScoreboardModule;
 import com.realmmc.controller.modules.spigot.SpigotModule;
 import com.realmmc.controller.modules.tablist.SpigotTablistModule;
 
@@ -172,6 +173,14 @@ public class Main extends JavaPlugin {
             logger.info("-> SpigotTablistModule IGNORADO (Sistema TABLIST reivindicado externamente).");
         }
 
+        if (!moduleManager.isClaimed(SystemType.SCOREBOARD)) {
+            CoreModule scoreboardModule = new SpigotScoreboardModule(logger);
+            moduleManager.registerModule(scoreboardModule);
+            moduleManager.enableModule(scoreboardModule);
+            logger.info("-> SpigotScoreboardModule ativado (Padrão).");
+        } else {
+            logger.info("-> SpigotScoreboardModule IGNORADO (Sistema SCOREBOARD reivindicado externamente).");
+        }
     }
 
     @Override

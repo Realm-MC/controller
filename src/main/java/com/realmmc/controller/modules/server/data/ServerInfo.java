@@ -12,44 +12,45 @@ import org.bson.codecs.pojo.annotations.BsonId;
 @AllArgsConstructor
 public class ServerInfo {
 
-    /** O nome único do servidor (ex: "lobby-1", "rankup-1") */
+    /** O nome único do servidor (ex: "lobby-1", "bw-1") */
     @BsonId
     private String name;
 
-    /** O ID alfanumérico (UUID/short ID) usado pela API de CLIENTE (ex: "d79f737e") */
+    /** O ID alfanumérico (UUID/short ID) usado pela API de CLIENTE */
     private String pterodactylId;
 
-    /** O ID numérico INTERNO usado pela API de APLICAÇÃO (ex: 42) */
+    /** O ID numérico INTERNO usado pela API de APLICAÇÃO */
     private int internalPteroId;
 
-    /** O ID alfanumérico do servidor no painel Pterodactyl (ex: "e0d9ff") */
     private String displayName;
-
-    /** O endereço IP do nó (Node) que hospeda este servidor. */
     private String ip;
-
-    /** A porta principal (Primary Port) atribuída pelo Pterodactyl. */
     private int port;
 
-    /** O tipo de servidor (LOBBY, GAME_SW, PERSISTENT, etc.) */
     @Builder.Default
     private ServerType type = ServerType.PERSISTENT;
 
-    /** O estado atual do servidor (ONLINE, OFFLINE, STARTING) */
+    /** Estado operacional (ONLINE, OFFLINE, etc) - Nível Infraestrutura */
     @Builder.Default
     private ServerStatus status = ServerStatus.OFFLINE;
 
-    /** O número máximo de jogadores normais. */
-    private int maxPlayers;
+    /** Estado do Jogo (WAITING, IN_GAME) - Nível Aplicação */
+    @Builder.Default
+    private GameState gameState = GameState.UNKNOWN;
 
-    /** O número máximo de jogadores VIP (slots de reserva). */
+    /** Nome do mapa atual carregado (para Minigames) */
+    private String mapName;
+
+    /** Se o servidor pode ser desligado pelo auto-scaler.
+     * False enquanto uma partida ocorre. */
+    @Builder.Default
+    private boolean canShutdown = true;
+
+    private int maxPlayers;
     private int maxPlayersVip;
 
-    /** O nome do grupo (Role) mínimo para entrar. */
     @Builder.Default
     private String minGroup = "default";
 
-    /** A contagem atual de jogadores neste servidor. */
     @Builder.Default
     private int playerCount = 0;
 }

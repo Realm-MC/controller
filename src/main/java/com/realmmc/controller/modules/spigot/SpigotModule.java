@@ -1,5 +1,7 @@
 package com.realmmc.controller.modules.spigot;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.realmmc.controller.core.modules.AbstractCoreModule;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.RoleService;
@@ -38,11 +40,12 @@ public class SpigotModule extends AbstractCoreModule {
     private SessionService sessionServiceInstance;
     private SpigotPermissionInjector permissionInjectorInstance;
     private Optional<SessionTrackerService> sessionTrackerServiceOpt;
-    private ScheduledFuture<?> heartbeatTaskFuture = null;
+    private ScheduledFuture<?> playerHeartbeatTask = null;
+    private ScheduledFuture<?> serverHeartbeatTask = null;
     private final boolean viaVersionApiAvailable;
     private RoleBroadcastListener roleBroadcastListener;
-
     private SpigotCashCache spigotCashCacheInstance;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public SpigotModule(Plugin plugin, Logger logger) {
         super(logger);
@@ -51,254 +54,184 @@ public class SpigotModule extends AbstractCoreModule {
     }
 
     @Override public String getName() { return "SpigotModule"; }
-    @Override public String getVersion() { return "1.0.0"; }
-    @Override public String getDescription() { return "Módulo específico para funcionalidades Spigot (v2)."; }
-
+    @Override public String getVersion() { return "1.1.0"; }
+    @Override public String getDescription() { return "Módulo Spigot (v2) com GameState Heartbeat."; }
     @Override public int getPriority() { return 50; }
 
     @Override public String[] getDependencies() {
-        return new String[]{
-                "Profile", "RoleModule", "SchedulerModule", "Command", "Preferences", "Particle", "Statistics"
-        };
+        return new String[]{ "Profile", "RoleModule", "SchedulerModule", "Command", "Preferences", "Particle", "Statistics" };
     }
 
     @Override
     protected void onEnable() {
-        logger.info("[SpigotModule] Registering Spigot-specific services and listeners (v2)...");
+        logger.info("[SpigotModule] Registering Spigot-specific services and listeners...");
         this.sessionTrackerServiceOpt = ServiceRegistry.getInstance().getService(SessionTrackerService.class);
-        if(sessionTrackerServiceOpt.isEmpty()){
-            logger.warning("[SpigotModule] SessionTrackerService not found! Heartbeat will not function.");
-        }
 
         try {
             ServiceRegistry.getInstance().registerService(SoundPlayer.class, new SpigotSoundPlayer());
-            logger.info("[SpigotModule] SpigotSoundPlayer registered.");
-        } catch (Exception e) { logger.log(Level.WARNING, "[SpigotModule] Failed to register SpigotSoundPlayer", e); }
+        } catch (Exception e) { logger.log(Level.WARNING, "Failed to register SoundPlayer", e); }
 
-        try { CommandManager.registerAll(plugin); }
-        catch (Exception e) { logger.log(Level.SEVERE, "[SpigotModule] Failed to register Spigot commands!", e); }
-
-        try { ListenersManager.registerAll(plugin); }
-        catch (Exception e) { logger.log(Level.SEVERE, "[SpigotModule] Failed to register Spigot listeners!", e); }
+        try { CommandManager.registerAll(plugin); } catch (Exception e) { logger.severe("Failed to register commands: " + e.getMessage()); }
+        try { ListenersManager.registerAll(plugin); } catch (Exception e) { logger.severe("Failed to register listeners: " + e.getMessage()); }
 
         try {
             this.sessionServiceInstance = new SessionService(logger);
             Bukkit.getServer().getPluginManager().registerEvents(sessionServiceInstance, plugin);
-            logger.info("[SpigotModule] SessionService (Listener) registered.");
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "[SpigotModule] Failed to register SessionService!", e);
-            this.sessionServiceInstance = null;
+            logger.severe("Failed to register SessionService!");
         }
 
         if (this.sessionServiceInstance != null) {
             try {
                 this.permissionInjectorInstance = new SpigotPermissionInjector(plugin, logger);
                 Bukkit.getServer().getPluginManager().registerEvents(permissionInjectorInstance, plugin);
-                logger.info("[SpigotModule] SpigotPermissionInjector (Listener) registered.");
             } catch (Exception e) {
-                logger.log(Level.SEVERE, "[SpigotModule] Failed to register SpigotPermissionInjector!", e);
-                this.permissionInjectorInstance = null;
+                logger.severe("Failed to register PermissionInjector!");
             }
-        } else {
-            logger.severe("[SpigotModule] SpigotPermissionInjector not registered because SessionService failed to initialize.");
         }
 
+        setupRedisListeners();
+        setupRoleIntegration();
+
+        startPlayerHeartbeatTask();
+        startServerHeartbeatTask();
+
+        sendServerHeartbeat(true);
+
+        logger.info("[SpigotModule] Enabled successfully.");
+    }
+
+    private void setupRedisListeners() {
         try {
             this.spigotCashCacheInstance = new SpigotCashCache();
             ServiceRegistry.getInstance().registerService(SpigotCashCache.class, this.spigotCashCacheInstance);
             Bukkit.getServer().getPluginManager().registerEvents(this.spigotCashCacheInstance, plugin);
 
-            RedisSubscriber redisSubscriber = ServiceRegistry.getInstance().requireService(RedisSubscriber.class);
-            redisSubscriber.registerListener(RedisChannel.PROFILES_SYNC, this.spigotCashCacheInstance);
+            RedisSubscriber sub = ServiceRegistry.getInstance().requireService(RedisSubscriber.class);
+            sub.registerListener(RedisChannel.PROFILES_SYNC, this.spigotCashCacheInstance);
 
             this.roleBroadcastListener = new RoleBroadcastListener();
-            redisSubscriber.registerListener(RedisChannel.ROLE_BROADCAST, this.roleBroadcastListener);
-            logger.info("[SpigotModule] RoleBroadcastListener registered on Redis.");
-
-            logger.info("[SpigotModule] SpigotCashCache registrado e ouvindo Redis.");
+            sub.registerListener(RedisChannel.ROLE_BROADCAST, this.roleBroadcastListener);
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "[SpigotModule] Falha ao registrar Listeners Redis!", e);
-            this.spigotCashCacheInstance = null;
+            logger.severe("Failed to setup Redis listeners: " + e.getMessage());
         }
-
-        ServiceRegistry.getInstance().getService(RoleService.class).ifPresentOrElse(roleService -> {
-            if (this.permissionInjectorInstance != null) {
-                try {
-                    PermissionRefresher spigotRefresher = new SpigotPermissionRefresher(plugin, logger);
-                    ServiceRegistry.getInstance().registerService(PermissionRefresher.class, spigotRefresher);
-                    logger.info("[SpigotModule] SpigotPermissionRefresher registered in ServiceRegistry.");
-                } catch (Exception e) { logger.log(Level.SEVERE, "[SpigotModule] Failed to register SpigotPermissionRefresher!", e); }
-
-                try {
-                    RoleKickHandler.PlatformKicker kicker = (uuid, formattedKickMessage) -> {
-                        Bukkit.getScheduler().runTask(plugin, () -> {
-                            Player player = Bukkit.getPlayer(uuid);
-                            if (player != null && player.isOnline()) {
-                                player.kickPlayer(formattedKickMessage);
-                            }
-                        });
-                    };
-                    RoleKickHandler.initialize(kicker);
-                    logger.info("[SpigotModule] RoleKickHandler initialized for Spigot platform.");
-                } catch (Exception e) {
-                    logger.log(Level.SEVERE, "[SpigotModule] Failed to initialize RoleKickHandler in SpigotModule!", e);
-                }
-
-            } else {
-                logger.severe("[SpigotModule] SpigotPermissionRefresher (and KickHandler) not registered because SpigotPermissionInjector failed.");
-            }
-        }, () -> {
-            logger.severe("[SpigotModule] RoleService NOT detected. Spigot permission integration will not be configured.");
-        });
-
-        startHeartbeatTask();
-
-        sendServerReadySignal();
-
-        logger.info("[SpigotModule] SpigotModule enabled successfully.");
     }
 
-    private void sendServerReadySignal() {
-        String serverName = System.getProperty("controller.serverId");
-        if (serverName == null || serverName.isEmpty()) {
-            serverName = System.getenv("CONTROLLER_SERVER_ID");
-        }
-
-        if (serverName != null && !serverName.isEmpty()) {
-            try {
-                String json = String.format("{\"server\":\"%s\",\"status\":\"ONLINE\"}", serverName);
-
-                RedisPublisher.publish(
-                        RedisChannel.SERVER_STATUS_UPDATE,
-                        json
-                );
-                logger.info("[SpigotModule] Sinal de 'SERVER READY' enviado para o Redis (" + serverName + ").");
-            } catch (Exception e) {
-                logger.log(Level.WARNING, "Falha ao enviar sinal de servidor pronto.", e);
+    private void setupRoleIntegration() {
+        ServiceRegistry.getInstance().getService(RoleService.class).ifPresentOrElse(roleService -> {
+            if (this.permissionInjectorInstance != null) {
+                ServiceRegistry.getInstance().registerService(PermissionRefresher.class, new SpigotPermissionRefresher(plugin, logger));
+                RoleKickHandler.initialize((uuid, msg) -> {
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        Player p = Bukkit.getPlayer(uuid);
+                        if (p != null) p.kickPlayer(msg);
+                    });
+                });
             }
-        }
+        }, () -> logger.severe("RoleService missing!"));
     }
 
     @Override
     protected void onDisable() {
-        logger.info("[SpigotModule] Disabling SpigotModule...");
+        stopPlayerHeartbeatTask();
+        stopServerHeartbeatTask();
 
-        stopHeartbeatTask();
+        sendServerStatusJson("STOPPING");
 
         ServiceRegistry.getInstance().unregisterService(SoundPlayer.class);
         ServiceRegistry.getInstance().unregisterService(PermissionRefresher.class);
         ServiceRegistry.getInstance().unregisterService(SpigotCashCache.class);
-        logger.info("[SpigotModule] Spigot services unregistered.");
 
-        if (sessionServiceInstance != null) {
-            try { HandlerList.unregisterAll(sessionServiceInstance); }
-            catch (Exception e) { logger.log(Level.WARNING, "[SpigotModule] Error unregistering SessionService.", e); }
-            sessionServiceInstance = null;
-        }
         if (permissionInjectorInstance != null) {
-            try {
-                HandlerList.unregisterAll(permissionInjectorInstance);
-                permissionInjectorInstance.cleanupOnDisable();
-            }
-            catch (Exception e) { logger.log(Level.WARNING, "[SpigotModule] Error unregistering SpigotPermissionInjector.", e); }
-            permissionInjectorInstance = null;
+            HandlerList.unregisterAll(permissionInjectorInstance);
+            permissionInjectorInstance.cleanupOnDisable();
         }
+        if (sessionServiceInstance != null) HandlerList.unregisterAll(sessionServiceInstance);
 
-        RedisSubscriber redisSubscriber = ServiceRegistry.getInstance().getService(RedisSubscriber.class).orElse(null);
-
-        if (spigotCashCacheInstance != null) {
-            try {
-                HandlerList.unregisterAll(spigotCashCacheInstance);
-                if (redisSubscriber != null) redisSubscriber.unregisterListener(RedisChannel.PROFILES_SYNC);
-            } catch (Exception e) {
-                logger.log(Level.WARNING, "[SpigotModule] Error unregistering SpigotCashCache.", e);
-            }
-            spigotCashCacheInstance = null;
-        }
-
-        if (roleBroadcastListener != null) {
-            try {
-                if (redisSubscriber != null) redisSubscriber.unregisterListener(RedisChannel.ROLE_BROADCAST);
-            } catch (Exception e) {
-                logger.log(Level.WARNING, "[SpigotModule] Error unregistering RoleBroadcastListener.", e);
-            }
-            roleBroadcastListener = null;
-        }
-
-        try { HandlerList.unregisterAll(plugin); logger.info("[SpigotModule] Other Spigot listeners unregistered."); }
-        catch (Exception e) { logger.log(Level.WARNING, "[SpigotModule] Error unregistering other plugin listeners.", e); }
-
-        logger.info("[SpigotModule] SpigotModule disabled.");
-    }
-
-    private void startHeartbeatTask() {
-        if (heartbeatTaskFuture != null && !heartbeatTaskFuture.isDone()) {
-            logger.fine("[SpigotModule] Heartbeat task is already running.");
-            return;
-        }
-
-        sessionTrackerServiceOpt.ifPresentOrElse(sessionTracker -> {
-            try {
-                heartbeatTaskFuture = TaskScheduler.runAsyncTimer(() -> {
-                    try {
-                        runHeartbeat(sessionTracker);
-                    } catch (Exception e) {
-                        logger.log(Level.SEVERE, "[SpigotModule] Error in periodic Heartbeat Task (Spigot)", e);
-                    }
-                }, 10, 15, TimeUnit.SECONDS);
-                logger.info("[SpigotModule] Heartbeat Task (Spigot) started.");
-            } catch (IllegalStateException e) {
-                logger.log(Level.SEVERE, "[SpigotModule] Failed to schedule Heartbeat Task (Spigot): TaskScheduler not initialized?", e);
-            } catch (Exception e) {
-                logger.log(Level.SEVERE, "[SpigotModule] Unexpected error scheduling Heartbeat Task (Spigot)", e);
-            }
-        }, () -> {
-            logger.warning("[SpigotModule] Heartbeat Task (Spigot) not started: SessionTrackerService not found.");
-        });
-    }
-
-    private void stopHeartbeatTask() {
-        if (heartbeatTaskFuture != null) {
-            try {
-                heartbeatTaskFuture.cancel(false);
-                logger.info("[SpigotModule] Heartbeat Task (Spigot) stopped.");
-            } catch (Exception e) {
-                logger.log(Level.WARNING, "[SpigotModule] Error stopping Heartbeat Task (Spigot)", e);
-            } finally {
-                heartbeatTaskFuture = null;
-            }
+        RedisSubscriber sub = ServiceRegistry.getInstance().getService(RedisSubscriber.class).orElse(null);
+        if (sub != null) {
+            if (spigotCashCacheInstance != null) sub.unregisterListener(RedisChannel.PROFILES_SYNC);
+            if (roleBroadcastListener != null) sub.unregisterListener(RedisChannel.ROLE_BROADCAST);
         }
     }
 
-    private void runHeartbeat(SessionTrackerService sessionTracker) {
-        String serverName = System.getProperty("controller.serverId");
-        if (serverName == null || serverName.isEmpty()) {
-            serverName = System.getenv("CONTROLLER_SERVER_ID");
+    private void startPlayerHeartbeatTask() {
+        if (sessionTrackerServiceOpt.isPresent()) {
+            playerHeartbeatTask = TaskScheduler.runAsyncTimer(() -> runPlayerHeartbeat(sessionTrackerServiceOpt.get()), 10, 15, TimeUnit.SECONDS);
         }
-        if (serverName == null || serverName.isEmpty()) {
-            serverName = Bukkit.getServer().getName();
+    }
+
+    private void stopPlayerHeartbeatTask() {
+        if (playerHeartbeatTask != null) {
+            playerHeartbeatTask.cancel(false);
+            playerHeartbeatTask = null;
         }
+    }
 
-        final String finalServerName = serverName;
-
+    private void runPlayerHeartbeat(SessionTrackerService sessionTracker) {
+        String serverName = getServerId();
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (!player.isOnline()) continue;
-
             UUID uuid = player.getUniqueId();
-            int ping = player.getPing();
             int protocol = -1;
-
+            try { if(viaVersionApiAvailable) protocol = Via.getAPI().getPlayerVersion(uuid); } catch (Exception ignored) {}
             try {
-                if(viaVersionApiAvailable) {
-                    protocol = Via.getAPI().getPlayerVersion(uuid);
-                }
-            } catch (Exception ignored) { protocol = -1; }
-
-            try {
-                sessionTracker.updateHeartbeat(uuid, finalServerName, ping, protocol);
-            } catch (Exception e) {
-                logger.log(Level.WARNING, "[SpigotModule] Error sending heartbeat for " + player.getName() + " (UUID: " + uuid + ")", e);
-            }
+                sessionTracker.updateHeartbeat(uuid, serverName, player.getPing(), protocol);
+            } catch (Exception ignored) {}
         }
+    }
+
+    private void startServerHeartbeatTask() {
+        serverHeartbeatTask = TaskScheduler.runAsyncTimer(() -> sendServerHeartbeat(false), 5, 5, TimeUnit.SECONDS);
+    }
+
+    private void stopServerHeartbeatTask() {
+        if (serverHeartbeatTask != null) {
+            serverHeartbeatTask.cancel(false);
+            serverHeartbeatTask = null;
+        }
+    }
+
+    private void sendServerHeartbeat(boolean forceOnline) {
+        String serverId = getServerId();
+        if (serverId == null || serverId.isEmpty()) return;
+
+        String gameState = System.getProperty("game.state", "WAITING");
+        String mapName = System.getProperty("game.map", "Unknown");
+        boolean canShutdown = Boolean.parseBoolean(System.getProperty("server.canShutdown", "true"));
+
+        String status = forceOnline ? "ONLINE" : "ONLINE";
+
+        try {
+            ObjectNode node = mapper.createObjectNode();
+            node.put("server", serverId);
+            node.put("status", status);
+            node.put("gameState", gameState);
+            node.put("mapName", mapName);
+            node.put("canShutdown", canShutdown);
+            node.put("players", Bukkit.getOnlinePlayers().size());
+            node.put("maxPlayers", Bukkit.getMaxPlayers());
+
+            RedisPublisher.publish(RedisChannel.SERVER_STATUS_UPDATE, node.toString());
+        } catch (Exception e) {
+            logger.warning("Falha ao enviar Server Heartbeat.");
+        }
+    }
+
+    private void sendServerStatusJson(String status) {
+        String serverId = getServerId();
+        if (serverId == null) return;
+        try {
+            ObjectNode node = mapper.createObjectNode();
+            node.put("server", serverId);
+            node.put("status", status);
+            RedisPublisher.publish(RedisChannel.SERVER_STATUS_UPDATE, node.toString());
+        } catch (Exception ignored) {}
+    }
+
+    private String getServerId() {
+        String id = System.getProperty("controller.serverId");
+        if (id == null || id.isEmpty()) id = System.getenv("CONTROLLER_SERVER_ID");
+        if (id == null || id.isEmpty()) id = Bukkit.getServer().getName();
+        return id;
     }
 }

@@ -9,5 +9,4 @@ public enum ServerType {
     LOBBY,
     PUNISHED,
     PERSISTENT
-
 }

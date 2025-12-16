@@ -1,21 +1,22 @@
 package com.realmmc.controller.shared.cosmetics.medals;
 
+import com.realmmc.controller.shared.messaging.MessageKey;
 import lombok.Getter;
 
 @Getter
 public enum MedalRarity {
-    COMUM("<gray>Comum"),
-    INCOMUM("<green>Incomum"),
-    RARA("<blue>Rara"),
-    EPICA("<light_purple>Épica"),
-    LENDARIA("<gold>Lendária"),
-    EVENTO("<aqua>Evento"),
-    SAZONAL("<red>Sazonal"),
-    UNICA("<dark_red><b>ÚNICA</b>");
+    COMUM(MessageKey.MEDAL_RARITY_COMMON),
+    INCOMUM(MessageKey.MEDAL_RARITY_UNCOMMON),
+    RARA(MessageKey.MEDAL_RARITY_RARE),
+    EPICA(MessageKey.MEDAL_RARITY_EPIC),
+    LENDARIA(MessageKey.MEDAL_RARITY_LEGENDARY),
+    EVENTO(MessageKey.MEDAL_RARITY_EVENT),
+    SAZONAL(MessageKey.MEDAL_RARITY_SEASONAL),
+    UNICA(MessageKey.MEDAL_RARITY_UNIQUE);
 
-    private final String displayName;
+    private final MessageKey displayKey;
 
-    MedalRarity(String displayName) {
-        this.displayName = displayName;
+    MedalRarity(MessageKey displayKey) {
+        this.displayKey = displayKey;
     }
 }

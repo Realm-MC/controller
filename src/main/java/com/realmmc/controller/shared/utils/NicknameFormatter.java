@@ -121,7 +121,7 @@ public final class NicknameFormatter {
         return format(name, role, medalId, includePrefixes, true);
     }
 
-    public static String getRankFormattedName(UUID uuid) {
+    public static String getGroupFormattedName(UUID uuid) {
         String name = resolveName(uuid);
         if (name.equals("Unknown")) return name;
 
