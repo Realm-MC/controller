@@ -8,6 +8,9 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.UpdateResult;
 import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.shared.logs.CashLog;
+import com.realmmc.controller.shared.logs.LogRepository;
+import com.realmmc.controller.shared.logs.LogType;
 import com.realmmc.controller.shared.preferences.Language;
 import com.realmmc.controller.shared.preferences.PreferencesService;
 import com.realmmc.controller.shared.role.PlayerRole;
@@ -17,6 +20,8 @@ import com.realmmc.controller.shared.storage.mongodb.MongoSequences;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
 import com.realmmc.controller.shared.messaging.Messages;
+import com.realmmc.controller.shared.utils.StringUtils;
+import com.realmmc.controller.shared.utils.TaskScheduler;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -28,7 +33,30 @@ public class ProfileService {
 
     private static final Logger LOGGER = Logger.getLogger(ProfileService.class.getName());
     private final ProfileRepository repository = new ProfileRepository();
+    private final LogRepository.Cash cashLogRepository = new LogRepository.Cash();
     private final ObjectMapper mapper = new ObjectMapper();
+
+    public LogRepository.Cash getCashLogRepository() {
+        return cashLogRepository;
+    }
+
+    private void logCash(UUID uuid, String name, String source, LogType action, int amount, int oldBal, int newBal) {
+        int logId = MongoSequences.getNext("logsCash");
+        String idStr = String.valueOf(logId);
+
+        CashLog log = CashLog.builder()
+                .id(idStr)
+                .targetUuid(uuid)
+                .targetName(name)
+                .source(source != null ? source : "Console")
+                .action(action)
+                .amount(amount)
+                .oldBalance(oldBal)
+                .newBalance(newBal)
+                .timestamp(System.currentTimeMillis())
+                .build();
+        TaskScheduler.runAsync(() -> cashLogRepository.insert(log));
+    }
 
     private Optional<StatisticsService> getStatsService() {
         return Optional.ofNullable(ServiceRegistry.getInstance().getService(StatisticsService.class).orElse(null));
@@ -47,85 +75,40 @@ public class ProfileService {
         try {
             Optional<Profile> profileOpt = repository.findByUuid(uuid);
             if (profileOpt.isEmpty()) {
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException ignored) {}
+                try { Thread.sleep(50); } catch (InterruptedException ignored) {}
                 profileOpt = repository.findByUuid(uuid);
             }
             return profileOpt;
-        } catch (MongoException e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] MongoDB error fetching profile by UUID: " + uuid, e);
-            return Optional.empty();
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] Unexpected error fetching profile by UUID: " + uuid, e);
+            LOGGER.log(Level.SEVERE, "[ProfileService] Error fetching profile by UUID: " + uuid, e);
             return Optional.empty();
         }
     }
 
     public Optional<Profile> getById(int id) {
-        try {
-            return repository.findById(id);
-        } catch (MongoException e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] MongoDB error fetching profile by ID: " + id, e);
-            return Optional.empty();
-        } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] Unexpected error fetching profile by ID: " + id, e);
-            return Optional.empty();
-        }
+        try { return repository.findById(id); } catch (Exception e) { return Optional.empty(); }
     }
 
     public Optional<Profile> getByName(String name) {
         if (name == null || name.isBlank()) return Optional.empty();
-        try {
-            return repository.findByName(name);
-        } catch (MongoException e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] MongoDB error fetching profile by name: " + name, e);
-            return Optional.empty();
-        } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] Unexpected error fetching profile by name: " + name, e);
-            return Optional.empty();
-        }
+        try { return repository.findByName(name); } catch (Exception e) { return Optional.empty(); }
     }
 
     public Optional<Profile> getByUsername(String username) {
         if (username == null || username.isBlank()) return Optional.empty();
-        try {
-            return repository.findByUsername(username.toLowerCase());
-        } catch (MongoException e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] MongoDB error fetching profile by username: " + username, e);
-            return Optional.empty();
-        } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] Unexpected error fetching profile by username: " + username, e);
-            return Optional.empty();
-        }
+        try { return repository.findByUsername(username.toLowerCase()); } catch (Exception e) { return Optional.empty(); }
     }
 
     public List<Profile> findByActiveRoleName(String roleName) {
-        if (roleName == null || roleName.isBlank()) {
-            return Collections.emptyList();
-        }
-        try {
-            return repository.findByActiveRoleName(roleName);
-        } catch (MongoException e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] MongoDB error fetching profiles by active role: " + roleName, e);
-            return Collections.emptyList();
-        } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] Unexpected error fetching profiles by active role: " + roleName, e);
-            return Collections.emptyList();
-        }
+        if (roleName == null || roleName.isBlank()) return Collections.emptyList();
+        try { return repository.findByActiveRoleName(roleName); } catch (Exception e) { return Collections.emptyList(); }
     }
 
-    public int calculateOfflineEarnings(UUID uuid, long lastLogout) {
-        return 0;
-    }
+    public int calculateOfflineEarnings(UUID uuid, long lastLogout) { return 0; }
 
     public long countAccountsByIp(String ip) {
         if (ip == null) return 0;
-        try {
-            return repository.collection().countDocuments(Filters.eq("firstIp", ip));
-        } catch (Exception e) {
-            return 0;
-        }
+        try { return repository.collection().countDocuments(Filters.eq("firstIp", ip)); } catch (Exception e) { return 0; }
     }
 
     public void updateLastLogout(UUID uuid) {
@@ -142,28 +125,16 @@ public class ProfileService {
     public void save(Profile profile) {
         Objects.requireNonNull(profile, "Profile cannot be null for saving.");
         long now = System.currentTimeMillis();
-
-        if (profile.getCreatedAt() == 0L) {
-            profile.setCreatedAt(now);
-        }
+        if (profile.getCreatedAt() == 0L) profile.setCreatedAt(now);
         profile.setUpdatedAt(now);
 
         try {
             if (profile.getId() == null) {
                 profile.setId(MongoSequences.getNext("profiles"));
-                LOGGER.info("[ProfileService] Assigned new sequential ID (" + profile.getId() + ") for profile UUID: " + profile.getUuid());
             }
-
             repository.upsert(profile);
             publish("upsert", profile);
             updateSessionData(profile.getUuid(), profile.getCash(), profile.getPrimaryRoleName(), profile.getEquippedMedal());
-
-            LOGGER.log(Level.INFO, "[ProfileService] Profile {0} (UUID: {1}) saved/updated successfully.",
-                    new Object[]{profile.getName(), profile.getUuid()});
-
-        } catch (MongoException e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] MongoDB error saving profile for UUID: " + profile.getUuid(), e);
-            throw e;
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "[ProfileService] Unexpected error saving profile for UUID: " + profile.getUuid(), e);
             throw new RuntimeException("Unexpected failure saving profile", e);
@@ -187,14 +158,9 @@ public class ProfileService {
         try {
             Optional<Profile> profileOpt = getByUuid(uuid);
             repository.deleteByUuid(uuid);
-            LOGGER.info("[ProfileService] Profile deleted for UUID: " + uuid);
-
-            Profile dummy = new Profile();
-            dummy.setUuid(uuid);
+            Profile dummy = new Profile(); dummy.setUuid(uuid);
             profileOpt.ifPresent(p -> dummy.setId(p.getId()));
             publish("delete", dummy);
-        } catch (MongoException e) {
-            LOGGER.log(Level.SEVERE, "[ProfileService] MongoDB error deleting profile for UUID: " + uuid, e);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "[ProfileService] Unexpected error deleting profile for UUID: " + uuid, e);
         }
@@ -202,107 +168,38 @@ public class ProfileService {
 
     public boolean exists(UUID uuid) {
         if (uuid == null) return false;
-        try {
-            return repository.collection().countDocuments(Filters.eq("uuid", uuid)) > 0;
-        } catch (MongoException e) {
-            LOGGER.log(Level.WARNING, "[ProfileService] MongoDB error checking profile existence for UUID: {0}", uuid);
-            return false;
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "[ProfileService] Unexpected error checking profile existence for UUID: {0}", uuid);
-            return false;
-        }
+        try { return repository.collection().countDocuments(Filters.eq("uuid", uuid)) > 0; }
+        catch (Exception e) { return false; }
     }
 
     public Profile ensureProfile(UUID loginUuid, String displayName, String username, String currentIp,
                                  String clientVersion, String clientType, boolean isPremium, Object playerObject) {
-
-        Objects.requireNonNull(loginUuid, "loginUuid cannot be null");
-        Objects.requireNonNull(displayName, "displayName cannot be null");
-        Objects.requireNonNull(username, "username cannot be null");
-        final String usernameLower = username.toLowerCase();
+        Optional<Profile> profileOptByUuid = getByUuid(loginUuid);
         final AtomicBoolean needsSave = new AtomicBoolean(false);
         Profile profileToReturn;
 
-        Optional<Profile> profileOptByUuid = getByUuid(loginUuid);
-
         if (profileOptByUuid.isPresent()) {
             profileToReturn = profileOptByUuid.get();
-
-            if (profileToReturn.getFirstClientType() == null || profileToReturn.getFirstClientType().isEmpty()) {
-                profileToReturn.setFirstClientType(clientType);
-                needsSave.set(true);
-            }
-            if (profileToReturn.getFirstClientVersion() == null || profileToReturn.getFirstClientVersion().isEmpty()) {
-                profileToReturn.setFirstClientVersion(clientVersion);
-                needsSave.set(true);
-            }
-
-            if (!displayName.equals(profileToReturn.getName())) {
-                profileToReturn.setName(displayName);
-                profileToReturn.setUsername(usernameLower);
-                needsSave.set(true);
-            } else if (!usernameLower.equals(profileToReturn.getUsername())) {
-                profileToReturn.setUsername(usernameLower);
-                needsSave.set(true);
-            }
-
-            if (currentIp != null && !currentIp.isEmpty()) {
-                if (!currentIp.equals(profileToReturn.getLastIp())) {
-                    profileToReturn.setLastIp(currentIp);
-                    needsSave.set(true);
-                }
-                if (profileToReturn.getIpHistory() == null) profileToReturn.setIpHistory(new ArrayList<>());
-                if (!profileToReturn.getIpHistory().contains(currentIp)) {
-                    profileToReturn.getIpHistory().add(currentIp);
-                    needsSave.set(true);
-                }
-            }
-
-            if (profileToReturn.isPremiumAccount() != isPremium) {
-                profileToReturn.setPremiumAccount(isPremium);
-                needsSave.set(true);
-            }
-
-            if (profileToReturn.getEquippedMedal() == null) {
-                profileToReturn.setEquippedMedal("none");
-                needsSave.set(true);
-            }
-
             profileToReturn.setLastLogin(System.currentTimeMillis());
-            profileToReturn.setLastClientVersion(clientVersion);
-            profileToReturn.setLastClientType(clientType);
             needsSave.set(true);
-
-            if (profileToReturn.getRoles() == null) profileToReturn.setRoles(new ArrayList<>());
-            boolean hasDefault = profileToReturn.getRoles().stream().anyMatch(pr -> pr != null && "default".equalsIgnoreCase(pr.getRoleName()));
-            if (!hasDefault) {
-                profileToReturn.getRoles().add(PlayerRole.builder().roleName("default").status(PlayerRole.Status.ACTIVE).build());
-                needsSave.set(true);
-            }
 
             final Profile finalProfileForServices = profileToReturn;
             getStatsService().ifPresent(stats -> stats.ensureStatistics(finalProfileForServices));
-            getPreferencesService().ifPresent(prefs -> {
-                prefs.ensurePreferences(finalProfileForServices, null);
-            });
+            getPreferencesService().ifPresent(prefs -> prefs.ensurePreferences(finalProfileForServices, null));
 
         } else {
             long now = System.currentTimeMillis();
             int profileId = MongoSequences.getNext("profiles");
 
             Language initialLangTemp = Language.getDefault();
-            try {
-                initialLangTemp = Messages.determineInitialLanguage(playerObject);
-            } catch (Exception e) {}
-
-            // CORREÇÃO: Variável final para uso no lambda
+            try { initialLangTemp = Messages.determineInitialLanguage(playerObject); } catch (Exception e) {}
             final Language initialLang = initialLangTemp;
 
             profileToReturn = Profile.builder()
                     .id(profileId)
                     .uuid(loginUuid)
                     .name(displayName)
-                    .username(usernameLower)
+                    .username(username.toLowerCase())
                     .firstIp(currentIp)
                     .lastIp(currentIp)
                     .ipHistory(new ArrayList<>(currentIp != null ? List.of(currentIp) : List.of()))
@@ -322,38 +219,27 @@ public class ProfileService {
                     .build();
 
             needsSave.set(true);
-            LOGGER.log(Level.INFO, "[ProfileService] Creating new profile ID {0} for {1} ({2})",
-                    new Object[]{profileId, displayName, loginUuid});
-
             final Profile finalProfileForServices = profileToReturn;
             getStatsService().ifPresent(stats -> stats.ensureStatistics(finalProfileForServices));
-
             getPreferencesService().ifPresent(prefs -> prefs.ensurePreferences(finalProfileForServices, initialLang));
         }
 
         if (needsSave.get()) {
-            try {
-                save(profileToReturn);
-            } catch (MongoException e) {
-                if (e.getCode() == 11000) {
-                    LOGGER.log(Level.WARNING, "[ProfileService] Duplicate key error saving profile. Reloading.");
-                    profileToReturn = getByUuid(loginUuid).orElseThrow();
-                } else {
-                    throw e;
-                }
+            try { save(profileToReturn); }
+            catch (MongoException e) {
+                if (e.getCode() == 11000) profileToReturn = getByUuid(loginUuid).orElseThrow();
+                else throw e;
             }
         }
 
         final Profile finalProfileToReturn = profileToReturn;
-        getPreferencesService().ifPresent(prefs -> {
-            prefs.loadAndCachePreferences(finalProfileToReturn.getUuid());
-        });
+        getPreferencesService().ifPresent(prefs -> prefs.loadAndCachePreferences(finalProfileToReturn.getUuid()));
 
         return finalProfileToReturn;
     }
 
     public void updateName(UUID uuid, String newName) {
-        if (uuid == null || newName == null || newName.isEmpty()) return;
+        if (uuid == null || newName == null) return;
         update(uuid, p -> {
             if (!newName.equals(p.getName())) {
                 p.setName(newName);
@@ -366,18 +252,6 @@ public class ProfileService {
         }, "update_name");
     }
 
-    public void setUsername(UUID uuid, String username) {
-        if (uuid == null || username == null || username.isEmpty()) return;
-        final String usernameLower = username.toLowerCase();
-        update(uuid, p -> {
-            if (!usernameLower.equals(p.getUsername())) {
-                p.setUsername(usernameLower);
-                return true;
-            }
-            return false;
-        }, "set_username");
-    }
-
     public void addCash(UUID targetUuid, int amount, UUID sourceUuid, String sourceName) {
         if (targetUuid == null || amount <= 0) return;
 
@@ -387,7 +261,6 @@ public class ProfileService {
                 Updates.inc("pendingCash", amount),
                 Updates.set("updatedAt", System.currentTimeMillis())
         );
-
         UpdateResult result = repository.collection().updateOne(filter, update);
 
         if (result.getModifiedCount() > 0) {
@@ -399,8 +272,10 @@ public class ProfileService {
             } catch (Exception e) {}
 
             updateLocalAndPublish(targetUuid, p -> {
+                int old = p.getCash();
                 p.setCash(p.getCash() + amount);
                 p.setPendingCash(p.getPendingCash() + amount);
+                logCash(targetUuid, p.getName(), sourceName, LogType.ADD, amount, old, p.getCash());
             });
         }
     }
@@ -419,17 +294,16 @@ public class ProfileService {
     public boolean removeCash(UUID targetUuid, int amount, UUID sourceUuid, String sourceName) {
         if (targetUuid == null || amount <= 0) return false;
         long now = System.currentTimeMillis();
-        org.bson.conversions.Bson filter = Filters.and(
-                Filters.eq("uuid", targetUuid),
-                Filters.gte("cash", amount)
-        );
-        org.bson.conversions.Bson update = Updates.combine(
-                Updates.inc("cash", -amount),
-                Updates.set("updatedAt", now)
-        );
+        org.bson.conversions.Bson filter = Filters.and(Filters.eq("uuid", targetUuid), Filters.gte("cash", amount));
+        org.bson.conversions.Bson update = Updates.combine(Updates.inc("cash", -amount), Updates.set("updatedAt", now));
+
         UpdateResult result = repository.collection().updateOne(filter, update);
         if (result.getModifiedCount() > 0) {
-            updateLocalAndPublish(targetUuid, p -> p.setCash(p.getCash() - amount));
+            updateLocalAndPublish(targetUuid, p -> {
+                int old = p.getCash();
+                p.setCash(p.getCash() - amount);
+                logCash(targetUuid, p.getName(), sourceName, LogType.REMOVE, amount, old, p.getCash());
+            });
             return true;
         }
         return false;
@@ -439,7 +313,9 @@ public class ProfileService {
         if (targetUuid == null || amount < 0) return;
         update(targetUuid, p -> {
             if (p.getCash() != amount) {
+                int old = p.getCash();
                 p.setCash(amount);
+                logCash(targetUuid, p.getName(), sourceName, LogType.SET, amount, old, p.getCash());
                 return true;
             }
             return false;
@@ -449,7 +325,9 @@ public class ProfileService {
     public void clearCash(UUID targetUuid, UUID sourceUuid, String sourceName) {
         if (targetUuid == null) return;
         update(targetUuid, p -> {
+            int old = p.getCash();
             p.setCash(0);
+            logCash(targetUuid, p.getName(), sourceName, LogType.CLEAR, 0, old, 0);
             return true;
         }, "cash_clear");
     }
@@ -466,44 +344,23 @@ public class ProfileService {
     }
 
     private void update(UUID uuid, ProfileModifier modifier, String actionContext) {
-        if (uuid == null || modifier == null) return;
-
         Optional<Profile> profileOpt = getByUuid(uuid);
         if (profileOpt.isPresent()) {
             Profile profile = profileOpt.get();
             boolean changed = false;
-            try {
-                changed = modifier.modify(profile);
-            } catch (Exception e) {
-                LOGGER.log(Level.SEVERE, "Error during modification " + actionContext, e);
-                return;
-            }
-
-            if (changed) {
-                try {
-                    save(profile);
-                } catch (Exception e) {
-                    LOGGER.log(Level.SEVERE, "Error saving profile after " + actionContext, e);
-                }
-            }
-        } else {
-            LOGGER.warning("[ProfileService] Attempt to '" + actionContext + "' failed: Profile not found for UUID: " + uuid);
+            try { changed = modifier.modify(profile); } catch (Exception e) { return; }
+            if (changed) save(profile);
         }
     }
 
-    @FunctionalInterface
-    private interface ProfileModifier {
-        boolean modify(Profile profile);
-    }
+    @FunctionalInterface private interface ProfileModifier { boolean modify(Profile profile); }
 
     private void publish(String action, Profile profile) {
-        if (profile == null || profile.getUuid() == null || action == null) return;
-
+        if (profile == null || profile.getUuid() == null) return;
         try {
             ObjectNode node = mapper.createObjectNode();
             node.put("action", action);
             node.put("uuid", profile.getUuid().toString());
-
             if ("upsert".equals(action)) {
                 if (profile.getId() != null) node.put("id", profile.getId());
                 node.put("name", profile.getName());
@@ -512,57 +369,28 @@ public class ProfileService {
                 node.put("pendingCash", profile.getPendingCash());
                 node.put("premium", profile.isPremiumAccount());
                 node.put("equippedMedal", profile.getEquippedMedal());
-
-                if (profile.getPasswordHash() != null) node.put("passwordHash", profile.getPasswordHash());
-                if (profile.getPasswordSalt() != null) node.put("passwordSalt", profile.getPasswordSalt());
-                if (profile.getLastAuthorizedIp() != null) node.put("lastAuthorizedIp", profile.getLastAuthorizedIp());
-
-                if (profile.getCashTopPosition() != null) node.put("cashTopPosition", profile.getCashTopPosition());
-                node.put("firstIp", profile.getFirstIp());
-                node.put("lastIp", profile.getLastIp());
-
-                if (profile.getIpHistory() != null) {
-                    ArrayNode ipHistoryNode = node.putArray("ipHistory");
-                    profile.getIpHistory().forEach(ipHistoryNode::add);
-                }
-
-                node.put("firstLogin", profile.getFirstLogin());
-                node.put("lastLogin", profile.getLastLogin());
-                node.put("lastLogout", profile.getLastLogout());
-
                 node.put("primaryRoleName", profile.getPrimaryRoleName());
 
-                List<PlayerRole> roles = profile.getRoles();
-                if (roles != null) {
+                if (profile.getRoles() != null) {
                     ArrayNode rolesNode = node.putArray("roles");
-                    for (PlayerRole pr : roles) {
+                    for (PlayerRole pr : profile.getRoles()) {
                         ObjectNode roleInfo = rolesNode.addObject();
                         roleInfo.put("roleName", pr.getRoleName());
                         roleInfo.put("status", pr.getStatus().name());
                         if (pr.getExpiresAt() != null) roleInfo.put("expiresAt", pr.getExpiresAt());
                         roleInfo.put("paused", pr.isPaused());
                         if (pr.getPausedTimeRemaining() != null) roleInfo.put("pausedTimeRemaining", pr.getPausedTimeRemaining());
-                        roleInfo.put("pendingNotification", pr.isPendingNotification());
                     }
                 }
-                node.put("createdAt", profile.getCreatedAt());
                 node.put("updatedAt", profile.getUpdatedAt());
             }
-
             RedisPublisher.publish(RedisChannel.PROFILES_SYNC, node.toString());
-
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to publish profile sync message", e);
+            LOGGER.log(Level.SEVERE, "Failed to publish profile sync", e);
         }
     }
 
     public List<Profile> getTopCash(int limit) {
-        try { return repository.findTopByCash(limit); }
-        catch (Exception e) { return Collections.emptyList(); }
-    }
-
-    public long getPlayerRank(int playerCash) {
-        try { return repository.countByCashGreaterThan(playerCash) + 1; }
-        catch (Exception e) { return -1; }
+        try { return repository.findTopByCash(limit); } catch (Exception e) { return Collections.emptyList(); }
     }
 }

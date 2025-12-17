@@ -1,14 +1,12 @@
 package com.realmmc.controller.proxy.listeners;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.server.ServerRegistryService;
-import com.realmmc.controller.modules.server.data.GameState;
-import com.realmmc.controller.modules.server.data.ServerStatus;
 import com.realmmc.controller.shared.annotations.Listeners;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisMessageListener;
+import com.realmmc.controller.shared.storage.redis.packet.ServerHeartbeatPacket;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -31,35 +29,22 @@ public class ServerStatusListener implements RedisMessageListener {
         }
 
         try {
-            JsonNode node = mapper.readTree(message);
-            String serverName = node.path("server").asText(null);
-            String statusStr = node.path("status").asText(null);
+            ServerHeartbeatPacket packet = mapper.readValue(message, ServerHeartbeatPacket.class);
 
-            if (serverName != null && statusStr != null) {
-                String gameStateStr = node.path("gameState").asText("UNKNOWN");
-                String mapName = node.path("mapName").asText(null);
-                boolean canShutdown = node.path("canShutdown").asBoolean(true);
-                int players = node.path("players").asInt(-1);
+            if (packet.getServerName() != null && packet.getStatus() != null) {
 
-                GameState gameState;
-                try {
-                    gameState = GameState.valueOf(gameStateStr.toUpperCase());
-                } catch (IllegalArgumentException e) {
-                    gameState = GameState.UNKNOWN;
-                }
-
-                ServerStatus status;
-                try {
-                    status = ServerStatus.valueOf(statusStr.toUpperCase());
-                } catch (IllegalArgumentException e) {
-                    status = ServerStatus.OFFLINE;
-                }
-
-                registryService.updateServerHeartbeat(serverName, status, gameState, mapName, canShutdown, players);
+                registryService.updateServerHeartbeat(
+                        packet.getServerName(),
+                        packet.getStatus(),
+                        packet.getGameState(),
+                        packet.getMapName(),
+                        packet.isCanShutdown(),
+                        packet.getPlayerCount()
+                );
             }
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Erro ao processar SERVER_STATUS_UPDATE: " + message, e);
+            LOGGER.log(Level.SEVERE, "Erro ao processar ServerHeartbeatPacket: " + message, e);
         }
     }
 }

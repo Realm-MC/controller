@@ -132,6 +132,7 @@ public class Proxy extends ControllerCore { // Herda de ControllerCore
             if (Files.notExists(dataDirectory)) {
                 Files.createDirectories(dataDirectory);
             }
+            copyResourceIfNotExists("server-templates.json", dataDirectory.resolve("server-templates.json"));
             Path messagesPath = dataDirectory.resolve("messages");
             if (Files.notExists(messagesPath)) {
                 Files.createDirectories(messagesPath);

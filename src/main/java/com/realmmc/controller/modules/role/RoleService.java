@@ -3,9 +3,9 @@ package com.realmmc.controller.modules.role;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.realmmc.controller.core.services.ServiceRegistry;
-import com.realmmc.controller.shared.messaging.Message;
-import com.realmmc.controller.shared.messaging.MessageKey;
-import com.realmmc.controller.shared.messaging.Messages;
+import com.realmmc.controller.shared.logs.LogRepository;
+import com.realmmc.controller.shared.logs.LogType;
+import com.realmmc.controller.shared.logs.RoleLog;
 import com.realmmc.controller.shared.profile.Profile;
 import com.realmmc.controller.shared.profile.ProfileService;
 import com.realmmc.controller.shared.role.DefaultRole;
@@ -13,10 +13,10 @@ import com.realmmc.controller.shared.role.PlayerRole;
 import com.realmmc.controller.shared.role.Role;
 import com.realmmc.controller.shared.role.RoleRepository;
 import com.realmmc.controller.shared.role.RoleType;
-import com.realmmc.controller.shared.sounds.SoundKeys;
-import com.realmmc.controller.shared.sounds.SoundPlayer;
+import com.realmmc.controller.shared.storage.mongodb.MongoSequences;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
+import com.realmmc.controller.shared.utils.StringUtils;
 import com.realmmc.controller.shared.utils.TaskScheduler;
 import com.realmmc.controller.shared.utils.TimeUtils;
 
@@ -31,6 +31,7 @@ public class RoleService {
 
     private final Logger logger;
     private final RoleRepository roleRepository = new RoleRepository();
+    private final LogRepository.Role logRepository = new LogRepository.Role();
     private final ProfileService profileService;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -38,7 +39,6 @@ public class RoleService {
     private final Map<UUID, PlayerSessionData> sessionCache = new ConcurrentHashMap<>();
 
     private final Map<UUID, CompletableFuture<PlayerSessionData>> preLoginFutures = new ConcurrentHashMap<>();
-
     private final Set<UUID> sentExpirationWarnings = ConcurrentHashMap.newKeySet();
 
     public RoleService(Logger logger) {
@@ -50,10 +50,32 @@ public class RoleService {
         }
 
         setupDefaultRoles();
-
         startExpirationTask();
     }
 
+    public LogRepository.Role getLogRepository() {
+        return logRepository;
+    }
+
+    private void createLog(UUID targetUuid, String targetName, String source, LogType action, String roleName, String duration) {
+        int logId = MongoSequences.getNext("logsRoles");
+
+        String idStr = String.valueOf(logId);
+
+        RoleLog log = RoleLog.builder()
+                .id(idStr)
+                .targetUuid(targetUuid)
+                .targetName(targetName)
+                .source(source != null ? source : "Console")
+                .action(action)
+                .roleName(roleName)
+                .duration(duration)
+                .timestamp(System.currentTimeMillis())
+                .context("Global")
+                .build();
+
+        TaskScheduler.runAsync(() -> logRepository.insert(log));
+    }
 
     public void startPreLoadingPlayerData(UUID uuid) {
         if (uuid != null) {
@@ -81,9 +103,7 @@ public class RoleService {
         UUID uuid;
         try {
             uuid = (UUID) playerObj.getClass().getMethod("getUniqueId").invoke(playerObj);
-        } catch (Exception e) {
-            return;
-        }
+        } catch (Exception e) { return; }
 
         if (uuid == null || sentExpirationWarnings.contains(uuid)) return;
 
@@ -98,38 +118,7 @@ public class RoleService {
     }
 
     private void processExpirationWarning(Object playerObj, UUID uuid) {
-        profileService.getByUuid(uuid).ifPresent(profile -> {
-            if (profile.getRoles() == null) return;
-
-            long now = System.currentTimeMillis();
-            long warnThreshold = TimeUnit.DAYS.toMillis(7);
-
-            for (PlayerRole pr : profile.getRoles()) {
-                if (pr.isActive() && !pr.isPermanent()) {
-                    long remaining = pr.getExpiresAt() - now;
-                    if (remaining > 0 && remaining <= warnThreshold) {
-
-                        getRole(pr.getRoleName()).ifPresent(role -> {
-                            MessageKey msgKey = (role.getType() == RoleType.VIP)
-                                    ? MessageKey.ROLE_WARN_EXPIRING_JOIN_VIP
-                                    : MessageKey.ROLE_WARN_EXPIRING_JOIN_STAFF;
-
-                            Messages.send(playerObj, Message.of(msgKey)
-                                    .with("group_display", role.getDisplayName())
-                                    .with("time", TimeUtils.formatDuration(remaining)));
-
-                            ServiceRegistry.getInstance().getService(SoundPlayer.class)
-                                    .ifPresent(sp -> sp.playSound(playerObj, SoundKeys.NOTIFICATION));
-                        });
-
-                        sentExpirationWarnings.add(uuid);
-                        break;
-                    }
-                }
-            }
-        });
     }
-
 
     private void updatePauseState(Profile profile) {
         if (profile.getRoles() == null) return;
@@ -161,20 +150,21 @@ public class RoleService {
                         pr.setPaused(true);
                         pr.setPausedTimeRemaining(remaining);
                         pr.setExpiresAt(null);
-                        logger.info("[RoleService] Pausando VIP " + pr.getRoleName() + " de " + profile.getName());
+
+                        createLog(profile.getUuid(), profile.getName(), "System", LogType.UPDATE, pr.getRoleName(), "PAUSED");
                     }
                 } else if (!hasActiveStaff && pr.isPaused() && pr.getPausedTimeRemaining() != null) {
                     pr.setPaused(false);
                     pr.setExpiresAt(now + pr.getPausedTimeRemaining());
                     pr.setPausedTimeRemaining(null);
-                    logger.info("[RoleService] Despausando VIP " + pr.getRoleName() + " de " + profile.getName());
+
+                    createLog(profile.getUuid(), profile.getName(), "System", LogType.UPDATE, pr.getRoleName(), "RESUMED");
                 }
             }
         }
     }
 
-
-    public void grantRole(UUID uuid, String roleName, Long durationMillis) {
+    public void grantRole(UUID uuid, String roleName, Long durationMillis, String source) {
         if (uuid == null || roleName == null) return;
         String normalizedRoleName = roleName.toLowerCase();
 
@@ -184,6 +174,7 @@ public class RoleService {
         }
 
         Long expiresAt = (durationMillis != null && durationMillis > 0) ? System.currentTimeMillis() + durationMillis : null;
+        String durationStr = (durationMillis == null) ? "Permanente" : TimeUtils.formatDuration(durationMillis);
 
         profileService.getByUuid(uuid).ifPresent(profile -> {
             List<PlayerRole> roles = profile.getRoles();
@@ -192,7 +183,9 @@ public class RoleService {
             roles.removeIf(pr -> pr.getRoleName().equalsIgnoreCase(normalizedRoleName));
 
             PlayerRole newRole = PlayerRole.builder()
+                    .instanceId(StringUtils.generateId())
                     .roleName(normalizedRoleName)
+                    .addedBy(source != null ? source : "Console")
                     .expiresAt(expiresAt)
                     .addedAt(System.currentTimeMillis())
                     .pendingNotification(true)
@@ -208,11 +201,13 @@ public class RoleService {
             publishNotification(uuid, normalizedRoleName);
             invalidateSession(uuid);
 
-            logger.info("[RoleService] Cargo " + normalizedRoleName + " adicionado a " + uuid);
+            createLog(uuid, profile.getName(), source, LogType.ADD, normalizedRoleName, durationStr);
+
+            logger.info("[RoleService] Cargo " + normalizedRoleName + " adicionado a " + uuid + " por " + source);
         });
     }
 
-    public void removeRole(UUID uuid, String roleName) {
+    public void removeRole(UUID uuid, String roleName, String source) {
         if (uuid == null || roleName == null) return;
         String normalizedRoleName = roleName.toLowerCase();
 
@@ -230,23 +225,29 @@ public class RoleService {
                 profileService.save(profile);
                 invalidateSession(uuid);
                 publishSync(uuid);
-                logger.info("[RoleService] Cargo " + normalizedRoleName + " removido de " + uuid);
+
+                createLog(uuid, profile.getName(), source, LogType.REMOVE, normalizedRoleName, "N/A");
+
+                logger.info("[RoleService] Cargo " + normalizedRoleName + " removido de " + uuid + " por " + source);
             }
         });
     }
 
-    public void setRole(UUID uuid, String roleName, Long durationMillis) {
+    public void setRole(UUID uuid, String roleName, Long durationMillis, String source) {
         if (uuid == null || roleName == null) return;
         String normalizedRoleName = roleName.toLowerCase();
 
         if (!roleCache.containsKey(normalizedRoleName)) return;
         Long expiresAt = (durationMillis != null && durationMillis > 0) ? System.currentTimeMillis() + durationMillis : null;
+        String durationStr = (durationMillis == null) ? "Permanente" : TimeUtils.formatDuration(durationMillis);
 
         profileService.getByUuid(uuid).ifPresent(profile -> {
             List<PlayerRole> roles = new ArrayList<>();
 
             PlayerRole newRole = PlayerRole.builder()
+                    .instanceId(StringUtils.generateId())
                     .roleName(normalizedRoleName)
+                    .addedBy(source != null ? source : "Console")
                     .expiresAt(expiresAt)
                     .addedAt(System.currentTimeMillis())
                     .pendingNotification(true)
@@ -265,12 +266,17 @@ public class RoleService {
             publishNotification(uuid, normalizedRoleName);
             invalidateSession(uuid);
 
-            logger.info("[RoleService] Cargo de " + uuid + " definido para " + normalizedRoleName);
+            createLog(uuid, profile.getName(), source, LogType.SET, normalizedRoleName, durationStr);
+
+            logger.info("[RoleService] Cargo de " + uuid + " definido para " + normalizedRoleName + " por " + source);
         });
     }
 
-    public void clearRoles(UUID uuid) {
-        setRole(uuid, "default", null);
+    public void clearRoles(UUID uuid, String source) {
+        setRole(uuid, "default", null, source);
+        profileService.getByUuid(uuid).ifPresent(p ->
+                createLog(uuid, p.getName(), source, LogType.CLEAR, "ALL", "N/A")
+        );
     }
 
     public void markNotificationAsRead(UUID uuid, String roleName) {
@@ -290,7 +296,6 @@ public class RoleService {
             }
         });
     }
-
 
     private void startExpirationTask() {
         TaskScheduler.runAsyncTimer(() -> {
@@ -312,6 +317,7 @@ public class RoleService {
             boolean changed = profile.getRoles().removeIf(pr -> {
                 if (pr.hasExpired()) {
                     expiredRoles.add(pr.getRoleName());
+                    createLog(uuid, profile.getName(), "System", LogType.EXPIRE, pr.getRoleName(), "Expired");
                     return true;
                 }
                 return false;
@@ -327,7 +333,6 @@ public class RoleService {
             }
         });
     }
-
 
     public void invalidateSession(UUID uuid) {
         sessionCache.remove(uuid);
@@ -411,7 +416,6 @@ public class RoleService {
         RedisPublisher.publish(RedisChannel.ROLE_SYNC, uuid.toString());
     }
 
-
     public Optional<Role> getRole(String name) {
         if (name == null) return Optional.empty();
         return Optional.ofNullable(roleCache.get(name.toLowerCase()));
@@ -432,24 +436,19 @@ public class RoleService {
 
     public void loadRolesToCache() {
         roleCache.clear();
-
         roleRepository.collection().find().forEach(role -> {
             roleCache.put(role.getName().toLowerCase(), role);
         });
-
         for (Role role : roleCache.values()) {
             role.setCachedEffectivePermissions(calculateEffectivePermissionsForRole(role));
         }
-
         if (!roleCache.containsKey("default")) {
             Role def = DefaultRole.DEFAULT.toRole();
             def.setCachedEffectivePermissions(calculateEffectivePermissionsForRole(def));
             roleCache.put("default", def);
         }
-
         logger.info("[RoleService] Roles carregados e calculados: " + roleCache.size());
     }
-
 
     private Set<String> calculateEffectivePermissionsForRole(Role role) {
         return calculatePermissionsRecursive(role, new HashSet<>());
@@ -457,16 +456,13 @@ public class RoleService {
 
     private Set<String> calculatePermissionsRecursive(Role role, Set<String> visitedRoles) {
         Set<String> perms = new HashSet<>();
-
         if (!visitedRoles.add(role.getName().toLowerCase())) {
             logger.warning("[RoleService] CICLO DE HERANÇA DETECTADO! Grupo '" + role.getName() + "' ignorado.");
             return perms;
         }
-
         if (role.getPermissions() != null) {
             perms.addAll(role.getPermissions());
         }
-
         if (role.getInheritance() != null) {
             for (String parentName : role.getInheritance()) {
                 getRole(parentName).ifPresent(parentRole -> {
@@ -486,10 +482,8 @@ public class RoleService {
                 }
             }
         }
-
         recalculatePrimaryRole(profile);
         Role primary = getRole(profile.getPrimaryRoleName()).orElse(getRole("default").get());
-
         return new PlayerSessionData(profile.getUuid(), primary, finalPerms);
     }
 

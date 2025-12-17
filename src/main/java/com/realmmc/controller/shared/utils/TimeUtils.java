@@ -1,6 +1,5 @@
 package com.realmmc.controller.shared.utils;
 
-import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 
@@ -20,6 +19,8 @@ public class TimeUtils {
 
     private static final DateTimeFormatter DEFAULT_TIME_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm");
     private static final Pattern DURATION_PATTERN = Pattern.compile("(\\d+)\\s*([smhdy])");
+
+    private static final Locale FALLBACK_LOCALE = new Locale("pt", "BR");
 
     public static boolean isNewYear() {
         Calendar cal = Calendar.getInstance();
@@ -50,12 +51,14 @@ public class TimeUtils {
     }
 
     public static String formatDuration(long millis) {
-        return formatDuration(millis, null);
+        return formatDuration(millis, FALLBACK_LOCALE);
     }
 
     public static String formatDuration(long millis, Locale locale) {
-        if (millis < 0) return Messages.translate(MessageKey.TIME_EXPIRED, locale);
-        if (millis < 1000) return Messages.translate(MessageKey.TIME_NOW, locale);
+        Locale targetLocale = (locale != null) ? locale : FALLBACK_LOCALE;
+
+        if (millis < 0) return Messages.translate(MessageKey.TIME_EXPIRED, targetLocale);
+        if (millis < 1000) return Messages.translate(MessageKey.TIME_NOW, targetLocale);
 
         long days = TimeUnit.MILLISECONDS.toDays(millis);
         millis -= TimeUnit.DAYS.toMillis(days);
@@ -66,16 +69,16 @@ public class TimeUtils {
         long seconds = TimeUnit.MILLISECONDS.toSeconds(millis);
 
         List<String> parts = new ArrayList<>();
-        if (days > 0) parts.add(days + " " + Messages.translate(days == 1 ? MessageKey.TIME_DAY_SINGULAR : MessageKey.TIME_DAY_PLURAL, locale));
-        if (hours > 0) parts.add(hours + " " + Messages.translate(hours == 1 ? MessageKey.TIME_HOUR_SINGULAR : MessageKey.TIME_HOUR_PLURAL, locale));
-        if (minutes > 0) parts.add(minutes + " " + Messages.translate(minutes == 1 ? MessageKey.TIME_MINUTE_SINGULAR : MessageKey.TIME_MINUTE_PLURAL, locale));
+        if (days > 0) parts.add(days + " " + Messages.translate(days == 1 ? MessageKey.TIME_DAY_SINGULAR : MessageKey.TIME_DAY_PLURAL, targetLocale));
+        if (hours > 0) parts.add(hours + " " + Messages.translate(hours == 1 ? MessageKey.TIME_HOUR_SINGULAR : MessageKey.TIME_HOUR_PLURAL, targetLocale));
+        if (minutes > 0) parts.add(minutes + " " + Messages.translate(minutes == 1 ? MessageKey.TIME_MINUTE_SINGULAR : MessageKey.TIME_MINUTE_PLURAL, targetLocale));
 
         if (seconds > 0 && parts.isEmpty()) {
-            parts.add(seconds + " " + Messages.translate(seconds == 1 ? MessageKey.TIME_SECOND_SINGULAR : MessageKey.TIME_SECOND_PLURAL, locale));
+            parts.add(seconds + " " + Messages.translate(seconds == 1 ? MessageKey.TIME_SECOND_SINGULAR : MessageKey.TIME_SECOND_PLURAL, targetLocale));
         }
 
         if (parts.isEmpty()) {
-            return Messages.translate(MessageKey.TIME_NOW, locale);
+            return Messages.translate(MessageKey.TIME_NOW, targetLocale);
         }
 
         return String.join(", ", parts);

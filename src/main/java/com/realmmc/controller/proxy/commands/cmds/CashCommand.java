@@ -5,6 +5,7 @@ import com.realmmc.controller.proxy.Proxy;
 import com.realmmc.controller.proxy.commands.CommandInterface;
 import com.realmmc.controller.shared.annotations.Cmd;
 import com.realmmc.controller.shared.cash.CashService;
+import com.realmmc.controller.shared.logs.CashLog;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
@@ -76,9 +77,16 @@ public class CashCommand implements CommandInterface {
             case "set": handleModify(sender, args, label, ModifyType.SET); break;
             case "clear": handleModify(sender, args, label, ModifyType.CLEAR); break;
             case "top": handleTop(sender, label); break;
+            case "history": handleHistory(sender, args, label); break;
             case "info": handleInfo(sender, args, label); break;
             case "help": showHelp(sender, label); break;
-            default: handleInfo(sender, new String[]{"info", args[0]}, label); break;
+            default:
+                if (subCommand.startsWith("id:")) {
+                    handleLogLookup(sender, subCommand.split(":")[1]);
+                } else {
+                    handleInfo(sender, new String[]{"info", args[0]}, label);
+                }
+                break;
         }
     }
 
@@ -184,6 +192,65 @@ public class CashCommand implements CommandInterface {
         });
     }
 
+    private void handleHistory(CommandSource sender, String[] args, String label) {
+        if (args.length < 2) {
+            sendUsage(sender, label, "history <usuário>");
+            return;
+        }
+        String targetName = args[1];
+        TaskScheduler.runAsync(() -> {
+            Optional<Profile> opt = ProfileResolver.resolve(targetName);
+            if (opt.isEmpty()) {
+                Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NEVER_JOINED).with("player", targetName));
+                return;
+            }
+            Profile profile = opt.get();
+            List<CashLog> logs = profileService.getCashLogRepository().findByTarget(profile.getUuid(), 10);
+
+            Messages.send(sender, Message.of(MessageKey.HISTORY_HEADER)
+                    .with("type", "Cash")
+                    .with("player", profile.getName()));
+
+            if (logs.isEmpty()) {
+                Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY);
+            } else {
+                for (CashLog log : logs) {
+                    Messages.send(sender, Message.of(MessageKey.HISTORY_ENTRY_CASH)
+                            .with("id", log.getId())
+                            .with("action", log.getAction().name())
+                            .with("amount", formatCash(log.getAmount()))
+                            .with("source", log.getSource())
+                            .with("date", TimeUtils.formatDate(log.getTimestamp())));
+                }
+            }
+            playSound(sender, SoundKeys.NOTIFICATION);
+        });
+    }
+
+    private void handleLogLookup(CommandSource sender, String id) {
+        TaskScheduler.runAsync(() -> {
+            Optional<CashLog> logOpt = profileService.getCashLogRepository().findById(id);
+            if (logOpt.isEmpty()) {
+                Messages.send(sender, Message.of(MessageKey.HISTORY_NOT_FOUND).with("id", id));
+                return;
+            }
+            CashLog log = logOpt.get();
+            Messages.send(sender, Message.of(MessageKey.HISTORY_DETAILS_HEADER).with("id", log.getId()));
+            sendDetail(sender, "Target", log.getTargetName());
+            sendDetail(sender, "Action", log.getAction().name());
+            sendDetail(sender, "Amount", formatCash(log.getAmount()));
+            sendDetail(sender, "Old Balance", formatCash(log.getOldBalance()));
+            sendDetail(sender, "New Balance", formatCash(log.getNewBalance()));
+            sendDetail(sender, "Source", log.getSource());
+            sendDetail(sender, "Date", TimeUtils.formatDate(log.getTimestamp()));
+            playSound(sender, SoundKeys.NOTIFICATION);
+        });
+    }
+
+    private void sendDetail(CommandSource sender, String key, String val) {
+        Messages.send(sender, Message.of(MessageKey.HISTORY_DETAILS_LINE).with("key", key).with("value", val));
+    }
+
     private void handleTop(CommandSource sender, String label) {
         Locale locale = Messages.determineLocale(sender);
 
@@ -198,7 +265,7 @@ public class CashCommand implements CommandInterface {
 
                 int position = 1;
                 for (Profile p : top10) {
-                    String formattedName = NicknameFormatter.getNickname(p, true); // PREFIXO COMPLETO
+                    String formattedName = NicknameFormatter.getNickname(p, true);
                     String formattedCash = formatCash(p.getCash());
 
                     String lineFormat = Messages.translate(Message.of(MessageKey.CASH_TOP_LINE)
@@ -235,6 +302,11 @@ public class CashCommand implements CommandInterface {
         }
         String targetInput = args[1];
 
+        if (targetInput.toLowerCase().startsWith("id:")) {
+            handleLogLookup(sender, targetInput.split(":")[1]);
+            return;
+        }
+
         TaskScheduler.runAsync(() -> {
             try {
                 Optional<Profile> targetProfileOpt = ProfileResolver.resolve(targetInput);
@@ -245,7 +317,7 @@ public class CashCommand implements CommandInterface {
                 }
 
                 Profile targetProfile = targetProfileOpt.get();
-                String formattedName = NicknameFormatter.getNickname(targetProfile, true); // PREFIXO COMPLETO
+                String formattedName = NicknameFormatter.getNickname(targetProfile, true);
 
                 Messages.send(sender, Message.of(MessageKey.CASH_INFO_HEADER).with("player_name", formattedName));
                 Messages.send(sender, Message.of(MessageKey.CASH_INFO_LINE_TOTAL).with("cash", formatCash(targetProfile.getCash())));
@@ -271,7 +343,8 @@ public class CashCommand implements CommandInterface {
         Messages.send(sender, MessageKey.CASH_HELP_VIEW);
         Messages.send(sender, MessageKey.CASH_HELP_TOP);
         if (sender.hasPermission(adminPermission)) {
-            Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " info <usuário>").with("description", "Vê saldo e pendentes de um jogador."));
+            Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " info <usuário|id:log>").with("description", "Vê saldo ou detalhes de log."));
+            Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " history <usuário>").with("description", "Vê histórico de transações."));
             Messages.send(sender, MessageKey.CASH_HELP_ADD);
             Messages.send(sender, MessageKey.CASH_HELP_REMOVE);
             Messages.send(sender, MessageKey.CASH_HELP_SET);
@@ -297,11 +370,13 @@ public class CashCommand implements CommandInterface {
         final String currentArg = (args.length > 0) ? args[args.length - 1].toLowerCase() : "";
         if (args.length == 1) {
             completions.add("top"); completions.add("help"); completions.add("info");
-            if (sender.hasPermission(adminPermission)) completions.addAll(Arrays.asList("add", "remove", "set", "clear"));
+            if (sender.hasPermission(adminPermission)) {
+                completions.addAll(Arrays.asList("add", "remove", "set", "clear", "history"));
+            }
             proxyServer.getAllPlayers().stream().map(Player::getUsername).forEach(completions::add);
         } else if (args.length == 2) {
             String subCmd = args[0].toLowerCase();
-            if (Arrays.asList("add", "remove", "set", "clear", "info").contains(subCmd)) {
+            if (Arrays.asList("add", "remove", "set", "clear", "info", "history").contains(subCmd)) {
                 proxyServer.getAllPlayers().stream().map(Player::getUsername).forEach(completions::add);
             }
         } else if (args.length == 3) {

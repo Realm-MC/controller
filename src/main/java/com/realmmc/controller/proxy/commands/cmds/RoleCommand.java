@@ -8,6 +8,7 @@ import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.proxy.Proxy;
 import com.realmmc.controller.proxy.commands.CommandInterface;
 import com.realmmc.controller.shared.annotations.Cmd;
+import com.realmmc.controller.shared.logs.RoleLog;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
@@ -75,6 +76,9 @@ public class RoleCommand implements CommandInterface {
             case "info":
                 handleInfo(sender, args, label);
                 break;
+            case "history":
+                handleHistory(sender, args, label);
+                break;
             case "add":
                 modifyPlayerRole(sender, args, label, RoleModificationType.ADD);
                 break;
@@ -91,7 +95,11 @@ public class RoleCommand implements CommandInterface {
                 handleList(sender, args, label);
                 break;
             default:
-                sendUsage(sender, label, "help");
+                if (subCommand.startsWith("id:") || subCommand.startsWith("role:")) {
+                    handleLogLookup(sender, subCommand.split(":")[1]);
+                } else {
+                    sendUsage(sender, label, "help");
+                }
                 break;
         }
     }
@@ -103,12 +111,90 @@ public class RoleCommand implements CommandInterface {
         }
         String targetInput = args[1];
 
+        if (targetInput.toLowerCase().startsWith("role:") || targetInput.toLowerCase().startsWith("id:")) {
+            handleLogLookup(sender, targetInput.split(":")[1]);
+            return;
+        }
+
         Optional<Role> roleOpt = roleService.getRole(targetInput);
         if (roleOpt.isPresent()) {
             displayGroupInfo(sender, roleOpt.get());
         } else {
             displayPlayerInfo(sender, targetInput);
         }
+    }
+
+    private void handleHistory(CommandSource sender, String[] args, String label) {
+        if (args.length < 2) {
+            sendUsage(sender, label, "history <jogador>");
+            return;
+        }
+        String targetName = args[1];
+        resolveProfileAsync(targetName).thenAccept(opt -> {
+            if (opt.isEmpty()) {
+                Messages.send(sender, Message.of(MessageKey.COMMON_PLAYER_NEVER_JOINED).with("player", targetName));
+                return;
+            }
+            Profile profile = opt.get();
+            List<RoleLog> logs = roleService.getLogRepository().findByTarget(profile.getUuid(), 10);
+
+            String formattedName = NicknameFormatter.getFullFormattedNick(profile.getUuid());
+
+            Messages.send(sender, Message.of(MessageKey.HISTORY_HEADER)
+                    .with("type", "Cargos")
+                    .with("player", formattedName));
+
+            if (logs.isEmpty()) {
+                Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY);
+            } else {
+                for (RoleLog log : logs) {
+                    String roleDisplayName = log.getRoleName();
+                    Optional<Role> rOpt = roleService.getRole(log.getRoleName());
+                    if (rOpt.isPresent()) {
+                        roleDisplayName = rOpt.get().getDisplayName();
+                    }
+
+                    Messages.send(sender, Message.of(MessageKey.HISTORY_ENTRY_ROLE)
+                            .with("id", log.getId())
+                            .with("action", log.getAction().name())
+                            .with("role", roleDisplayName)
+                            .with("source", log.getSource())
+                            .with("date", TimeUtils.formatDate(log.getTimestamp())));
+                }
+            }
+            playSound(sender, SoundKeys.NOTIFICATION);
+        });
+    }
+
+    private void handleLogLookup(CommandSource sender, String id) {
+        TaskScheduler.runAsync(() -> {
+            Optional<RoleLog> logOpt = roleService.getLogRepository().findById(id);
+            if (logOpt.isEmpty()) {
+                Messages.send(sender, Message.of(MessageKey.HISTORY_NOT_FOUND).with("id", id));
+                return;
+            }
+            RoleLog log = logOpt.get();
+
+            String roleDisplayName = log.getRoleName();
+            Optional<Role> rOpt = roleService.getRole(log.getRoleName());
+            if (rOpt.isPresent()) {
+                roleDisplayName = rOpt.get().getDisplayName();
+            }
+
+            Messages.send(sender, Message.of(MessageKey.HISTORY_DETAILS_HEADER).with("id", log.getId()));
+            sendDetail(sender, "Alvo", log.getTargetName());
+            sendDetail(sender, "Ação", log.getAction().name());
+            sendDetail(sender, "Cargo", roleDisplayName);
+            sendDetail(sender, "Por", log.getSource());
+            sendDetail(sender, "Data", TimeUtils.formatDate(log.getTimestamp()));
+            sendDetail(sender, "Duração", log.getDuration());
+            sendDetail(sender, "Contexto", log.getContext());
+            playSound(sender, SoundKeys.NOTIFICATION);
+        });
+    }
+
+    private void sendDetail(CommandSource sender, String key, String val) {
+        Messages.send(sender, Message.of(MessageKey.HISTORY_DETAILS_LINE).with("key", key).with("value", val));
     }
 
     private void displayPlayerInfo(CommandSource sender, String targetInput) {
@@ -132,7 +218,7 @@ public class RoleCommand implements CommandInterface {
             PlayerSessionData sessionData = entry.getValue();
             if (sessionData == null) sessionData = roleService.getDefaultSessionData(profile.getUuid());
 
-            String formattedNick = NicknameFormatter.getNickname(profile.getUuid(), true, profile.getName());
+            String formattedNick = NicknameFormatter.getFullFormattedNick(profile.getUuid());
 
             Messages.send(sender, Message.of(MessageKey.COMMON_INFO_HEADER).with("subject", "Grupos de " + formattedNick));
 
@@ -144,52 +230,76 @@ public class RoleCommand implements CommandInterface {
             List<PlayerRole> roles = profile.getRoles();
             if (roles == null) roles = Collections.emptyList();
 
-            Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER)
-                    .with("key", "Grupos Ativos")
-                    .with("count", roles.size()));
+            List<PlayerRole> sortedRoles = new ArrayList<>(roles);
+            sortedRoles.sort((r1, r2) -> {
+                int w1 = roleService.getRole(r1.getRoleName()).map(Role::getWeight).orElse(0);
+                int w2 = roleService.getRole(r2.getRoleName()).map(Role::getWeight).orElse(0);
+                return Integer.compare(w2, w1);
+            });
 
-            if (roles.isEmpty()) {
+            Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_HEADER)
+                    .with("key", "Grupos")
+                    .with("count", sortedRoles.size()));
+
+            if (sortedRoles.isEmpty()) {
                 Messages.send(sender, MessageKey.COMMON_INFO_LIST_EMPTY);
             } else {
                 int index = 1;
-                for (PlayerRole pr : roles) {
-                    Optional<Role> rOpt = roleService.getRole(pr.getRoleName());
-                    if (rOpt.isEmpty()) continue;
-                    Role r = rOpt.get();
+                for (PlayerRole pr : sortedRoles) {
 
-                    String statusString;
-                    if (pr.isPermanent()) {
-                        statusString = Messages.translate(MessageKey.ROLE_INFO_STATUS_PERMANENT, locale);
+                    String statusText;
+                    String statusColor;
+
+                    if (pr.isPaused()) {
+                        statusText = "PAUSADO";
+                        statusColor = "<yellow>";
+                    } else if (pr.isActive()) {
+                        statusText = "ATIVO";
+                        statusColor = "<green>";
+                    } else if (pr.isPendingNotification()) {
+                        statusText = "PENDENTE";
+                        statusColor = "<aqua>";
                     } else {
-                        long remaining = pr.getExpiresAt() - System.currentTimeMillis();
-                        statusString = Messages.translate(Message.of(MessageKey.ROLE_INFO_STATUS_TEMPORARY)
-                                .with("remaining_time", TimeUtils.formatDuration(Math.max(0, remaining))), locale);
+                        statusText = pr.getStatus().name();
+                        statusColor = "<red>";
+                    }
+
+                    Optional<Role> rOpt = roleService.getRole(pr.getRoleName());
+                    String display = rOpt.map(Role::getDisplayName).orElse(pr.getRoleName());
+
+                    String infoExtra = String.format("<dark_gray>(ID: %s, Por: %s, Data: %s)</dark_gray>",
+                            pr.getInstanceId(),
+                            pr.getAddedBy() != null ? pr.getAddedBy() : "Sistema",
+                            TimeUtils.formatDate(pr.getAddedAt()));
+
+                    String duracao;
+                    if (pr.isPaused() && pr.getPausedTimeRemaining() != null) {
+                        duracao = "Restam: " + TimeUtils.formatDuration(pr.getPausedTimeRemaining());
+                    } else if (pr.isPermanent()) {
+                        duracao = "Perm.";
+                    } else {
+                        duracao = TimeUtils.formatDuration(Math.max(0, pr.getExpiresAt() - System.currentTimeMillis()));
                     }
 
                     Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LIST_ITEM)
                             .with("index", index++)
-                            .with("value", r.getDisplayName() + " " + statusString));
+                            .with("value", String.format("%s %s%s <gray>(%s)</gray> %s", display, statusColor, statusText, duracao, infoExtra)));
                 }
             }
-            Messages.send(sender, "<white>");
+            Messages.send(sender, " ");
             playSound(sender, SoundKeys.NOTIFICATION);
-        }).exceptionally(ex -> {
-            logger.log(Level.SEVERE, "Erro ao exibir info do jogador", ex);
-            Messages.send(sender, MessageKey.COMMAND_ERROR);
-            return null;
         });
     }
 
+
     private void displayGroupInfo(CommandSource sender, Role role) {
         Locale locale = Messages.determineLocale(sender);
-
         Messages.send(sender, Message.of(MessageKey.ROLE_GROUP_INFO_HEADER).with("group_name", role.getDisplayName()));
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", "ID").with("value", role.getName()));
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_WEIGHT, locale)).with("value", role.getWeight()));
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_PREFIX, locale)).with("value", role.getPrefix()));
         Messages.send(sender, Message.of(MessageKey.COMMON_INFO_LINE).with("key", Messages.translate(MessageKey.ROLE_GROUP_INFO_KEY_TYPE, locale)).with("value", role.getType().name()));
-
-        Messages.send(sender, "<white>");
+        Messages.send(sender, " ");
         playSound(sender, SoundKeys.NOTIFICATION);
     }
 
@@ -238,6 +348,7 @@ public class RoleCommand implements CommandInterface {
 
         final Long finalDuration = durationMillis;
         final Locale locale = Messages.determineLocale(sender);
+        final String sourceName = (sender instanceof Player) ? ((Player) sender).getUsername() : "Console";
 
         resolveProfileAsync(targetName).thenCompose(opt -> {
             if (opt.isEmpty()) {
@@ -256,7 +367,7 @@ public class RoleCommand implements CommandInterface {
             Profile profile = entry.getKey();
             PlayerSessionData targetData = entry.getValue();
             UUID uuid = profile.getUuid();
-            String targetFormatted = NicknameFormatter.getNickname(uuid, true, profile.getName());
+            String targetFormatted = NicknameFormatter.getFullFormattedNick(uuid);
 
             if (targetData != null && !checkHierarchy(sender, targetData.getPrimaryRole())) {
                 Messages.send(sender, Message.of(MessageKey.ROLE_ERROR_CLEAR_SUPERIOR).with("target_name", targetFormatted));
@@ -270,7 +381,7 @@ public class RoleCommand implements CommandInterface {
 
             switch (type) {
                 case ADD:
-                    roleService.grantRole(uuid, roleName, finalDuration);
+                    roleService.grantRole(uuid, roleName, finalDuration, sourceName);
                     Messages.send(sender, Message.of(MessageKey.ROLE_SUCCESS_ADD)
                             .with("player", targetFormatted)
                             .with("group_display", targetRole.getDisplayName())
@@ -278,7 +389,7 @@ public class RoleCommand implements CommandInterface {
                             .with("duration_msg", durationMsg));
                     break;
                 case SET:
-                    roleService.setRole(uuid, roleName, finalDuration);
+                    roleService.setRole(uuid, roleName, finalDuration, sourceName);
                     Messages.send(sender, Message.of(MessageKey.ROLE_SUCCESS_SET)
                             .with("player", targetFormatted)
                             .with("group_display", targetRole.getDisplayName())
@@ -286,7 +397,7 @@ public class RoleCommand implements CommandInterface {
                             .with("duration_msg", durationMsg));
                     break;
                 case REMOVE:
-                    roleService.removeRole(uuid, roleName);
+                    roleService.removeRole(uuid, roleName, sourceName);
                     Messages.send(sender, Message.of(MessageKey.ROLE_SUCCESS_REMOVE)
                             .with("player", targetFormatted)
                             .with("group_display", targetRole.getDisplayName())
@@ -305,7 +416,6 @@ public class RoleCommand implements CommandInterface {
                         : RoleKickHandler.KickReason.ADD_SET;
                 RoleType kickType = targetRole.getType();
                 RoleKickHandler.scheduleKick(uuid, kickType, reason, targetRole.getDisplayName());
-                logger.info("[RoleCommand] Kick agendado para " + profile.getName() + " (Reason: " + reason + ")");
             }
 
         }).exceptionally(ex -> {
@@ -322,7 +432,6 @@ public class RoleCommand implements CommandInterface {
             node.put("playerName", playerName);
             node.put("playerColor", newRole.getColor());
             node.put("groupDisplay", newRole.getDisplayName());
-
             String jsonMessage = node.toString();
             RedisPublisher.publish(RedisChannel.ROLE_BROADCAST, jsonMessage);
         } catch (Exception e) {
@@ -336,6 +445,7 @@ public class RoleCommand implements CommandInterface {
             return;
         }
         String targetName = args[1];
+        final String sourceName = (sender instanceof Player) ? ((Player) sender).getUsername() : "Console";
 
         resolveProfileAsync(targetName).thenCompose(opt -> {
             if (opt.isEmpty()) {
@@ -348,7 +458,6 @@ public class RoleCommand implements CommandInterface {
 
         }).thenAccept(entry -> {
             if (entry == null) return;
-
             Profile profile = entry.getKey();
             PlayerSessionData data = entry.getValue();
             UUID uuid = profile.getUuid();
@@ -358,9 +467,9 @@ public class RoleCommand implements CommandInterface {
                 return;
             }
 
-            roleService.clearRoles(uuid);
-            Messages.send(sender, Message.of(MessageKey.ROLE_SUCCESS_CLEAR_PLAYER)
-                    .with("player", profile.getName()));
+            roleService.clearRoles(uuid, sourceName);
+            String formatted = NicknameFormatter.getFullFormattedNick(uuid);
+            Messages.send(sender, Message.of(MessageKey.ROLE_SUCCESS_CLEAR_PLAYER).with("player", formatted));
             playSound(sender, SoundKeys.SUCCESS);
 
             if (proxyServer.getPlayer(uuid).isPresent()) {
@@ -410,30 +519,26 @@ public class RoleCommand implements CommandInterface {
         Optional<PlayerSessionData> senderData = roleService.getSessionDataFromCache(senderUuid);
 
         if (senderData.isEmpty()) return false;
-
         return senderData.get().getPrimaryRole().getWeight() > targetRole.getWeight();
     }
 
     private void showHelp(CommandSource sender, String label) {
         Locale locale = Messages.determineLocale(sender);
         Messages.send(sender, Message.of(MessageKey.COMMON_HELP_HEADER).with("system", "Roles"));
-
-        sendHelpLine(sender, label, "info <jogador|grupo>", MessageKey.ROLE_HELP_INFO, locale);
+        sendHelpLine(sender, label, "info <jogador|grupo|id:log>", MessageKey.ROLE_HELP_INFO, locale);
+        sendHelpLine(sender, label, "history <jogador>", MessageKey.ROLE_HELP_INFO, locale);
         sendHelpLine(sender, label, "list <grupo>", MessageKey.ROLE_HELP_LIST, locale);
         sendHelpLine(sender, label, "add <jogador> <grupo> [tempo] [-hidden]", MessageKey.ROLE_HELP_ADD, locale);
         sendHelpLine(sender, label, "set <jogador> <grupo> [tempo] [-hidden]", MessageKey.ROLE_HELP_SET, locale);
         sendHelpLine(sender, label, "remove <jogador> <grupo>", MessageKey.ROLE_HELP_REMOVE, locale);
         sendHelpLine(sender, label, "clear <jogador>", MessageKey.ROLE_HELP_CLEAR, locale);
-
         Messages.send(sender, MessageKey.COMMON_HELP_FOOTER_FULL);
         playSound(sender, SoundKeys.NOTIFICATION);
     }
 
     private void sendHelpLine(CommandSource sender, String label, String args, MessageKey descriptionKey, Locale locale) {
         String description = Messages.translate(descriptionKey, locale);
-        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE)
-                .with("usage", "/" + label + " " + args)
-                .with("description", description));
+        Messages.send(sender, Message.of(MessageKey.COMMON_HELP_LINE).with("usage", "/" + label + " " + args).with("description", description));
     }
 
     private void sendUsage(CommandSource sender, String label, String usage) {
@@ -458,10 +563,10 @@ public class RoleCommand implements CommandInterface {
         String current = args.length > 0 ? args[args.length - 1].toLowerCase() : "";
 
         if (args.length == 1) {
-            completions.addAll(Arrays.asList("info", "list", "add", "set", "remove", "clear", "help"));
+            completions.addAll(Arrays.asList("info", "history", "list", "add", "set", "remove", "clear", "help"));
         } else if (args.length == 2) {
             String sub = args[0].toLowerCase();
-            if (Arrays.asList("info", "add", "set", "remove", "clear").contains(sub)) {
+            if (Arrays.asList("info", "history", "add", "set", "remove", "clear").contains(sub)) {
                 proxyServer.getAllPlayers().stream().map(Player::getUsername).forEach(completions::add);
             }
             if (Arrays.asList("list", "info").contains(sub)) {
@@ -477,7 +582,6 @@ public class RoleCommand implements CommandInterface {
                 completions.addAll(Arrays.asList("30d", "7d", "1d", "12h", "1h"));
             }
         }
-
         return completions.stream().filter(s -> s.startsWith(current)).sorted().collect(Collectors.toList());
     }
 }

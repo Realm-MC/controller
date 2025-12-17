@@ -7,6 +7,7 @@ import com.realmmc.controller.proxy.listeners.ServerStatusListener;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisSubscriber;
 
+import java.io.File;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -15,6 +16,7 @@ public class ServerManagerModule extends AbstractCoreModule {
 
     private PterodactylService pterodactylService;
     private ServerRegistryService serverRegistryService;
+    private ServerTemplateManager serverTemplateManager;
     private ServerStatusListener statusListener;
 
     public ServerManagerModule(Logger logger) {
@@ -22,8 +24,8 @@ public class ServerManagerModule extends AbstractCoreModule {
     }
 
     @Override public String getName() { return "ServerManager"; }
-    @Override public String getVersion() { return "1.0.0"; }
-    @Override public String getDescription() { return "Gestor de servidores dinâmicos (Pterodactyl Auto-Scaling)."; }
+    @Override public String getVersion() { return "1.1.0"; }
+    @Override public String getDescription() { return "Gestor de servidores dinâmicos (Auto-Scaling & Templates)."; }
 
     @Override public String[] getDependencies() {
         return new String[]{"Database", "SchedulerModule"};
@@ -34,6 +36,14 @@ public class ServerManagerModule extends AbstractCoreModule {
     @Override
     protected void onEnable() throws Exception {
         try {
+            File dataFolder = new File("plugins/controller");
+            if (!dataFolder.exists()) dataFolder.mkdirs();
+
+            this.serverTemplateManager = new ServerTemplateManager(dataFolder, logger);
+            this.serverTemplateManager.load();
+            ServiceRegistry.getInstance().registerService(ServerTemplateManager.class, this.serverTemplateManager);
+            logger.info("ServerTemplateManager registado e carregado.");
+
             this.pterodactylService = new PterodactylService(logger);
             ServiceRegistry.getInstance().registerService(PterodactylService.class, this.pterodactylService);
             logger.info("PterodactylService registado.");
@@ -57,19 +67,22 @@ public class ServerManagerModule extends AbstractCoreModule {
 
         } catch (IllegalStateException e) {
             logger.log(Level.SEVERE, "Falha ao iniciar ServerManagerModule: " + e.getMessage());
-            this.pterodactylService = null;
-            this.serverRegistryService = null;
+            shutdownServices();
             throw e;
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Erro crítico ao iniciar ServerManagerModule.", e);
-            this.pterodactylService = null;
-            this.serverRegistryService = null;
+            shutdownServices();
             throw e;
         }
     }
 
     @Override
     protected void onDisable() throws Exception {
+        shutdownServices();
+        logger.info("Módulo ServerManager finalizado.");
+    }
+
+    private void shutdownServices() {
         if (this.statusListener != null) {
             ServiceRegistry.getInstance().getService(RedisSubscriber.class)
                     .ifPresent(r -> r.unregisterListener(RedisChannel.SERVER_STATUS_UPDATE));
@@ -78,17 +91,19 @@ public class ServerManagerModule extends AbstractCoreModule {
         if (this.serverRegistryService != null) {
             this.serverRegistryService.shutdown();
             ServiceRegistry.getInstance().unregisterService(ServerRegistryService.class);
-            logger.info("ServerRegistryService finalizado e desregistado.");
         }
 
         if (this.pterodactylService != null) {
             ServiceRegistry.getInstance().unregisterService(PterodactylService.class);
-            logger.info("PterodactylService desregistado.");
+        }
+
+        if (this.serverTemplateManager != null) {
+            ServiceRegistry.getInstance().unregisterService(ServerTemplateManager.class);
         }
 
         this.serverRegistryService = null;
         this.pterodactylService = null;
+        this.serverTemplateManager = null;
         this.statusListener = null;
-        logger.info("Módulo ServerManager finalizado.");
     }
 }

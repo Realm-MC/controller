@@ -118,11 +118,16 @@ public class FileBasedMessageTranslator implements MessageTranslator {
 
     @Override
     public boolean hasMessage(MessageKey key, Locale locale) {
+        if (locale == null) locale = defaultLocale;
         Properties messages = messageCache.get(locale);
         return messages != null && messages.containsKey(key.getKey());
     }
 
     private String getRawMessage(MessageKey key, Locale locale) {
+        if (key == null) return "<red>Error: null key</red>";
+
+        if (locale == null) locale = defaultLocale;
+
         Properties messages = messageCache.get(locale);
 
         if (messages != null && messages.containsKey(key.getKey())) {

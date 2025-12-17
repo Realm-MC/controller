@@ -283,6 +283,9 @@ public class ServerConfigCommand implements CommandInterface {
         TaskScheduler.runAsync(() -> {
             try {
                 getServerRegistryService().initialize();
+
+                getServerRegistryService().reloadTemplates();
+
                 TaskScheduler.runSync(() -> {
                     Messages.send(sender, MessageKey.SCONFIG_RELOADED);
                     playSound(sender, SoundKeys.SUCCESS);

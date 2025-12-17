@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -16,6 +17,11 @@ public class PlayerRole {
         EXPIRED,
         REMOVED
     }
+
+    @Builder.Default
+    private String instanceId = UUID.randomUUID().toString().substring(0, 8);
+
+    private String addedBy;
 
     private String roleName;
 

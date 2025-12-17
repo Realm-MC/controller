@@ -1,0 +1,50 @@
+[
+  {
+    "type": "LOBBY",
+    "memory": 3072,
+    "disk": 10240,
+    "cpu": 200,
+    "eggId": 5,
+    "nestId": 1,
+    "dockerImage": "ghcr.io/pterodactyl/yolks:java_21",
+    "startupCommand": "java -Dfile.encoding=UTF-8 -Xms128M -Xmx${MEMORY_ALLOCATION}M -jar ${SERVER_JARFILE}",
+    "scaling": {
+      "minIdle": 1,
+      "maxTotal": 10,
+      "fullThreshold": 0.75,
+      "emptyShutdownSeconds": 60
+    },
+    "environment": {
+      "SERVER_JARFILE": "server.jar",
+      "MINECRAFT_VERSION": "1.21.4",
+      "TEMPLATE_URL": "https://github.com/Realm-MC/server-files-default/releases/download/lobby-v.10/Lobby.zip",
+      "MAP_TYPE": "lobby",
+      "VELOCITY_VERSION": "3.3.0-SNAPSHOT",
+      "BUILD_NUMBER": "latest"
+    }
+  },
+  {
+    "type": "LOGIN",
+    "memory": 1548,
+    "disk": 5120,
+    "cpu": 100,
+    "eggId": 5,
+    "nestId": 1,
+    "dockerImage": "ghcr.io/pterodactyl/yolks:java_21",
+    "startupCommand": "java -Dfile.encoding=UTF-8 -Xms128M -Xmx${MEMORY_ALLOCATION}M -jar ${SERVER_JARFILE}",
+    "scaling": {
+      "minIdle": 1,
+      "maxTotal": 3,
+      "fullThreshold": 0.80,
+      "emptyShutdownSeconds": 30
+    },
+    "environment": {
+      "SERVER_JARFILE": "server.jar",
+      "MINECRAFT_VERSION": "1.21.4",
+      "TEMPLATE_URL": "https://github.com/Realm-MC/server-files-default/releases/download/login-v.10/Login.zip",
+      "MAP_TYPE": "login",
+      "VELOCITY_VERSION": "3.3.0-SNAPSHOT",
+      "BUILD_NUMBER": "latest"
+    }
+  }
+]

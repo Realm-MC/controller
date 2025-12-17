@@ -3,8 +3,10 @@ package com.realmmc.controller.modules.server;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.server.data.ServerInfo;
 import com.realmmc.controller.modules.server.data.ServerStatus;
+import com.realmmc.controller.modules.server.data.ServerTemplate;
 import com.realmmc.controller.modules.server.data.ServerType;
 
 import java.net.URI;
@@ -27,14 +29,11 @@ public class PterodactylService {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
-    private final int lobbyEggId;
-    private final int lobbyNestId;
     private final int ownerUserId;
     private final int defaultLocationId;
     private final int defaultNodeId;
 
-    private final String eggDockerImage = "ghcr.io/pterodactyl/yolks:java_21";
-    private final String eggStartupCommand = "java -Dfile.encoding=UTF-8 -Xms1548M -XX:MaxRAMPercentage=90.0 -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.newgen.generation=1 -Dcontroller.serverId=${CONTROLLER_SERVER_ID} -Dmap.type=${MAP_TYPE} -DMONGO_URI=${MONGO_URI} -DMONGO_DB=${MONGO_DB} -DREDIS_HOST=${REDIS_HOST} -DREDIS_PORT=${REDIS_PORT} -DREDIS_PASSWORD=${REDIS_PASSWORD} -DREDIS_DATABASE=${REDIS_DATABASE} -DREDIS_SSL=${REDIS_SSL} -jar ${SERVER_JARFILE}";
+    private final ServerTemplateManager templateManager;
 
     private final String mongoUri;
     private final String mongoDb;
@@ -48,38 +47,14 @@ public class PterodactylService {
 
     public PterodactylService(Logger logger) {
         this.logger = logger;
+        this.templateManager = ServiceRegistry.getInstance().requireService(ServerTemplateManager.class);
 
         this.panelUrl = System.getProperty("PTERODACTYL_PANEL_URL");
         this.clientApiKey = System.getProperty("PTERODACTYL_API_KEY");
         this.appApiKey = System.getProperty("PTERODACTYL_APP_KEY");
         this.ownerUserId = Integer.parseInt(System.getProperty("PTERODACTYL_OWNER_USER_ID", "1"));
-
-        int tempLobbyEggId = 0, tempLobbyNestId = 0, tempDefaultLocationId = 0, tempNodeId = 0;
-        try {
-            String lobbyEggIdStr = System.getProperty("PTERODACTYL_LOBBY_EGG_ID");
-            String lobbyNestIdStr = System.getProperty("PTERODACTYL_LOBBY_NEST_ID");
-            String defaultLocationIdStr = System.getProperty("PTERODACTYL_DEFAULT_LOCATION_ID");
-            String nodeIdStr = System.getProperty("PTERODACTYL_NODE_ID");
-
-            if (lobbyEggIdStr == null) throw new NullPointerException("Flag -DPTERODACTYL_LOBBY_EGG_ID não definida.");
-            if (lobbyNestIdStr == null) throw new NullPointerException("Flag -DPTERODACTYL_LOBBY_NEST_ID não definida.");
-            if (defaultLocationIdStr == null) throw new NullPointerException("Flag -DPTERODACTYL_DEFAULT_LOCATION_ID não definida.");
-            if (nodeIdStr == null) throw new NullPointerException("Flag -DPTERODACTYL_NODE_ID não definida.");
-
-            tempLobbyEggId = Integer.parseInt(lobbyEggIdStr);
-            tempLobbyNestId = Integer.parseInt(lobbyNestIdStr);
-            tempDefaultLocationId = Integer.parseInt(defaultLocationIdStr);
-            tempNodeId = Integer.parseInt(nodeIdStr);
-
-        } catch (NumberFormatException e) {
-            logger.severe("IDs do Pterodactyl não são números válidos!");
-        } catch (NullPointerException e) {
-            logger.severe(e.getMessage());
-        }
-        this.lobbyEggId = tempLobbyEggId;
-        this.lobbyNestId = tempLobbyNestId;
-        this.defaultLocationId = tempDefaultLocationId;
-        this.defaultNodeId = tempNodeId;
+        this.defaultLocationId = Integer.parseInt(System.getProperty("PTERODACTYL_DEFAULT_LOCATION_ID", "1"));
+        this.defaultNodeId = Integer.parseInt(System.getProperty("PTERODACTYL_NODE_ID", "1"));
 
         this.mongoUri = System.getProperty("MONGO_URI");
         this.mongoDb = System.getProperty("MONGO_DB");
@@ -90,7 +65,7 @@ public class PterodactylService {
         this.redisSsl = System.getProperty("REDIS_SSL");
 
         if (this.panelUrl == null) throw new IllegalStateException("Flag -DPTERODACTYL_PANEL_URL não definida.");
-        if (this.appApiKey == null) logger.severe("CRÍTICO: Flag -DPTERODACTYL_APP_KEY (Aplicação) não definida. O Auto-Scaling VAI FALHAR.");
+        if (this.appApiKey == null) logger.severe("CRÍTICO: Flag -DPTERODACTYL_APP_KEY não definida.");
 
         this.httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
@@ -143,40 +118,17 @@ public class PterodactylService {
     }
 
     public CompletableFuture<Optional<ServerInfo>> createPterodactylServer(String serverName, ServerType serverType) {
-        if (this.appApiKey == null) {
+        if (this.appApiKey == null) return CompletableFuture.completedFuture(Optional.empty());
+
+        ServerTemplate template = templateManager.getTemplate(serverType);
+        if (template == null) {
+            logger.severe("[AutoScaler] ERRO: Nenhum template configurado em server-templates.json para o tipo " + serverType);
             return CompletableFuture.completedFuture(Optional.empty());
         }
 
-        String templateUrl;
-        String mapTypeStr;
-
-        switch (serverType) {
-            case LOBBY:
-                templateUrl = "https://github.com/Realm-MC/server-files-default/releases/download/lobby-v.10/Lobby.zip";
-                mapTypeStr = "lobby";
-                break;
-            case LOGIN:
-                templateUrl = "https://github.com/Realm-MC/server-files-default/releases/download/login-v.10/Login.zip";
-                mapTypeStr = "login";
-                break;
-            case PUNISHED:
-                templateUrl = "https://github.com/Realm-MC/server-files-default/releases/download/punished-v.10/Punished.zip";
-                mapTypeStr = "punished";
-                break;
-            case PERSISTENT:
-                logger.warning("[AutoScaler] Tentativa de criar servidor PERSISTENT dinamicamente. Isso não é suportado pelo template automático.");
-                return CompletableFuture.completedFuture(Optional.empty());
-            default:
-                logger.warning("[AutoScaler] Tipo de servidor desconhecido: " + serverType);
-                return CompletableFuture.completedFuture(Optional.empty());
-        }
-
-        int targetEggId = this.lobbyEggId;
-        int targetNestId = this.lobbyNestId;
-
         return getFreeAllocation(this.defaultNodeId).thenCompose(allocData -> {
             if (allocData == null) {
-                logger.severe("[AutoScaler] Abortando criação de " + serverName + ": Nenhuma porta livre encontrada.");
+                logger.severe("[AutoScaler] Abortando criação de " + serverName + ": Nenhuma porta livre.");
                 return CompletableFuture.completedFuture(Optional.empty());
             }
 
@@ -184,29 +136,32 @@ public class PterodactylService {
             try {
                 ObjectNode payload = objectMapper.createObjectNode();
                 payload.put("name", serverName);
-                payload.put("description", "Servidor Dinâmico " + serverType.name() + " gerido pelo Controller");
+                payload.put("description", "Servidor Dinâmico " + serverType.name() + " (Controller)");
                 payload.put("user", this.ownerUserId);
-                payload.put("egg", targetEggId);
-                payload.put("nest", targetNestId);
+
+                payload.put("egg", template.getEggId());
+                payload.put("nest", template.getNestId());
                 payload.put("location", this.defaultLocationId);
-                payload.put("docker_image", this.eggDockerImage);
-                payload.put("startup", this.eggStartupCommand);
+                payload.put("docker_image", template.getDockerImage());
+                payload.put("startup", template.getStartupCommand());
 
                 payload.putObject("feature_limits").put("databases", 0).put("allocations", 1).put("backups", 0);
-                payload.putObject("limits").put("memory", 3048).put("swap", 0).put("disk", 10120).put("io", 500).put("cpu", 100);
+
+                payload.putObject("limits")
+                        .put("memory", template.getMemory())
+                        .put("swap", 0)
+                        .put("disk", template.getDisk())
+                        .put("io", 500)
+                        .put("cpu", template.getCpu());
 
                 ObjectNode environment = payload.putObject("environment");
-                environment.put("SERVER_JARFILE", "server.jar");
-                environment.put("MEMORY_ALLOCATION", "3048");
-                environment.put("EULA", "true");
 
-                environment.put("TEMPLATE_URL", templateUrl);
-
-                environment.put("MINECRAFT_VERSION", "1.21.4");
-                environment.put("BUILD_NUMBER", "latest");
+                if (template.getEnvironment() != null) {
+                    template.getEnvironment().forEach(environment::put);
+                }
 
                 environment.put("CONTROLLER_SERVER_ID", serverName);
-                environment.put("MAP_TYPE", mapTypeStr);
+                environment.put("MEMORY_ALLOCATION", String.valueOf(template.getMemory()));
                 environment.put("MONGO_URI", this.mongoUri);
                 environment.put("MONGO_DB", this.mongoDb);
                 environment.put("REDIS_HOST", this.redisHost);
@@ -216,8 +171,8 @@ public class PterodactylService {
                 environment.put("REDIS_SSL", this.redisSsl);
 
                 payload.putObject("allocation").put("default", allocData.id());
-
                 payload.put("start_on_completion", false);
+
                 jsonPayload = payload.toString();
 
             } catch (Exception e) {
@@ -260,10 +215,10 @@ public class PterodactylService {
                                 .status(ServerStatus.OFFLINE)
                                 .build();
 
-                        logger.info("Servidor Pterodactyl criado com sucesso: " + serverName + " (ID: " + internalId + ") em " + ip + ":" + port + " [Template: " + serverType + "]");
+                        logger.info("Servidor Pterodactyl criado: " + serverName + " (ID: " + internalId + ") [Template: " + serverType + "]");
                         return Optional.of(newServer);
                     } catch (Exception e) {
-                        logger.log(Level.SEVERE, "Falha ao processar resposta JSON de criação (parcial)", e);
+                        logger.log(Level.SEVERE, "Falha ao processar resposta JSON de criação", e);
                         return Optional.<ServerInfo>empty();
                     }
                 } else {

@@ -445,7 +445,26 @@ public enum MessageKey {
     SCOREBOARD_LINE_GROUP("scoreboard.line.group"),
     SCOREBOARD_LINE_CASH("scoreboard.line.cash"),
     SCOREBOARD_LINE_ONLINE("scoreboard.line.online"),
-    SCOREBOARD_FOOTER("scoreboard.footer");
+    SCOREBOARD_FOOTER("scoreboard.footer"),
+
+    SERVER_NOTIFY_OPENING("server.notify.opening"),
+    SERVER_NOTIFY_OPENED("server.notify.opened"),
+    SERVER_NOTIFY_CLOSED("server.notify.closed"),
+
+    REQUEST_USAGE("request.usage"),
+    REQUEST_INVALID_TYPE("request.invalid_type"),
+    REQUEST_SUCCESS("request.success"),
+
+    HISTORY_HEADER("history.header"),
+    HISTORY_ENTRY_ROLE("history.entry.role"),
+    HISTORY_ENTRY_CASH("history.entry.cash"),
+    HISTORY_DETAILS_HEADER("history.details.header"),
+    HISTORY_DETAILS_LINE("history.details.line"),
+    HISTORY_NOT_FOUND("history.not_found"),
+
+    ROLE_INFO_INSTANCE_ID("role.info.instance_id"),
+    ROLE_INFO_ADDED_BY("role.info.added_by"),
+    ROLE_INFO_ADDED_AT("role.info.added_at");
 
     private final String key;
 

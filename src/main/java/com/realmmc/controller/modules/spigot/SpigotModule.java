@@ -1,10 +1,10 @@
 package com.realmmc.controller.modules.spigot;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.realmmc.controller.core.modules.AbstractCoreModule;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.RoleService;
+import com.realmmc.controller.modules.server.data.GameState;
+import com.realmmc.controller.modules.server.data.ServerStatus;
 import com.realmmc.controller.services.SessionService;
 import com.realmmc.controller.shared.role.PermissionRefresher;
 import com.realmmc.controller.shared.role.RoleKickHandler;
@@ -12,6 +12,7 @@ import com.realmmc.controller.shared.sounds.SoundPlayer;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
 import com.realmmc.controller.shared.storage.redis.RedisSubscriber;
+import com.realmmc.controller.shared.storage.redis.packet.ServerHeartbeatPacket;
 import com.realmmc.controller.spigot.cash.SpigotCashCache;
 import com.realmmc.controller.spigot.commands.CommandManager;
 import com.realmmc.controller.spigot.listeners.ListenersManager;
@@ -45,7 +46,6 @@ public class SpigotModule extends AbstractCoreModule {
     private final boolean viaVersionApiAvailable;
     private RoleBroadcastListener roleBroadcastListener;
     private SpigotCashCache spigotCashCacheInstance;
-    private final ObjectMapper mapper = new ObjectMapper();
 
     public SpigotModule(Plugin plugin, Logger logger) {
         super(logger);
@@ -136,7 +136,7 @@ public class SpigotModule extends AbstractCoreModule {
         stopPlayerHeartbeatTask();
         stopServerHeartbeatTask();
 
-        sendServerStatusJson("STOPPING");
+        sendServerStatusPacket(ServerStatus.STOPPING);
 
         ServiceRegistry.getInstance().unregisterService(SoundPlayer.class);
         ServiceRegistry.getInstance().unregisterService(PermissionRefresher.class);
@@ -195,37 +195,45 @@ public class SpigotModule extends AbstractCoreModule {
         String serverId = getServerId();
         if (serverId == null || serverId.isEmpty()) return;
 
-        String gameState = System.getProperty("game.state", "WAITING");
+        String gameStateStr = System.getProperty("game.state", "WAITING");
+        GameState gameState;
+        try {
+            gameState = GameState.valueOf(gameStateStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            gameState = GameState.UNKNOWN;
+        }
+
         String mapName = System.getProperty("game.map", "Unknown");
         boolean canShutdown = Boolean.parseBoolean(System.getProperty("server.canShutdown", "true"));
+        ServerStatus status = forceOnline ? ServerStatus.ONLINE : ServerStatus.ONLINE;
 
-        String status = forceOnline ? "ONLINE" : "ONLINE";
+        ServerHeartbeatPacket packet = ServerHeartbeatPacket.builder()
+                .serverName(serverId)
+                .status(status)
+                .gameState(gameState)
+                .mapName(mapName)
+                .canShutdown(canShutdown)
+                .playerCount(Bukkit.getOnlinePlayers().size())
+                .maxPlayers(Bukkit.getMaxPlayers())
+                .build();
 
-        try {
-            ObjectNode node = mapper.createObjectNode();
-            node.put("server", serverId);
-            node.put("status", status);
-            node.put("gameState", gameState);
-            node.put("mapName", mapName);
-            node.put("canShutdown", canShutdown);
-            node.put("players", Bukkit.getOnlinePlayers().size());
-            node.put("maxPlayers", Bukkit.getMaxPlayers());
-
-            RedisPublisher.publish(RedisChannel.SERVER_STATUS_UPDATE, node.toString());
-        } catch (Exception e) {
-            logger.warning("Falha ao enviar Server Heartbeat.");
-        }
+        RedisPublisher.publish(packet);
     }
 
-    private void sendServerStatusJson(String status) {
+    private void sendServerStatusPacket(ServerStatus status) {
         String serverId = getServerId();
         if (serverId == null) return;
-        try {
-            ObjectNode node = mapper.createObjectNode();
-            node.put("server", serverId);
-            node.put("status", status);
-            RedisPublisher.publish(RedisChannel.SERVER_STATUS_UPDATE, node.toString());
-        } catch (Exception ignored) {}
+
+        ServerHeartbeatPacket packet = ServerHeartbeatPacket.builder()
+                .serverName(serverId)
+                .status(status)
+                .gameState(GameState.UNKNOWN)
+                .canShutdown(true)
+                .playerCount(0)
+                .maxPlayers(0)
+                .build();
+
+        RedisPublisher.publish(packet);
     }
 
     private String getServerId() {
