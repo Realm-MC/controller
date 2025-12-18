@@ -15,6 +15,7 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -42,7 +43,7 @@ public class VelocityPermissionInjector {
         boolean loadSuccess = false;
 
         try {
-            roleService.loadPlayerDataAsync(uuid).get(10, TimeUnit.SECONDS);
+            roleService.loadPlayerDataAsync(uuid).get(8, TimeUnit.SECONDS);
 
             event.setProvider(this.provider);
             loadSuccess = true;
@@ -52,6 +53,11 @@ public class VelocityPermissionInjector {
             );
             logger.info("[VelocityPerm] " + playerName + " is now ONLINE.");
 
+        } catch (TimeoutException e) {
+            logger.warning("[VelocityPerm] Timeout ao carregar permissões para " + playerName + ". O banco de dados pode estar lento.");
+            Component kick = miniMessage.deserialize(Messages.translate(MessageKey.KICK_PROFILE_TIMEOUT));
+            player.disconnect(kick);
+
         } catch (Exception e) {
             logger.log(Level.SEVERE, "[VelocityPerm] Failed to load permissions for " + playerName, e);
             Component kick = miniMessage.deserialize(Messages.translate(MessageKey.KICK_PROFILE_ERROR));
@@ -59,6 +65,7 @@ public class VelocityPermissionInjector {
         } finally {
             if (!loadSuccess) {
                 sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, playerName));
+                roleService.removePreLoginFuture(uuid);
             }
         }
     }

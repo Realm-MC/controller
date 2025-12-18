@@ -77,9 +77,36 @@ public class RoleService {
         TaskScheduler.runAsync(() -> logRepository.insert(log));
     }
 
+    public CompletableFuture<PlayerSessionData> loadPlayerDataAsync(UUID uuid) {
+        if (sessionCache.containsKey(uuid)) {
+            return CompletableFuture.completedFuture(sessionCache.get(uuid));
+        }
+
+        CompletableFuture<PlayerSessionData> existingFuture = preLoginFutures.get(uuid);
+        if (existingFuture != null && !existingFuture.isDone()) {
+            return existingFuture;
+        }
+
+        CompletableFuture<PlayerSessionData> future = CompletableFuture.supplyAsync(() -> {
+            Profile p = profileService.getByUuid(uuid).orElse(null);
+            if (p == null) return getDefaultSessionData(uuid);
+
+            PlayerSessionData data = calculateSession(p);
+            sessionCache.put(uuid, data);
+            return data;
+        }, TaskScheduler.getAsyncExecutor());
+
+        future.whenComplete((res, ex) -> {
+            preLoginFutures.remove(uuid, future);
+        });
+
+        preLoginFutures.put(uuid, future);
+        return future;
+    }
+
     public void startPreLoadingPlayerData(UUID uuid) {
         if (uuid != null) {
-            preLoginFutures.computeIfAbsent(uuid, k -> loadPlayerDataAsync(k));
+            loadPlayerDataAsync(uuid);
         }
     }
 
@@ -89,7 +116,10 @@ public class RoleService {
 
     public void removePreLoginFuture(UUID uuid) {
         if (uuid != null) {
-            preLoginFutures.remove(uuid);
+            CompletableFuture<PlayerSessionData> f = preLoginFutures.remove(uuid);
+            if (f != null && !f.isDone()) {
+                f.cancel(true);
+            }
         }
     }
 
@@ -118,6 +148,7 @@ public class RoleService {
     }
 
     private void processExpirationWarning(Object playerObj, UUID uuid) {
+        // Implementação futura de avisos
     }
 
     private void updatePauseState(Profile profile) {
@@ -337,25 +368,6 @@ public class RoleService {
     public void invalidateSession(UUID uuid) {
         sessionCache.remove(uuid);
         removePreLoginFuture(uuid);
-    }
-
-    public CompletableFuture<PlayerSessionData> loadPlayerDataAsync(UUID uuid) {
-        if (sessionCache.containsKey(uuid)) {
-            return CompletableFuture.completedFuture(sessionCache.get(uuid));
-        }
-        CompletableFuture<PlayerSessionData> existingFuture = preLoginFutures.get(uuid);
-        if (existingFuture != null) {
-            return existingFuture;
-        }
-
-        return CompletableFuture.supplyAsync(() -> {
-            Profile p = profileService.getByUuid(uuid).orElse(null);
-            if (p == null) return getDefaultSessionData(uuid);
-
-            PlayerSessionData data = calculateSession(p);
-            sessionCache.put(uuid, data);
-            return data;
-        }, TaskScheduler.getAsyncExecutor());
     }
 
     public Optional<PlayerSessionData> getSessionDataFromCache(UUID uuid) {

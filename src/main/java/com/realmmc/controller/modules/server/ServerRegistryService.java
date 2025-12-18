@@ -79,6 +79,8 @@ public class ServerRegistryService {
     }
 
     public void updateServerHeartbeat(String serverName, ServerStatus status, GameState gameState, String mapName, boolean canShutdown, int players) {
+        if (healthCheckTask == null) return;
+
         TaskScheduler.runAsync(() -> {
             try {
                 Optional<ServerInfo> opt = repository.findByName(serverName);
@@ -105,7 +107,9 @@ public class ServerRegistryService {
                     if (changed) repository.save(server);
                 }
             } catch (Exception e) {
-                logger.log(Level.SEVERE, "Erro ao atualizar heartbeat para " + serverName, e);
+                if (!e.getMessage().contains("state should be: open")) {
+                    logger.log(Level.SEVERE, "Erro ao atualizar heartbeat para " + serverName, e);
+                }
             }
         });
     }
@@ -447,6 +451,10 @@ public class ServerRegistryService {
     }
 
     public void shutdown() {
-        if (healthCheckTask != null) healthCheckTask.cancel(true);
+        if (healthCheckTask != null) {
+            healthCheckTask.cancel(true);
+            healthCheckTask = null;
+        }
+        logger.info("[ServerRegistry] Serviço finalizado. Tarefas de heartbeat canceladas.");
     }
 }

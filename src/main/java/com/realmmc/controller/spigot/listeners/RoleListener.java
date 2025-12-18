@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.realmmc.controller.core.services.ServiceRegistry;
 import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.shared.annotations.Listeners;
+import com.realmmc.controller.shared.auth.AuthenticationGuard;
 import com.realmmc.controller.shared.messaging.Message;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
@@ -36,19 +37,33 @@ public class RoleListener implements Listener, RedisMessageListener {
     private final ProfileService profileService;
     private final Optional<SoundPlayer> soundPlayer;
     private final ObjectMapper mapper = new ObjectMapper();
+    private final boolean isLoginServer;
 
     public RoleListener() {
         this.roleService = ServiceRegistry.getInstance().requireService(RoleService.class);
         this.profileService = ServiceRegistry.getInstance().requireService(ProfileService.class);
         this.soundPlayer = ServiceRegistry.getInstance().getService(SoundPlayer.class);
+        this.isLoginServer = checkIsLoginServer();
 
         ServiceRegistry.getInstance().getService(RedisSubscriber.class)
                 .ifPresent(sub -> sub.registerListener(RedisChannel.ROLE_NOTIFICATION, this));
     }
 
+    private boolean checkIsLoginServer() {
+        String mapType = System.getProperty("MAP_TYPE");
+        if (mapType != null && mapType.equalsIgnoreCase("login")) return true;
+
+        String serverId = System.getProperty("controller.serverId");
+        if (serverId != null && serverId.toLowerCase().startsWith("login")) return true;
+
+        return Bukkit.getServer().getName().toLowerCase().startsWith("login");
+    }
+
     @Override
     public void onMessage(String channel, String message) {
         if (!RedisChannel.ROLE_NOTIFICATION.getName().equals(channel)) return;
+
+        if (isLoginServer) return;
 
         try {
             JsonNode node = mapper.readTree(message);
@@ -56,7 +71,7 @@ public class RoleListener implements Listener, RedisMessageListener {
             String roleName = node.get("role").asText();
 
             Player player = Bukkit.getPlayer(uuid);
-            if (player != null && player.isOnline()) {
+            if (player != null && player.isOnline() && AuthenticationGuard.isAuthenticated(uuid)) {
                 Bukkit.getScheduler().runTask(Main.getInstance(), () -> notifyPlayer(player, roleName));
             }
         } catch (Exception e) {
@@ -67,11 +82,18 @@ public class RoleListener implements Listener, RedisMessageListener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+
+        if (isLoginServer) return;
 
         Bukkit.getScheduler().runTaskAsynchronously(Main.getInstance(), () -> {
-            roleService.checkExpiration(player.getUniqueId());
+            roleService.checkExpiration(uuid);
 
-            profileService.getByUuid(player.getUniqueId()).ifPresent(profile -> {
+            if (!AuthenticationGuard.isAuthenticated(uuid)) {
+                return;
+            }
+
+            profileService.getByUuid(uuid).ifPresent(profile -> {
                 if (profile.getRoles() != null) {
                     for (PlayerRole pr : profile.getRoles()) {
                         if (pr.isPendingNotification() && !pr.hasExpired()) {
@@ -84,6 +106,10 @@ public class RoleListener implements Listener, RedisMessageListener {
     }
 
     private void notifyPlayer(Player player, String roleName) {
+        if (isLoginServer || !AuthenticationGuard.isAuthenticated(player.getUniqueId())) {
+            return;
+        }
+
         Optional<Role> roleOpt = roleService.getRole(roleName);
         if (roleOpt.isEmpty()) return;
         Role role = roleOpt.get();

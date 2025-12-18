@@ -11,6 +11,8 @@ import com.realmmc.controller.shared.session.SessionTrackerService;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -45,9 +47,15 @@ public final class NicknameFormatter {
         if (cachedData.isPresent()) return cachedData;
 
         try {
-            return Optional.ofNullable(roleService.loadPlayerDataAsync(uuid).join());
+            return roleService.getPreLoginFuture(uuid)
+                    .map(CompletableFuture::join)
+                    .map(Optional::of)
+                    .orElseGet(Optional::empty);
         } catch (Exception e) {
-            logger.log(Level.WARNING, "[NicknameFormatter] Failed to load session data for " + uuid, e);
+            if (e instanceof CancellationException || e.getCause() instanceof CancellationException) {
+            } else {
+                logger.log(Level.FINE, "[NicknameFormatter] Failed to load session data for " + uuid + ": " + e.getMessage());
+            }
             return Optional.empty();
         }
     }

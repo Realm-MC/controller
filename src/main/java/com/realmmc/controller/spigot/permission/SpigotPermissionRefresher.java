@@ -8,7 +8,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import java.util.UUID;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class SpigotPermissionRefresher implements PermissionRefresher {
@@ -31,15 +30,26 @@ public class SpigotPermissionRefresher implements PermissionRefresher {
             Player player = Bukkit.getPlayer(playerUuid);
 
             if (player != null && player.isOnline()) {
+                logger.info("[SpigotPerm] Refresh solicitado para " + player.getName() + ". Invalidando cache...");
+
+                roleService.invalidateSession(playerUuid);
+
                 roleService.loadPlayerDataAsync(playerUuid).thenAccept(sessionData -> {
 
                     Bukkit.getScheduler().runTask(plugin, () -> {
                         if (!player.isOnline()) return;
 
                         player.recalculatePermissions();
+
                         player.updateCommands();
 
-                        logger.info("[PermissionRefresher] Permissões aplicadas e atualizadas para " + player.getName());
+                        if (player.isOp() && sessionData != null &&
+                                !sessionData.getPrimaryRole().getType().equals(com.realmmc.controller.shared.role.RoleType.STAFF)) {
+                            player.setOp(false);
+                            logger.info("[SpigotPerm] OP removido de " + player.getName());
+                        }
+
+                        logger.info("[SpigotPerm] Permissões e Comandos atualizados para " + player.getName());
                     });
                 });
             }

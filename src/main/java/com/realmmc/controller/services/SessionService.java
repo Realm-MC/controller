@@ -7,6 +7,7 @@ import com.realmmc.controller.shared.auth.AuthenticationGuard;
 import com.realmmc.controller.shared.messaging.MessageKey;
 import com.realmmc.controller.shared.messaging.Messages;
 import com.realmmc.controller.shared.session.SessionTrackerService;
+import com.realmmc.controller.shared.utils.TaskScheduler;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -17,7 +18,9 @@ import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -35,79 +38,84 @@ public class SessionService implements Listener {
             if (sessionTrackerServiceOpt.isEmpty()) {
                 logger.warning("SessionTrackerService não encontrado no SessionService!");
             }
-            logger.info("SessionService inicializado.");
+            logger.info("SessionService inicializado (Correção de Thread-Blocking Aplicada).");
         } catch (IllegalStateException e) {
-            logger.log(Level.SEVERE, "Erro crítico: Serviço dependente (RoleService ou SessionTrackerService) não encontrado ao iniciar SessionService! Funcionalidade comprometida.", e);
-            throw new RuntimeException("Falha ao inicializar SessionService: Dependência(s) ausente(s).", e);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onAsyncPreLogin(AsyncPlayerPreLoginEvent event) {
-        if (event.getLoginResult() == AsyncPlayerPreLoginEvent.Result.ALLOWED) {
-            UUID uuid = event.getUniqueId();
-            logger.finer("[SessionService] AsyncPreLogin: Iniciando pré-carregamento de roles para " + uuid);
-            roleService.startPreLoadingPlayerData(uuid);
-        } else {
-            UUID uuid = event.getUniqueId();
-            sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, event.getName()));
-            roleService.removePreLoginFuture(uuid);
+            logger.log(Level.SEVERE, "Erro crítico: Serviço dependente não encontrado.", e);
+            throw new RuntimeException("Falha ao inicializar SessionService.", e);
         }
     }
 
     @EventHandler(priority = EventPriority.HIGH)
-    public void onLoginWaitForLoadAndSetOnline(PlayerLoginEvent event) {
+    public void onAsyncPreLogin(AsyncPlayerPreLoginEvent event) {
+        if (event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) {
+            return;
+        }
+
+        UUID uuid = event.getUniqueId();
+        String playerName = event.getName();
+
+        logger.finer("[SessionService] AsyncPreLogin: Iniciando carregamento de dados para " + playerName);
+
+        roleService.startPreLoadingPlayerData(uuid);
+
+        try {
+            Optional<CompletableFuture<PlayerSessionData>> futureOpt = roleService.getPreLoginFuture(uuid);
+
+            if (futureOpt.isPresent()) {
+                futureOpt.get().get(10, TimeUnit.SECONDS);
+                logger.finer("[SessionService] Dados carregados com sucesso no AsyncPreLogin para " + playerName);
+            } else {
+                throw new IllegalStateException("Futuro de carregamento não encontrado.");
+            }
+
+        } catch (TimeoutException e) {
+            logger.warning("[SessionService] Timeout ao carregar perfil de " + playerName + ". Cancelando conexão.");
+            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER,
+                    Messages.translate(MessageKey.KICK_PROFILE_TIMEOUT));
+            cleanupSession(uuid, playerName);
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "[SessionService] Erro ao carregar dados de " + playerName, e);
+            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER,
+                    Messages.translate(MessageKey.KICK_PROFILE_ERROR));
+            cleanupSession(uuid, playerName);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onLoginCheck(PlayerLoginEvent event) {
         final Player player = event.getPlayer();
         final UUID uuid = player.getUniqueId();
         final String playerName = player.getName();
 
-        if (event.getResult() != PlayerLoginEvent.Result.ALLOWED) {
-            logger.finer("[SessionService] Login negado (HIGH) para " + playerName + ". Limpando futuro e sessão.");
-            roleService.removePreLoginFuture(uuid);
-            sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, playerName));
-            return;
+        Optional<PlayerSessionData> sessionData = roleService.getSessionDataFromCache(uuid);
+
+        if (sessionData.isPresent()) {
+
+            TaskScheduler.runAsync(() -> {
+                sessionTrackerServiceOpt.ifPresent(service ->
+                        service.setSessionState(uuid, AuthenticationGuard.STATE_ONLINE)
+                );
+            });
+
+            logger.finer("[SessionService] Login permitido para " + playerName + " (Dados em cache).");
+        } else {
+            logger.warning("[SessionService] Jogador " + playerName + " tentou entrar sem dados em cache! Kickando.");
+            event.disallow(PlayerLoginEvent.Result.KICK_OTHER,
+                    Messages.translate(MessageKey.KICK_PROFILE_UNEXPECTED));
+
+            cleanupSession(uuid, playerName);
         }
 
-        logger.finer("[SessionService] PlayerLogin (HIGH): Aguardando conclusão do pré-carregamento/carregamento sync para " + playerName);
-        boolean loadSuccess = false;
-        try {
-            Optional<CompletableFuture<PlayerSessionData>> futureOpt = roleService.getPreLoginFuture(uuid);
-            if (futureOpt.isPresent()) {
-                try {
-                    futureOpt.get().get(10, TimeUnit.SECONDS);
-                    logger.finer("[SessionService] Pré-carregamento concluído (HIGH) para " + playerName);
-                    loadSuccess = true;
-                } catch (TimeoutException te) {
-                    logger.log(Level.SEVERE, "[SessionService] Timeout (HIGH) esperando pré-carregamento para " + playerName + "! Kickando...");
-                    event.disallow(PlayerLoginEvent.Result.KICK_OTHER, Messages.translate(MessageKey.KICK_PROFILE_TIMEOUT));
-                } catch (Exception e) {
-                    Throwable cause = (e instanceof ExecutionException || e instanceof CompletionException) ? e.getCause() : e;
-                    logger.log(Level.SEVERE, "[SessionService] Erro (HIGH) ao esperar pré-carregamento para " + playerName, cause);
-                    event.disallow(PlayerLoginEvent.Result.KICK_OTHER, Messages.translate(MessageKey.KICK_PROFILE_ERROR));
-                }
-            } else {
-                if (roleService.getSessionDataFromCache(uuid).isPresent()) {
-                    logger.log(Level.INFO, "[SessionService] Futuro não encontrado (HIGH) para {0}, mas dados já estão no cache. Assumindo sucesso.", playerName);
-                    loadSuccess = true;
-                } else {
-                    logger.log(Level.SEVERE, "[SessionService] CRÍTICO (HIGH): Futuro de pré-login não encontrado E cache vazio para {0}! Kickando.", playerName);
-                    event.disallow(PlayerLoginEvent.Result.KICK_OTHER, Messages.translate(MessageKey.KICK_PROFILE_UNEXPECTED));
-                }
-            }
-        } finally {
-            roleService.removePreLoginFuture(uuid);
-            if (!loadSuccess && event.getResult() == PlayerLoginEvent.Result.ALLOWED) {
-                logger.log(Level.SEVERE, "[SessionService] Carregamento falhou (HIGH) mas evento não foi cancelado! Limpando sessão Redis para " + playerName);
-                sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, playerName));
-            } else if (loadSuccess) {
-                sessionTrackerServiceOpt.ifPresent(service -> service.setSessionState(uuid, AuthenticationGuard.STATE_ONLINE));
-                logger.fine("[SessionService] Estado da sessão definido como ONLINE para " + playerName);
-            }
-        }
-        if(loadSuccess) logger.finer("[SessionService] Processamento de login (HIGH) concluído para " + playerName);
+        roleService.removePreLoginFuture(uuid);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
+    }
+
+    private void cleanupSession(UUID uuid, String name) {
+        sessionTrackerServiceOpt.ifPresent(service -> service.endSession(uuid, name));
+        roleService.removePreLoginFuture(uuid);
+        roleService.invalidateSession(uuid);
     }
 }

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mongodb.MongoException;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.FindOneAndUpdateOptions;
+import com.mongodb.client.model.ReturnDocument;
 import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.UpdateResult;
 import com.realmmc.controller.core.services.ServiceRegistry;
@@ -20,7 +22,6 @@ import com.realmmc.controller.shared.storage.mongodb.MongoSequences;
 import com.realmmc.controller.shared.storage.redis.RedisChannel;
 import com.realmmc.controller.shared.storage.redis.RedisPublisher;
 import com.realmmc.controller.shared.messaging.Messages;
-import com.realmmc.controller.shared.utils.StringUtils;
 import com.realmmc.controller.shared.utils.TaskScheduler;
 
 import java.util.*;
@@ -261,48 +262,78 @@ public class ProfileService {
                 Updates.inc("pendingCash", amount),
                 Updates.set("updatedAt", System.currentTimeMillis())
         );
-        UpdateResult result = repository.collection().updateOne(filter, update);
 
-        if (result.getModifiedCount() > 0) {
+        FindOneAndUpdateOptions options = new FindOneAndUpdateOptions()
+                .returnDocument(ReturnDocument.AFTER)
+                .upsert(false);
+
+        Profile updatedProfile = repository.collection().findOneAndUpdate(filter, update, options);
+
+        if (updatedProfile != null) {
             try {
                 ObjectNode node = mapper.createObjectNode();
                 node.put("uuid", targetUuid.toString());
                 node.put("amount", amount);
                 RedisPublisher.publish(RedisChannel.CASH_NOTIFICATION, node.toString());
-            } catch (Exception e) {}
+            } catch (Exception e) {
+                LOGGER.warning("Failed to publish cash notification: " + e.getMessage());
+            }
 
             updateLocalAndPublish(targetUuid, p -> {
-                int old = p.getCash();
-                p.setCash(p.getCash() + amount);
-                p.setPendingCash(p.getPendingCash() + amount);
-                logCash(targetUuid, p.getName(), sourceName, LogType.ADD, amount, old, p.getCash());
+                int oldBalance = p.getCash();
+
+                p.setCash(updatedProfile.getCash());
+                p.setPendingCash(updatedProfile.getPendingCash());
+                p.setUpdatedAt(updatedProfile.getUpdatedAt());
+
+                logCash(targetUuid, p.getName(), sourceName, LogType.ADD, amount, oldBalance, p.getCash());
             });
         }
     }
 
     public void resetPendingCash(UUID targetUuid) {
         if (targetUuid == null) return;
-        update(targetUuid, p -> {
-            if (p.getPendingCash() > 0) {
+
+        org.bson.conversions.Bson filter = Filters.eq("uuid", targetUuid);
+        org.bson.conversions.Bson update = Updates.combine(
+                Updates.set("pendingCash", 0),
+                Updates.set("updatedAt", System.currentTimeMillis())
+        );
+
+        FindOneAndUpdateOptions options = new FindOneAndUpdateOptions()
+                .returnDocument(ReturnDocument.AFTER);
+
+        Profile updatedProfile = repository.collection().findOneAndUpdate(filter, update, options);
+
+        if (updatedProfile != null) {
+            updateLocalAndPublish(targetUuid, p -> {
                 p.setPendingCash(0);
-                return true;
-            }
-            return false;
-        }, "reset_pending_cash");
+                p.setUpdatedAt(updatedProfile.getUpdatedAt());
+            });
+        }
     }
 
     public boolean removeCash(UUID targetUuid, int amount, UUID sourceUuid, String sourceName) {
         if (targetUuid == null || amount <= 0) return false;
-        long now = System.currentTimeMillis();
-        org.bson.conversions.Bson filter = Filters.and(Filters.eq("uuid", targetUuid), Filters.gte("cash", amount));
-        org.bson.conversions.Bson update = Updates.combine(Updates.inc("cash", -amount), Updates.set("updatedAt", now));
 
-        UpdateResult result = repository.collection().updateOne(filter, update);
-        if (result.getModifiedCount() > 0) {
+        org.bson.conversions.Bson filter = Filters.and(Filters.eq("uuid", targetUuid), Filters.gte("cash", amount));
+        org.bson.conversions.Bson update = Updates.combine(
+                Updates.inc("cash", -amount),
+                Updates.set("updatedAt", System.currentTimeMillis())
+        );
+
+        FindOneAndUpdateOptions options = new FindOneAndUpdateOptions()
+                .returnDocument(ReturnDocument.AFTER);
+
+        Profile updatedProfile = repository.collection().findOneAndUpdate(filter, update, options);
+
+        if (updatedProfile != null) {
             updateLocalAndPublish(targetUuid, p -> {
-                int old = p.getCash();
-                p.setCash(p.getCash() - amount);
-                logCash(targetUuid, p.getName(), sourceName, LogType.REMOVE, amount, old, p.getCash());
+                int oldBalance = p.getCash();
+                p.setCash(updatedProfile.getCash());
+                p.setUpdatedAt(updatedProfile.getUpdatedAt());
+
+                logCash(targetUuid, p.getName(), sourceName, LogType.REMOVE, amount, oldBalance, p.getCash());
             });
             return true;
         }
@@ -311,25 +342,32 @@ public class ProfileService {
 
     public void setCash(UUID targetUuid, int amount, UUID sourceUuid, String sourceName) {
         if (targetUuid == null || amount < 0) return;
-        update(targetUuid, p -> {
-            if (p.getCash() != amount) {
-                int old = p.getCash();
-                p.setCash(amount);
-                logCash(targetUuid, p.getName(), sourceName, LogType.SET, amount, old, p.getCash());
-                return true;
-            }
-            return false;
-        }, "cash_set");
+
+        org.bson.conversions.Bson filter = Filters.eq("uuid", targetUuid);
+        org.bson.conversions.Bson update = Updates.combine(
+                Updates.set("cash", amount),
+                Updates.set("updatedAt", System.currentTimeMillis())
+        );
+
+        FindOneAndUpdateOptions options = new FindOneAndUpdateOptions()
+                .returnDocument(ReturnDocument.AFTER);
+
+        Profile updatedProfile = repository.collection().findOneAndUpdate(filter, update, options);
+
+        if (updatedProfile != null) {
+            updateLocalAndPublish(targetUuid, p -> {
+                int oldBalance = p.getCash();
+                if (oldBalance != amount) {
+                    p.setCash(updatedProfile.getCash());
+                    p.setUpdatedAt(updatedProfile.getUpdatedAt());
+                    logCash(targetUuid, p.getName(), sourceName, LogType.SET, amount, oldBalance, p.getCash());
+                }
+            });
+        }
     }
 
     public void clearCash(UUID targetUuid, UUID sourceUuid, String sourceName) {
-        if (targetUuid == null) return;
-        update(targetUuid, p -> {
-            int old = p.getCash();
-            p.setCash(0);
-            logCash(targetUuid, p.getName(), sourceName, LogType.CLEAR, 0, old, 0);
-            return true;
-        }, "cash_clear");
+        setCash(targetUuid, 0, sourceUuid, sourceName);
     }
 
     private void updateLocalAndPublish(UUID uuid, Consumer<Profile> action) {
@@ -337,7 +375,6 @@ public class ProfileService {
         if (localOpt.isPresent()) {
             Profile p = localOpt.get();
             action.accept(p);
-            p.setUpdatedAt(System.currentTimeMillis());
             publish("upsert", p);
             updateSessionData(uuid, p.getCash(), p.getPrimaryRoleName(), p.getEquippedMedal());
         }

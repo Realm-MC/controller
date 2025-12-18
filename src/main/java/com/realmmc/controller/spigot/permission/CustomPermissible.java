@@ -11,10 +11,10 @@ public class CustomPermissible extends PermissibleBase {
 
     private final UUID uuid;
     private final RoleService roleService;
-    private final Player player; // Mantemos uma referência para o 'isOp()'
+    private final Player player;
 
     public CustomPermissible(Player player, RoleService roleService) {
-        super(player); // Passa o jogador para a classe base
+        super(player);
         this.player = player;
         this.uuid = player.getUniqueId();
         this.roleService = roleService;
@@ -30,18 +30,13 @@ public class CustomPermissible extends PermissibleBase {
             return false;
         }
 
-        // 1. Um Operador (OP) deve ter sempre todas as permissões
         if (player.isOp()) {
             return true;
         }
 
-        // 2. Chama o nosso RoleService para verificar
         return roleService.hasPermission(uuid, permission);
     }
 
-    /**
-     * Versão sobrecarregada que também precisa ser substituída.
-     */
     @Override
     public boolean hasPermission(Permission perm) {
         if (perm == null) {

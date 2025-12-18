@@ -2,6 +2,7 @@ package com.realmmc.controller.modules.spigot;
 
 import com.realmmc.controller.core.modules.AbstractCoreModule;
 import com.realmmc.controller.core.services.ServiceRegistry;
+import com.realmmc.controller.modules.role.RedisRoleSyncListener;
 import com.realmmc.controller.modules.role.RoleService;
 import com.realmmc.controller.modules.server.data.GameState;
 import com.realmmc.controller.modules.server.data.ServerStatus;
@@ -19,6 +20,7 @@ import com.realmmc.controller.spigot.listeners.ListenersManager;
 import com.realmmc.controller.spigot.listeners.RoleBroadcastListener;
 import com.realmmc.controller.spigot.permission.SpigotPermissionInjector;
 import com.realmmc.controller.spigot.permission.SpigotPermissionRefresher;
+import com.realmmc.controller.spigot.services.SpigotGlobalCache;
 import com.realmmc.controller.spigot.sounds.SpigotSoundPlayer;
 import com.realmmc.controller.shared.session.SessionTrackerService;
 import com.realmmc.controller.shared.utils.TaskScheduler;
@@ -44,7 +46,9 @@ public class SpigotModule extends AbstractCoreModule {
     private ScheduledFuture<?> playerHeartbeatTask = null;
     private ScheduledFuture<?> serverHeartbeatTask = null;
     private final boolean viaVersionApiAvailable;
+
     private RoleBroadcastListener roleBroadcastListener;
+    private RedisRoleSyncListener roleSyncListener;
     private SpigotCashCache spigotCashCacheInstance;
 
     public SpigotModule(Plugin plugin, Logger logger) {
@@ -54,8 +58,8 @@ public class SpigotModule extends AbstractCoreModule {
     }
 
     @Override public String getName() { return "SpigotModule"; }
-    @Override public String getVersion() { return "1.1.0"; }
-    @Override public String getDescription() { return "Módulo Spigot (v2) com GameState Heartbeat."; }
+    @Override public String getVersion() { return "1.1.1"; }
+    @Override public String getDescription() { return "Módulo Spigot (v2) com Sincronização de Permissões."; }
     @Override public int getPriority() { return 50; }
 
     @Override public String[] getDependencies() {
@@ -70,6 +74,10 @@ public class SpigotModule extends AbstractCoreModule {
         try {
             ServiceRegistry.getInstance().registerService(SoundPlayer.class, new SpigotSoundPlayer());
         } catch (Exception e) { logger.log(Level.WARNING, "Failed to register SoundPlayer", e); }
+
+        try {
+            ServiceRegistry.getInstance().registerService(SpigotGlobalCache.class, new SpigotGlobalCache());
+        } catch (Exception e) { logger.log(Level.WARNING, "Failed to register SpigotGlobalCache", e); }
 
         try { CommandManager.registerAll(plugin); } catch (Exception e) { logger.severe("Failed to register commands: " + e.getMessage()); }
         try { ListenersManager.registerAll(plugin); } catch (Exception e) { logger.severe("Failed to register listeners: " + e.getMessage()); }
@@ -103,15 +111,21 @@ public class SpigotModule extends AbstractCoreModule {
 
     private void setupRedisListeners() {
         try {
+            RedisSubscriber sub = ServiceRegistry.getInstance().requireService(RedisSubscriber.class);
+
             this.spigotCashCacheInstance = new SpigotCashCache();
             ServiceRegistry.getInstance().registerService(SpigotCashCache.class, this.spigotCashCacheInstance);
             Bukkit.getServer().getPluginManager().registerEvents(this.spigotCashCacheInstance, plugin);
-
-            RedisSubscriber sub = ServiceRegistry.getInstance().requireService(RedisSubscriber.class);
             sub.registerListener(RedisChannel.PROFILES_SYNC, this.spigotCashCacheInstance);
+            sub.registerListener(RedisChannel.CASH_NOTIFICATION, this.spigotCashCacheInstance);
 
             this.roleBroadcastListener = new RoleBroadcastListener();
             sub.registerListener(RedisChannel.ROLE_BROADCAST, this.roleBroadcastListener);
+
+            this.roleSyncListener = new RedisRoleSyncListener();
+            this.roleSyncListener.startListening();
+            logger.info("[SpigotModule] RedisRoleSyncListener iniciado.");
+
         } catch (Exception e) {
             logger.severe("Failed to setup Redis listeners: " + e.getMessage());
         }
@@ -121,6 +135,7 @@ public class SpigotModule extends AbstractCoreModule {
         ServiceRegistry.getInstance().getService(RoleService.class).ifPresentOrElse(roleService -> {
             if (this.permissionInjectorInstance != null) {
                 ServiceRegistry.getInstance().registerService(PermissionRefresher.class, new SpigotPermissionRefresher(plugin, logger));
+
                 RoleKickHandler.initialize((uuid, msg) -> {
                     Bukkit.getScheduler().runTask(plugin, () -> {
                         Player p = Bukkit.getPlayer(uuid);
@@ -139,6 +154,7 @@ public class SpigotModule extends AbstractCoreModule {
         sendServerStatusPacket(ServerStatus.STOPPING);
 
         ServiceRegistry.getInstance().unregisterService(SoundPlayer.class);
+        ServiceRegistry.getInstance().unregisterService(SpigotGlobalCache.class);
         ServiceRegistry.getInstance().unregisterService(PermissionRefresher.class);
         ServiceRegistry.getInstance().unregisterService(SpigotCashCache.class);
 
@@ -148,12 +164,18 @@ public class SpigotModule extends AbstractCoreModule {
         }
         if (sessionServiceInstance != null) HandlerList.unregisterAll(sessionServiceInstance);
 
+        if (roleSyncListener != null) roleSyncListener.stopListening();
+
         RedisSubscriber sub = ServiceRegistry.getInstance().getService(RedisSubscriber.class).orElse(null);
         if (sub != null) {
-            if (spigotCashCacheInstance != null) sub.unregisterListener(RedisChannel.PROFILES_SYNC);
+            if (spigotCashCacheInstance != null) {
+                sub.unregisterListener(RedisChannel.PROFILES_SYNC);
+                sub.unregisterListener(RedisChannel.CASH_NOTIFICATION);
+            }
             if (roleBroadcastListener != null) sub.unregisterListener(RedisChannel.ROLE_BROADCAST);
         }
     }
+
 
     private void startPlayerHeartbeatTask() {
         if (sessionTrackerServiceOpt.isPresent()) {

@@ -100,8 +100,10 @@ public class ProxyModule extends AbstractCoreModule {
             try {
                 RoleKickHandler.PlatformKicker kicker = (uuid, formattedKickMessage) -> {
                     server.getPlayer(uuid).ifPresent(player -> {
-                        net.kyori.adventure.text.Component kickComponent = MiniMessage.miniMessage().deserialize(formattedKickMessage);
-                        player.disconnect(kickComponent);
+                        server.getScheduler().buildTask(pluginInstance, () -> {
+                            net.kyori.adventure.text.Component kickComponent = MiniMessage.miniMessage().deserialize(formattedKickMessage);
+                            player.disconnect(kickComponent);
+                        }).schedule();
                     });
                 };
                 RoleKickHandler.initialize(kicker);

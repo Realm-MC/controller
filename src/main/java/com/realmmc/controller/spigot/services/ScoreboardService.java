@@ -34,6 +34,7 @@ public class ScoreboardService implements Listener {
 
     private final Optional<LogService> logService;
     private final Optional<SpigotCashCache> cashCache;
+    private final Optional<SpigotGlobalCache> globalCache;
 
     private final SimpleDateFormat dateFormat;
     private final DecimalFormat cashFormatter;
@@ -44,6 +45,7 @@ public class ScoreboardService implements Listener {
 
         this.logService = ServiceRegistry.getInstance().getService(LogService.class);
         this.cashCache = ServiceRegistry.getInstance().getService(SpigotCashCache.class);
+        this.globalCache = ServiceRegistry.getInstance().getService(SpigotGlobalCache.class);
 
         this.dateFormat = new SimpleDateFormat("dd/MM/yy");
         this.dateFormat.setTimeZone(TimeZone.getTimeZone("America/Sao_Paulo"));
@@ -52,12 +54,11 @@ public class ScoreboardService implements Listener {
         symbols.setGroupingSeparator('.');
         this.cashFormatter = new DecimalFormat("#,###", symbols);
 
-        TaskScheduler.runSyncTimer(this::updateAll, 20L, 20L, TimeUnit.MILLISECONDS);
+        TaskScheduler.runSyncTimer(this::updateAll, 1L, 1L, TimeUnit.SECONDS);
     }
 
     public void createScoreboard(Player player) {
         if (boards.containsKey(player.getUniqueId())) return;
-
         RealmScoreboard sb = new RealmScoreboard(player);
         updateBoard(player, sb);
         boards.put(player.getUniqueId(), sb);
@@ -102,7 +103,9 @@ public class ScoreboardService implements Listener {
 
         String date = dateFormat.format(new Date());
         String logCode = logService.map(LogService::getSessionCode).orElse("----");
-        int online = Bukkit.getOnlinePlayers().size();
+
+        int online = globalCache.map(SpigotGlobalCache::getGlobalOnlineCount)
+                .orElse(Bukkit.getOnlinePlayers().size());
 
         String groupDisplay = "<gray>Membro";
         try {
