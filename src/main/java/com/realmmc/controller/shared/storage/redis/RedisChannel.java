@@ -13,7 +13,9 @@ public enum RedisChannel {
     SERVER_STATUS_UPDATE("controller:server:status"),
     GLOBAL_PLAYER_COUNT("controller:global:playercount"),
     GLOBAL_NETWORK_MAX_PLAYERS("controller:global:networkmaxplayers"),
-    CASH_NOTIFICATION("controller:cash:notification");
+    CASH_NOTIFICATION("controller:cash:notification"),
+    ARENA_RESERVATION("arcade:reservation"),
+    ARENA_HEARTBEAT("arcade:heartbeat");
 
     private final String name;
 
