@@ -4,7 +4,7 @@ plugins {
     id 'maven-publish'
 }
 
-group = 'com.realmmc.controller'
+group = 'com.palacesky.controller'
 version = '1.0'
 
 repositories {

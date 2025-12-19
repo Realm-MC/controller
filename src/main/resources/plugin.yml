@@ -1,6 +1,6 @@
 name: controller
 version: 1.0.0
-main: com.realmmc.controller.spigot.Main
+main: com.palacesky.controller.spigot.Main
 api-version: 1.21
 authors: ["xxxlc"]
 depend: [packetevents]
