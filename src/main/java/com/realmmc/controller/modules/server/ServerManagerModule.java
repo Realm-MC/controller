@@ -56,11 +56,17 @@ public class ServerManagerModule extends AbstractCoreModule {
 
             try {
                 RedisSubscriber redis = ServiceRegistry.getInstance().requireService(RedisSubscriber.class);
+
                 this.statusListener = new ServerStatusListener();
                 redis.registerListener(RedisChannel.SERVER_STATUS_UPDATE, this.statusListener);
-                logger.info("ServerStatusListener (Redis) registado.");
+
+                redis.registerListener(RedisChannel.ARENA_HEARTBEAT, (channel, msg) -> {
+                    this.serverRegistryService.handleArenaHeartbeat(msg);
+                });
+
+                logger.info("Listeners de Status (Servidor Físico e Arenas Virtuais) registados no Redis.");
             } catch (Exception e) {
-                logger.log(Level.SEVERE, "Falha ao registar ServerStatusListener", e);
+                logger.log(Level.SEVERE, "Falha ao registar Listeners Redis", e);
             }
 
             logger.info("Módulo ServerManager iniciado com sucesso.");
@@ -83,10 +89,10 @@ public class ServerManagerModule extends AbstractCoreModule {
     }
 
     private void shutdownServices() {
-        if (this.statusListener != null) {
-            ServiceRegistry.getInstance().getService(RedisSubscriber.class)
-                    .ifPresent(r -> r.unregisterListener(RedisChannel.SERVER_STATUS_UPDATE));
-        }
+        ServiceRegistry.getInstance().getService(RedisSubscriber.class).ifPresent(r -> {
+            r.unregisterListener(RedisChannel.SERVER_STATUS_UPDATE);
+            r.unregisterListener(RedisChannel.ARENA_HEARTBEAT);
+        });
 
         if (this.serverRegistryService != null) {
             this.serverRegistryService.shutdown();

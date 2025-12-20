@@ -8,7 +8,6 @@ import com.realmmc.controller.shared.storage.redis.RedisMessageListener;
 import com.realmmc.controller.shared.storage.redis.RedisSubscriber;
 import com.realmmc.controller.shared.storage.redis.packet.ArenaHeartbeatPacket;
 import com.realmmc.controller.shared.utils.TaskScheduler;
-import org.bukkit.plugin.Plugin;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -62,6 +61,17 @@ public class ArenaRegistryService implements RedisMessageListener {
 
     public Optional<ArenaHeartbeatPacket> getArena(String arenaId) {
         return Optional.ofNullable(arenas.get(arenaId));
+    }
+
+    /**
+     * Conta quantas arenas desse tipo estão no estado WAITING em toda a rede.
+     * Usado para lógica de decisão ou display.
+     */
+    public long countWaitingArenas(String gameType) {
+        return arenas.values().stream()
+                .filter(a -> a.getGameType().equalsIgnoreCase(gameType))
+                .filter(a -> a.getState() == GameState.WAITING)
+                .count();
     }
 
     public Optional<ArenaHeartbeatPacket> findBestArena(String gameType) {

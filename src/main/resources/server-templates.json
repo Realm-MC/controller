@@ -7,7 +7,7 @@
     "eggId": 5,
     "nestId": 1,
     "dockerImage": "ghcr.io/pterodactyl/yolks:java_21",
-    "startupCommand": "java -Dfile.encoding=UTF-8 -Xms128M -Xmx${MEMORY_ALLOCATION}M -jar ${SERVER_JARFILE}",
+    "startupCommand": "java -Duser.timezone=America/Sao_Paulo -Dfile.encoding=UTF-8 -Xms128M -Xmx${MEMORY_ALLOCATION}M -XX:MaxRAMPercentage=90.0 -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.newgen.generation=1 -Dcontroller.serverId=${CONTROLLER_SERVER_ID} -Dmap.type=${MAP_TYPE} -DMONGO_URI=${MONGO_URI} -DMONGO_DB=${MONGO_DB} -DREDIS_HOST=${REDIS_HOST} -DREDIS_PORT=${REDIS_PORT} -DREDIS_PASSWORD=${REDIS_PASSWORD} -DREDIS_DATABASE=${REDIS_DATABASE} -DREDIS_SSL=${REDIS_SSL} -jar ${SERVER_JARFILE}",
     "scaling": {
       "minIdle": 1,
       "maxTotal": 10,
@@ -20,7 +20,14 @@
       "TEMPLATE_URL": "https://github.com/Realm-MC/server-files-default/releases/download/lobby-v.10/Lobby.zip",
       "MAP_TYPE": "lobby",
       "VELOCITY_VERSION": "3.3.0-SNAPSHOT",
-      "BUILD_NUMBER": "latest"
+      "BUILD_NUMBER": "latest",
+      "MONGO_URI": "mongodb://admin:realmmc%40mongodb@31.97.90.152:27017",
+      "MONGO_DB": "controller",
+      "REDIS_HOST": "31.97.90.152",
+      "REDIS_PORT": "6379",
+      "REDIS_PASSWORD": "realmmc@redis",
+      "REDIS_DATABASE": "0",
+      "REDIS_SSL": "false"
     }
   },
   {
@@ -31,7 +38,7 @@
     "eggId": 5,
     "nestId": 1,
     "dockerImage": "ghcr.io/pterodactyl/yolks:java_21",
-    "startupCommand": "java -Dfile.encoding=UTF-8 -Xms128M -Xmx${MEMORY_ALLOCATION}M -jar ${SERVER_JARFILE}",
+    "startupCommand": "java -Duser.timezone=America/Sao_Paulo -Dfile.encoding=UTF-8 -Xms128M -Xmx${MEMORY_ALLOCATION}M -XX:MaxRAMPercentage=90.0 -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.newgen.generation=1 -Dcontroller.serverId=${CONTROLLER_SERVER_ID} -Dmap.type=${MAP_TYPE} -DMONGO_URI=${MONGO_URI} -DMONGO_DB=${MONGO_DB} -DREDIS_HOST=${REDIS_HOST} -DREDIS_PORT=${REDIS_PORT} -DREDIS_PASSWORD=${REDIS_PASSWORD} -DREDIS_DATABASE=${REDIS_DATABASE} -DREDIS_SSL=${REDIS_SSL} -jar ${SERVER_JARFILE}",
     "scaling": {
       "minIdle": 1,
       "maxTotal": 3,
@@ -44,7 +51,46 @@
       "TEMPLATE_URL": "https://github.com/Realm-MC/server-files-default/releases/download/login-v.10/Login.zip",
       "MAP_TYPE": "login",
       "VELOCITY_VERSION": "3.3.0-SNAPSHOT",
-      "BUILD_NUMBER": "latest"
+      "BUILD_NUMBER": "latest",
+      "MONGO_URI": "mongodb://admin:realmmc%40mongodb@31.97.90.152:27017",
+      "MONGO_DB": "controller",
+      "REDIS_HOST": "31.97.90.152",
+      "REDIS_PORT": "6379",
+      "REDIS_PASSWORD": "realmmc@redis",
+      "REDIS_DATABASE": "0",
+      "REDIS_SSL": "false"
+    }
+  },
+  {
+    "type": "HIDEANDSEEK",
+    "memory": 4096,
+    "disk": 10240,
+    "cpu": 300,
+    "eggId": 5,
+    "nestId": 1,
+    "dockerImage": "ghcr.io/pterodactyl/yolks:java_21",
+    "startupCommand": "java -Duser.timezone=America/Sao_Paulo -Dfile.encoding=UTF-8 -Xms128M -Xmx${MEMORY_ALLOCATION}M -XX:MaxRAMPercentage=90.0 -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.newgen.generation=1 -Dcontroller.serverId=${CONTROLLER_SERVER_ID} -Dmap.type=${MAP_TYPE} -DMONGO_URI=${MONGO_URI} -DMONGO_DB=${MONGO_DB} -DREDIS_HOST=${REDIS_HOST} -DREDIS_PORT=${REDIS_PORT} -DREDIS_PASSWORD=${REDIS_PASSWORD} -DREDIS_DATABASE=${REDIS_DATABASE} -DREDIS_SSL=${REDIS_SSL} -jar ${SERVER_JARFILE}",
+    "scaling": {
+      "minIdle": 5,
+      "maxTotal": 10,
+      "fullThreshold": 0.0,
+      "emptyShutdownSeconds": 120
+    },
+    "environment": {
+      "SERVER_JARFILE": "server.jar",
+      "MINECRAFT_VERSION": "1.21.4",
+      "TEMPLATE_URL": "https://github.com/Realm-MC/server-files-default/releases/download/lobby-v.10/Lobby.zip",
+      "MAP_TYPE": "hideandseek",
+      "ARCADE_SLOTS": "5",
+      "VELOCITY_VERSION": "3.3.0-SNAPSHOT",
+      "BUILD_NUMBER": "latest",
+      "MONGO_URI": "mongodb://admin:realmmc%40mongodb@31.97.90.152:27017",
+      "MONGO_DB": "controller",
+      "REDIS_HOST": "31.97.90.152",
+      "REDIS_PORT": "6379",
+      "REDIS_PASSWORD": "realmmc@redis",
+      "REDIS_DATABASE": "0",
+      "REDIS_SSL": "false"
     }
   }
 ]

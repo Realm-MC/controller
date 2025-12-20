@@ -1,12 +1,17 @@
 package com.realmmc.controller.modules.server.data;
 
-/**
- * Define o tipo de um servidor registado.
- * (Versão simplificada para Lobbies Dinâmicos)
- */
 public enum ServerType {
     LOGIN,
     LOBBY,
     PUNISHED,
-    PERSISTENT
+    PERSISTENT,
+    // Novos tipos de minigames
+    HIDEANDSEEK,
+    BEDWARS,
+    SKYWARS;
+
+    // Helper para saber se é um minigame (usa Arcade)
+    public boolean isArcade() {
+        return this == HIDEANDSEEK || this == BEDWARS || this == SKYWARS;
+    }
 }
