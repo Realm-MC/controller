@@ -15,7 +15,7 @@ import org.bukkit.scoreboard.Team;
 import java.util.ArrayList;
 import java.util.List;
 
-public class RealmScoreboard {
+public class PalaceScoreboard {
 
     private final Player player;
     private final Scoreboard scoreboard;
@@ -23,7 +23,7 @@ public class RealmScoreboard {
     private final List<String> currentLines = new ArrayList<>();
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
 
-    public RealmScoreboard(Player player) {
+    public PalaceScoreboard(Player player) {
         this.player = player;
         this.scoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
         this.objective = scoreboard.registerNewObjective("sidebar", "dummy", Component.empty());

@@ -12,7 +12,7 @@ import java.io.File;
 public class LogModule extends AbstractCoreModule {
 
     private LogService logService;
-    private RealmLogAppender appender;
+    private PalaceLogAppender appender;
 
     public LogModule(java.util.logging.Logger logger) {
         super(logger);
@@ -49,7 +49,7 @@ public class LogModule extends AbstractCoreModule {
             Object rootObj = LogManager.getRootLogger();
             if (rootObj instanceof Logger) {
                 Logger rootLogger = (Logger) rootObj;
-                this.appender = new RealmLogAppender(logService);
+                this.appender = new PalaceLogAppender(logService);
                 this.appender.start();
                 rootLogger.addAppender(appender);
                 logger.info("Interceptador de Console (Log4j) ativado.");

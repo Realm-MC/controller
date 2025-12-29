@@ -51,9 +51,9 @@ public class PterodactylService {
         this.panelUrl = System.getProperty("PTERODACTYL_PANEL_URL");
         this.clientApiKey = System.getProperty("PTERODACTYL_API_KEY");
         this.appApiKey = System.getProperty("PTERODACTYL_APP_KEY");
-        this.ownerUserId = Integer.parseInt(System.getProperty("PTERODACTYL_OWNER_USER_ID", "1"));
+        this.ownerUserId = Integer.parseInt(System.getProperty("PTERODACTYL_OWNER_USER_ID", "3"));
         this.defaultLocationId = Integer.parseInt(System.getProperty("PTERODACTYL_DEFAULT_LOCATION_ID", "1"));
-        this.defaultNodeId = Integer.parseInt(System.getProperty("PTERODACTYL_NODE_ID", "1"));
+        this.defaultNodeId = Integer.parseInt(System.getProperty("PTERODACTYL_NODE_ID", "2"));
 
         this.mongoUri = System.getProperty("MONGO_URI");
         this.mongoDb = System.getProperty("MONGO_DB");

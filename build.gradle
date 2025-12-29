@@ -38,6 +38,7 @@ dependencies {
     implementation("com.maxmind.geoip2:geoip2:4.0.1")
     compileOnly("com.viaversion:viaversion-api:5.5.1")
     implementation("org.apache.logging.log4j:log4j-core:2.25.2")
+    implementation 'net.kyori:adventure-platform-bukkit:4.3.1'
 }
 
 java {

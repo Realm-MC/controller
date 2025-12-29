@@ -38,7 +38,7 @@ public class SessionService implements Listener {
             if (sessionTrackerServiceOpt.isEmpty()) {
                 logger.warning("SessionTrackerService não encontrado no SessionService!");
             }
-            logger.info("SessionService inicializado (Correção de Thread-Blocking Aplicada).");
+            logger.info("SessionService inicializado (Correção de Cache/Future Aplicada).");
         } catch (IllegalStateException e) {
             logger.log(Level.SEVERE, "Erro crítico: Serviço dependente não encontrado.", e);
             throw new RuntimeException("Falha ao inicializar SessionService.", e);
@@ -56,17 +56,12 @@ public class SessionService implements Listener {
 
         logger.finer("[SessionService] AsyncPreLogin: Iniciando carregamento de dados para " + playerName);
 
-        roleService.startPreLoadingPlayerData(uuid);
+        CompletableFuture<PlayerSessionData> future = roleService.loadPlayerDataAsync(uuid);
 
         try {
-            Optional<CompletableFuture<PlayerSessionData>> futureOpt = roleService.getPreLoginFuture(uuid);
+            future.get(10, TimeUnit.SECONDS);
 
-            if (futureOpt.isPresent()) {
-                futureOpt.get().get(10, TimeUnit.SECONDS);
-                logger.finer("[SessionService] Dados carregados com sucesso no AsyncPreLogin para " + playerName);
-            } else {
-                throw new IllegalStateException("Futuro de carregamento não encontrado.");
-            }
+            logger.finer("[SessionService] Dados carregados com sucesso no AsyncPreLogin para " + playerName);
 
         } catch (TimeoutException e) {
             logger.warning("[SessionService] Timeout ao carregar perfil de " + playerName + ". Cancelando conexão.");

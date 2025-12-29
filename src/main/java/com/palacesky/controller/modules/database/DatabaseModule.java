@@ -50,11 +50,11 @@ public class DatabaseModule extends AbstractCoreModule {
     protected void onEnable() throws Exception {
         logger.info("Inicializando conexões de banco de dados...");
 
-        String mongoUri = System.getProperty("MONGO_URI", "mongodb://admin:realmmc%40mongodb@mongo-db:27017");
-        String mongoDb = System.getProperty("MONGO_DB", "RealmMC-controller");
-        String redisHost = System.getProperty("REDIS_HOST", "redis-db");
+        String mongoUri = System.getProperty("MONGO_URI", "mongodb://admin:%40palace.25.pass.mp@mongodb.palacesky.com:27017/?authSource=admin");
+        String mongoDb = System.getProperty("MONGO_DB", "palacesky-controller");
+        String redisHost = System.getProperty("REDIS_HOST", "redis.palacesky.com");
         int redisPort = Integer.parseInt(System.getProperty("REDIS_PORT", "6379"));
-        String redisPassword = System.getProperty("REDIS_PASSWORD", "realmmc@redis");
+        String redisPassword = System.getProperty("REDIS_PASSWORD", "@palace.25.pass.rp");
         int redisDatabase = Integer.parseInt(System.getProperty("REDIS_DATABASE", "0"));
         boolean redisSsl = Boolean.parseBoolean(System.getProperty("REDIS_SSL", "false"));
 

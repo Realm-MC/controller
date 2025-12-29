@@ -11,12 +11,12 @@ import org.bukkit.plugin.Plugin;
 import java.util.Set;
 import java.util.UUID;
 
-public class RealmPermissible extends PermissibleBase {
+public class PalacePermissible extends PermissibleBase {
     private final Player player;
     private final RoleService roleService;
     private final UUID uuid;
 
-    public RealmPermissible(Player player, RoleService roleService) {
+    public PalacePermissible(Player player, RoleService roleService) {
         super(player);
         this.player = player;
         this.roleService = roleService;

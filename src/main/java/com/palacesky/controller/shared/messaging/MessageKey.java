@@ -464,7 +464,29 @@ public enum MessageKey {
 
     ROLE_INFO_INSTANCE_ID("role.info.instance_id"),
     ROLE_INFO_ADDED_BY("role.info.added_by"),
-    ROLE_INFO_ADDED_AT("role.info.added_at");
+    ROLE_INFO_ADDED_AT("role.info.added_at"),
+
+    MOTD_HELP_VIEW("motd.help.view"),
+    MOTD_HELP_SET("motd.help.set"),
+    MOTD_HELP_DEFAULT("motd.help.default"),
+
+    MOTD_STATUS_LABEL("motd.status.label"),
+    MOTD_STATUS_CUSTOM("motd.status.custom"),
+    MOTD_STATUS_DEFAULT("motd.status.default"),
+
+    MOTD_CURRENT_HEADER("motd.current.header"),
+    MOTD_CURRENT_LINE_1("motd.current.line1"),
+    MOTD_CURRENT_LINE_2("motd.current.line2"),
+    MOTD_PREVIEW_LABEL("motd.preview.label"),
+
+    MOTD_SET_PROMPT("motd.set.prompt"),
+    MOTD_SET_SUCCESS("motd.set.success"),
+    MOTD_RESET_SUCCESS("motd.reset.success"),
+    MOTD_CANCELLED("motd.cancelled"),
+
+    MOTD_DEFINE_PROMPT("motd.define.prompt"),
+    MOTD_DEFINE_SUCCESS("motd.define.success"),
+    MOTD_DEFINE_CANCELLED("motd.define.cancelled");
 
     private final String key;
 

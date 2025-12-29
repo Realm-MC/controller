@@ -82,17 +82,17 @@ public class SpigotPermissionInjector implements Listener {
         try {
             PermissibleBase currentPermissible = (PermissibleBase) permissibleField.get(player);
 
-            if (!(currentPermissible instanceof RealmPermissible)) {
+            if (!(currentPermissible instanceof PalacePermissible)) {
                 originalPermissibles.put(uuid, currentPermissible);
-                RealmPermissible customPerm = new RealmPermissible(player, roleService);
+                PalacePermissible customPerm = new PalacePermissible(player, roleService);
                 permissibleField.set(player, customPerm);
-                logger.finer("[SpigotPerm] RealmPermissible injected for " + player.getName());
+                logger.finer("[SpigotPerm] PalacePermissible injected for " + player.getName());
             } else {
-                logger.finer("[SpigotPerm] RealmPermissible was already injected for " + player.getName());
+                logger.finer("[SpigotPerm] PalacePermissible was already injected for " + player.getName());
             }
 
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "[SpigotPerm] Failed to inject RealmPermissible for " + player.getName(), e);
+            logger.log(Level.SEVERE, "[SpigotPerm] Failed to inject PalacePermissible for " + player.getName(), e);
             String translatedKick = Messages.translate(MessageKey.KICK_PERMISSION_SYSTEM_ERROR);
             event.disallow(PlayerLoginEvent.Result.KICK_OTHER, translatedKick);
             originalPermissibles.remove(uuid);
@@ -110,11 +110,11 @@ public class SpigotPermissionInjector implements Listener {
         if (original != null) {
             try {
                 Object currentPerm = permissibleField.get(player);
-                if (currentPerm instanceof RealmPermissible) {
+                if (currentPerm instanceof PalacePermissible) {
                     permissibleField.set(player, original);
                     logger.finer("[SpigotPerm] Original PermissibleBase restored for " + player.getName());
                 } else {
-                    logger.warning("[SpigotPerm] PermissibleBase for " + player.getName() + " was not RealmPermissible on quit. Not restored.");
+                    logger.warning("[SpigotPerm] PermissibleBase for " + player.getName() + " was not PalacePermissible on quit. Not restored.");
                 }
             } catch (Exception e) {
                 logger.log(Level.WARNING, "[SpigotPerm] Failed to restore original PermissibleBase for " + player.getName(), e);
@@ -122,12 +122,12 @@ public class SpigotPermissionInjector implements Listener {
         } else {
             try {
                 Object currentPerm = permissibleField.get(player);
-                if (currentPerm instanceof RealmPermissible) {
-                    logger.warning("[SpigotPerm] RealmPermissible found in " + player.getName() + " on quit, but no original saved. Attempting to restore default (MAY FAIL).");
+                if (currentPerm instanceof PalacePermissible) {
+                    logger.warning("[SpigotPerm] PalacePermissible found in " + player.getName() + " on quit, but no original saved. Attempting to restore default (MAY FAIL).");
                     permissibleField.set(player, new PermissibleBase(player));
                 }
             } catch (Exception e) {
-                logger.log(Level.WARNING, "[SpigotPerm] Failed to attempt clean up of RealmPermissible on quit for " + player.getName(), e);
+                logger.log(Level.WARNING, "[SpigotPerm] Failed to attempt clean up of PalacePermissible on quit for " + player.getName(), e);
             }
         }
     }

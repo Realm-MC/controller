@@ -10,7 +10,7 @@ import com.palacesky.controller.shared.profile.Profile;
 import com.palacesky.controller.shared.profile.ProfileService;
 import com.palacesky.controller.shared.role.Role;
 import com.palacesky.controller.shared.utils.TaskScheduler;
-import com.palacesky.controller.spigot.api.RealmScoreboard;
+import com.palacesky.controller.spigot.api.PalaceScoreboard;
 import com.palacesky.controller.spigot.cash.SpigotCashCache;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
 
 public class ScoreboardService implements Listener {
 
-    private final Map<UUID, RealmScoreboard> boards = new ConcurrentHashMap<>();
+    private final Map<UUID, PalaceScoreboard> boards = new ConcurrentHashMap<>();
     private final ProfileService profileService;
     private final RoleService roleService;
 
@@ -59,27 +59,27 @@ public class ScoreboardService implements Listener {
 
     public void createScoreboard(Player player) {
         if (boards.containsKey(player.getUniqueId())) return;
-        RealmScoreboard sb = new RealmScoreboard(player);
+        PalaceScoreboard sb = new PalaceScoreboard(player);
         updateBoard(player, sb);
         boards.put(player.getUniqueId(), sb);
     }
 
     public void removeScoreboard(Player player) {
-        RealmScoreboard sb = boards.remove(player.getUniqueId());
+        PalaceScoreboard sb = boards.remove(player.getUniqueId());
         if (sb != null) {
             sb.delete();
         }
     }
 
     public void shutdown() {
-        boards.values().forEach(RealmScoreboard::delete);
+        boards.values().forEach(PalaceScoreboard::delete);
         boards.clear();
     }
 
     private void updateAll() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             try {
-                RealmScoreboard sb = boards.get(player.getUniqueId());
+                PalaceScoreboard sb = boards.get(player.getUniqueId());
                 if (sb == null) {
                     createScoreboard(player);
                 } else {
@@ -91,7 +91,7 @@ public class ScoreboardService implements Listener {
         }
     }
 
-    private void updateBoard(Player player, RealmScoreboard sb) {
+    private void updateBoard(Player player, PalaceScoreboard sb) {
         Locale locale = Messages.determineLocale(player);
 
         try {

@@ -3,75 +3,82 @@ package com.palacesky.controller.modules.chat;
 import com.palacesky.controller.core.modules.AbstractCoreModule;
 import com.palacesky.controller.core.modules.AutoRegister;
 import com.palacesky.controller.core.services.ServiceRegistry;
-import com.palacesky.controller.proxy.listeners.StaffChatListener;
+import com.palacesky.controller.modules.chat.channels.StaffChannel;
+import com.palacesky.controller.shared.chat.ChatService;
+import com.palacesky.controller.shared.preferences.PreferencesService;
+import com.palacesky.controller.shared.sounds.SoundKeys;
+import com.palacesky.controller.shared.sounds.SoundPlayer;
 import com.palacesky.controller.shared.storage.redis.RedisChannel;
 import com.palacesky.controller.shared.storage.redis.RedisSubscriber;
+import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.proxy.ProxyServer;
 
-import java.util.logging.Level;
+import java.util.Optional;
 import java.util.logging.Logger;
 
 @AutoRegister(platforms = {AutoRegister.Platform.PROXY})
 public class StaffChatModule extends AbstractCoreModule {
 
-    private StaffChatListener staffChatListener;
-    private RedisSubscriber redisSubscriber;
+    private ChatService chatService;
 
     public StaffChatModule(Logger logger) {
         super(logger);
     }
 
     @Override
-    public String getName() {
-        return "StaffChat";
-    }
+    public String getName() { return "StaffChat"; }
 
     @Override
-    public String getVersion() {
-        return "1.0.0";
-    }
+    public String getVersion() { return "2.0.0"; }
 
     @Override
-    public String getDescription() {
-        return "Módulo que gerencia o chat de staff global via Redis.";
-    }
+    public String getDescription() { return "Módulo de Chat Global (Framework v2)"; }
 
     @Override
-    public String[] getDependencies() {
-        return new String[]{"Database", "Profile", "ServerManager"};
-    }
+    public String[] getDependencies() { return new String[]{"Database", "Profile", "Preferences"}; }
 
     @Override
-    public int getPriority() {
-        return 60;
-    }
+    public int getPriority() { return 60; }
 
     @Override
     protected void onEnable() throws Exception {
-        try {
-            this.redisSubscriber = ServiceRegistry.getInstance().requireService(RedisSubscriber.class);
-            this.staffChatListener = new StaffChatListener();
+        logger.info("[Chat] Inicializando Framework de Chat no Proxy...");
 
-            this.redisSubscriber.registerListener(RedisChannel.STAFF_CHAT, this.staffChatListener);
-            logger.info("StaffChatListener registrado com sucesso no canal Redis STAFF_CHAT.");
+        ProxyServer server = ServiceRegistry.getInstance().requireService(ProxyServer.class);
+        Optional<SoundPlayer> soundPlayer = ServiceRegistry.getInstance().getService(SoundPlayer.class);
+        PreferencesService prefs = ServiceRegistry.getInstance().requireService(PreferencesService.class);
 
-        } catch (IllegalStateException e) {
-            logger.log(Level.SEVERE, "Falha ao obter RedisSubscriber! StaffChat não funcionará.", e);
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Falha ao registrar StaffChatListener!", e);
-        }
+        ChatService.PlatformChatAdapter proxyAdapter = (message, permission, channel) -> {
+            for (Player p : server.getAllPlayers()) {
+                if (permission != null && !p.hasPermission(permission)) continue;
+
+                if (channel.getId().equals("staff")) {
+                    boolean enabled = prefs.getCachedStaffChatEnabled(p.getUniqueId()).orElse(true);
+                    if (!enabled) continue;
+                }
+
+                if (!channel.canSee(p.getUniqueId())) continue;
+
+                if (channel.getId().equals("staff")) {
+                    soundPlayer.ifPresent(sp -> sp.playSound(p, SoundKeys.NOTIFICATION));
+                }
+                p.sendMessage(message);
+            }
+        };
+
+        this.chatService = new ChatService(proxyAdapter);
+        ServiceRegistry.getInstance().registerService(ChatService.class, this.chatService);
+
+        this.chatService.registerChannel(new StaffChannel());
+
+        logger.info("[Chat] Serviço de Chat e Canal 'staff' registrados.");
     }
 
     @Override
     protected void onDisable() throws Exception {
-        if (this.redisSubscriber != null && this.staffChatListener != null) {
-            try {
-                this.redisSubscriber.unregisterListener(RedisChannel.STAFF_CHAT);
-                logger.info("StaffChatListener removido do canal Redis.");
-            } catch (Exception e) {
-                logger.log(Level.WARNING, "Erro ao desregistrar StaffChatListener.", e);
-            }
-        }
-        this.redisSubscriber = null;
-        this.staffChatListener = null;
+        ServiceRegistry.getInstance().getService(RedisSubscriber.class)
+                .ifPresent(sub -> sub.unregisterListener(RedisChannel.CHAT_CHANNEL));
+
+        ServiceRegistry.getInstance().unregisterService(ChatService.class);
     }
 }
